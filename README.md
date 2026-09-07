@@ -8,7 +8,7 @@ Norte is an AI-assisted engineering workspace for understanding dependencies ins
 
 ## Official app
 
-Production runs on Render with Neon PostgreSQL. Its canonical application URL has **not yet been verified** and is therefore not published here. Repository configuration and public GitHub deployment metadata currently identify only the frontend demo; a Render hostname must not be inferred from the service name.
+**[Official app](https://norte-missao.onrender.com/)** — the full application on Render with Neon PostgreSQL. The application page and [`/api/health`](https://norte-missao.onrender.com/api/health) were verified; the health endpoint reports PostgreSQL storage.
 
 **[Frontend demo](https://raiagues.github.io/norte/)** — a separate GitHub Pages build with browser storage. It cannot run the private server-side document extraction service or share a production database.
 
