@@ -48,7 +48,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.5",
+    "@types/react-dom": "^19.2.7",
     "eslint": "^10.9.1",
     "pg-mem": "^3.0.14",
     "playwright-core": "^1.62.1",
