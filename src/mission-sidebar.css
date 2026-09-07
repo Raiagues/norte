@@ -589,3 +589,22 @@
     background: rgba(0, 7, 15, 0.58);
   }
 }
+
+.mission-project-team { display: grid; gap: 7px; padding: 4px 0; }
+.mission-project-team > span { color: #87a2b9; font-size: 10px; }
+.mission-project-team > strong { color: #c1d1df; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.mission-phase.available { color: #aacbe7; cursor: pointer; }
+.mission-phase:disabled { cursor: default; }
+.conception-initialization { position: fixed; inset: 0; z-index: 2100; display: grid; place-items: center; background: #031426; color: #dbeafa; text-align: center; }
+.conception-initialization > div { max-width: 520px; padding: 24px; display: grid; justify-items: center; gap: 18px; }
+.conception-initialization h2 { margin: 0; font-size: 26px; font-weight: 450; }
+.conception-initialization p { margin: 0; color: #91abc3; line-height: 1.7; }
+.conception-initialization small { letter-spacing: .2em; color: #65aff6; }
+.conception-initialization strong { margin-top: 18px; font-weight: 400; color: #a3bdd6; }
+.initialization-orbit { width: 44px; height: 44px; margin-bottom: 16px; border-radius: 50%; border: 1px solid #2b4c6c; border-top-color: #6bb4ff; animation: initialization-turn 1.2s linear infinite; }
+@keyframes initialization-turn { to { transform: rotate(360deg); } }
+.conception-error { position: fixed; bottom: 24px; left: 96px; right: 24px; z-index: 2100; padding: 16px; border: 1px solid #846f49; background: #122332; color: #f0d5a1; }
+.conception-error button { margin-right: 10px; padding: 8px 12px; background: #172e45; border: 1px solid #466681; color: #d5e7f8; cursor: pointer; }
+.home-action-card:disabled, .teams-hub-heading > button:disabled { opacity: .42; cursor: not-allowed; filter: saturate(.25); box-shadow: none; transform: none; }
+.teams-hub-heading > button:disabled small { font-weight: 400; opacity: .85; }
+@media (prefers-reduced-motion: reduce) { .initialization-orbit { animation: none; } }

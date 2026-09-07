@@ -449,6 +449,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
       let artifactId = current?.id || "";
       if (current) {
         await auth.api("/artifacts/" + current.id, { method: "PATCH", body: JSON.stringify(payload) });
+        updateProject({ memoryRevision: project.memoryRevision + 1 });
       } else {
         const response = await auth.api<{ artifact: ConnectedArtifact }>("/artifacts", { method: "POST", body: JSON.stringify(payload) });
         artifactId = response.artifact.id;
@@ -485,7 +486,6 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
 
   const missing = [
     !project.name.trim() ? c.missingName : "",
-    !(program && modality && category) ? c.missingProgram : "",
     !selectedTeam ? c.missingTeam : "",
     project.context.assignments.length === 0 ? c.missingMembers : ""
   ].filter(Boolean);

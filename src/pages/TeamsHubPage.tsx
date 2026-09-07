@@ -35,11 +35,10 @@ type Props = {
   onLanguageChange: (language: Language) => void;
   onBack: () => void;
   initialTeamId?: string;
-  onTeamSelect?: (teamId: string) => void;
   onTeamsChanged?: () => void;
 };
 
-type Dialog = "new-team" | "edit-team" | "member" | "artifact" | null;
+type Dialog = "edit-team" | "member" | "artifact" | null;
 type View = "mine" | "community";
 
 function errorMessage(reason: unknown, fallback: string): string {
@@ -47,7 +46,7 @@ function errorMessage(reason: unknown, fallback: string): string {
   return fallback;
 }
 
-export function TeamsHubPage({ language, t, onLanguageChange, onBack, initialTeamId = "", onTeamSelect, onTeamsChanged }: Props) {
+export function TeamsHubPage({ language, t, onLanguageChange, onBack, initialTeamId = "", onTeamsChanged }: Props) {
   const auth = useAuth();
   const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -69,7 +68,7 @@ export function TeamsHubPage({ language, t, onLanguageChange, onBack, initialTea
   const c = language === "pt" ? {
     eyebrow: "COLABORAÇÃO",
     title: "Equipes",
-    subtitle: "Organize sua equipe e conheça outras equipes que participam da OBSAT.",
+    subtitle: "Pessoas e referências que sustentam seus projetos.",
     back: "Voltar ao início",
     create: "Criar equipe",
     mine: "Minhas equipes",
@@ -122,12 +121,12 @@ export function TeamsHubPage({ language, t, onLanguageChange, onBack, initialTea
     noProjects: "Nenhum projeto associado a esta equipe.",
     list: "Lista",
     hierarchy: "Organograma",
-    obsatCommunity: "COMUNIDADE OBSAT",
+    obsatCommunity: "COMUNIDADE",
     obsatHint: "Equipes participantes da Olimpíada Brasileira de Satélites. Projetos e documentos internos continuam privados."
   } : {
     eyebrow: "COLLABORATION",
     title: "Teams",
-    subtitle: "Organize your team and discover other teams participating in OBSAT.",
+    subtitle: "The people and references behind your engineering projects.",
     back: "Back home",
     create: "Create team",
     mine: "My teams",
@@ -180,7 +179,7 @@ export function TeamsHubPage({ language, t, onLanguageChange, onBack, initialTea
     noProjects: "No projects are associated with this team.",
     list: "List",
     hierarchy: "Org chart",
-    obsatCommunity: "OBSAT COMMUNITY",
+    obsatCommunity: "COMMUNITY",
     obsatHint: "Teams participating in the Brazilian Satellite Olympiad. Internal projects and documents remain private."
   };
 
@@ -234,12 +233,10 @@ export function TeamsHubPage({ language, t, onLanguageChange, onBack, initialTea
     const list = next === "mine" ? myTeams : otherTeams;
     const nextId = list.find((team) => team.id === (next === "mine" ? initialTeamId : selectedId))?.id || list[0]?.id || "";
     setSelectedId(nextId);
-    if (next === "mine" && nextId) onTeamSelect?.(nextId);
   }
 
   function selectTeam(team: TeamRecord) {
     setSelectedId(team.id);
-    if (team.membership === "member") onTeamSelect?.(team.id);
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -249,13 +246,7 @@ export function TeamsHubPage({ language, t, onLanguageChange, onBack, initialTea
     setBusy(true);
     setFeedback("");
     try {
-      if (dialog === "new-team") {
-        const response = await auth.api<{ team: TeamRecord }>("/teams", { method: "POST", body: JSON.stringify({ name: String(data.get("name") || ""), description: String(data.get("description") || "") }) });
-        setView("mine");
-        setSelectedId(response.team.id);
-        onTeamSelect?.(response.team.id);
-        setFeedback(c.created);
-      } else if (dialog === "edit-team" && selected) {
+      if (dialog === "edit-team" && selected) {
         await auth.api(`/teams/${selected.id}`, { method: "PATCH", body: JSON.stringify({ name: String(data.get("name") || ""), description: String(data.get("description") || "") }) });
         setFeedback(c.updated);
       } else if (dialog === "member" && selected) {
@@ -363,7 +354,7 @@ export function TeamsHubPage({ language, t, onLanguageChange, onBack, initialTea
       <div><LanguageToggle language={language} onChange={onLanguageChange} /><UserBadge connectedLabel={t("common.connected")} /></div>
     </header>
     <main className="teams-hub-main">
-      <header className="teams-hub-heading"><div><span>{c.eyebrow}</span><h1>{c.title}</h1><p>{c.subtitle}</p></div><button type="button" onClick={() => setDialog("new-team")}><Plus aria-hidden="true" />{c.create}</button></header>
+      <header className="teams-hub-heading"><div><span>{c.eyebrow}</span><h1>{c.title}</h1><p>{c.subtitle}</p></div><button type="button" disabled title={language === "pt" ? "Em breve" : "Coming soon"}><Plus aria-hidden="true" />{c.create}<small>{language === "pt" ? "Em breve" : "Coming soon"}</small></button></header>
       <nav className="teams-hub-tabs" aria-label={c.title}>
         <button className={view === "mine" ? "active mine" : "mine"} type="button" onClick={() => chooseView("mine")}><ShieldCheck aria-hidden="true" />{c.mine}<span>{myTeams.length}</span></button>
         <button className={view === "community" ? "active community" : "community"} type="button" onClick={() => chooseView("community")}><Globe2 aria-hidden="true" />{c.community}<span>{otherTeams.length}</span></button>
@@ -400,8 +391,8 @@ export function TeamsHubPage({ language, t, onLanguageChange, onBack, initialTea
     </main>
 
     {dialog && <div className="teams-dialog-backdrop" role="presentation" onPointerDown={() => setDialog(null)}><form className="teams-dialog" onSubmit={(event) => void submit(event)} onPointerDown={(event) => event.stopPropagation()}>
-      <header><div><span>{c.eyebrow}</span><h2>{dialog === "new-team" ? c.newTeam : dialog === "edit-team" ? c.editTeam : dialog === "member" ? c.addMember : c.addArtifact}</h2></div><button type="button" onClick={() => setDialog(null)} aria-label="Fechar"><X aria-hidden="true" /></button></header>
-      {(dialog === "new-team" || dialog === "edit-team") && <><label><span>{c.teamName}</span><input name="name" defaultValue={dialog === "edit-team" ? selected?.name : ""} required maxLength={100} autoFocus /></label><label><span>{c.description}</span><textarea name="description" defaultValue={dialog === "edit-team" ? selected?.description : ""} maxLength={300} rows={3} /></label></>}
+      <header><div><span>{c.eyebrow}</span><h2>{dialog === "edit-team" ? c.editTeam : dialog === "member" ? c.addMember : c.addArtifact}</h2></div><button type="button" onClick={() => setDialog(null)} aria-label="Fechar"><X aria-hidden="true" /></button></header>
+      {(dialog === "edit-team") && <><label><span>{c.teamName}</span><input name="name" defaultValue={dialog === "edit-team" ? selected?.name : ""} required maxLength={100} autoFocus /></label><label><span>{c.description}</span><textarea name="description" defaultValue={dialog === "edit-team" ? selected?.description : ""} maxLength={300} rows={3} /></label></>}
       {dialog === "member" && <><label><span>{c.personName}</span><input name="name" required maxLength={100} autoFocus /></label><label><span>{c.personEmail}</span><input name="email" type="email" required maxLength={254} /></label><p className="teams-dialog-hint">{c.inviteHint}</p></>}
       {dialog === "artifact" && <><label><span>{c.artifactType}</span><select name="kind" defaultValue="document"><option value="document">Documento</option><option value="repository">GitHub</option><option value="dataset">CSV / planilha</option><option value="link">Link</option></select></label><label><span>{c.artifactName}</span><input name="name" required maxLength={120} autoFocus /></label><ArtifactSourceFields language={language} onError={setFeedback} /><label><span>{c.description}</span><textarea name="description" maxLength={300} rows={2} /></label></>}
       <footer><button type="button" onClick={() => setDialog(null)}>{c.cancel}</button><button className="primary" type="submit" disabled={busy}>{busy ? <LoaderCircle className="teams-hub-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}{c.save}</button></footer>

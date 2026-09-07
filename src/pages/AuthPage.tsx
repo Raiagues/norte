@@ -21,7 +21,7 @@ export function AuthPage() {
   const joinParameters = new URLSearchParams(window.location.hash.split("?")[1] || "");
 
   const c = language === "pt" ? {
-    brandLine: "ENGENHARIA DE MISSÃO COLABORATIVA",
+    brandLine: "ENGENHARIA DE SISTEMAS ASSISTIDA POR IA",
     loginTitle: "Entrar no Norte",
     registerTitle: "Criar sua conta",
     firstAccount: "A primeira conta deste ambiente recebe a administração inicial.",
@@ -38,7 +38,7 @@ export function AuthPage() {
     retry: "Tentar novamente",
     loading: "Abrindo sessão segura"
   } : {
-    brandLine: "COLLABORATIVE MISSION ENGINEERING",
+    brandLine: "AI-ASSISTED SYSTEMS ENGINEERING",
     loginTitle: "Sign in to Norte",
     registerTitle: "Create your account",
     firstAccount: "The first account in this environment receives initial administration.",

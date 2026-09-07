@@ -1,279 +1,239 @@
-/* global document, getComputedStyle, innerHeight, innerWidth, localStorage, location */
+/* global document, window, clearTimeout */
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawn } from "node:child_process";
 import { chromium } from "playwright-core";
+import { buildApp } from "../server/app.mjs";
+import { createEngineeringValidationModel, validationMemoryText } from "../examples/engineering-validation.mjs";
 
-const baseUrl = process.env.NORTE_URL || "http://127.0.0.1:5175/norte/";
-const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome-stable", headless: true, args: ["--no-sandbox"] });
-
-async function measure(page, label) {
-  return page.evaluate((name) => {
-    const body = document.body;
-    const visible = [...document.querySelectorAll("button, input, select, h1, h2, p, strong, small")]
-      .filter((element) => {
-        const box = element.getBoundingClientRect();
-        const style = getComputedStyle(element);
-        return box.width > 0 && box.height > 0 && style.visibility !== "hidden";
-      });
-    const sizes = visible.map((element) => Number.parseFloat(getComputedStyle(element).fontSize)).filter(Number.isFinite);
-    return {
-      label: name,
-      hash: location.hash,
-      viewport: [innerWidth, innerHeight],
-      bodyOverflowX: body.scrollWidth - innerWidth,
-      smallestVisibleText: sizes.length ? Math.min(...sizes) : 0,
-      title: document.querySelector("h1")?.textContent?.trim() || ""
-    };
-  }, label);
-}
-
-async function acceptNextDialog(page) {
-  page.once("dialog", (dialog) => dialog.accept());
-}
-
-const context = await browser.newContext({ viewport: { width: 1920, height: 924 }, deviceScaleFactor: 1 });
+// Real React + authenticated API + persistence; only the external extraction provider is mocked.
+// Uses an isolated temporary store and test browser. Never modifies the user's database.
+const directory = await mkdtemp(join(tmpdir(), "norte-browser-"));
+const port = Number(process.env.NORTE_VISUAL_PORT || 5275);
+const baseUrl = `http://127.0.0.1:${port}/norte/`;
+let generations = 0, failGeneration = true, artifactId = "";
+const app = await buildApp({ storeFile: join(directory, "state.json"), logger: false, systemAi: { apiKey: "test-provider", fetch: async (_url, options) => {
+  if (JSON.parse(options.body).contents[0].parts[0].text.startsWith("Give concise")) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"inferences":[]}' }] } }] }), { status: 200 });
+  generations += 1;
+  if (failGeneration) return new Response("{}", { status: 503 });
+  const model = createEngineeringValidationModel();
+  model.evidence = model.evidence.map((item) => ({ ...item, artifactId }));
+  return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(model) }] } }] }), { status: 200 });
+} } });
+const registration = await app.inject({ method: "POST", url: "/api/auth/register", payload: { name: "Validation Engineer", email: "validation@example.test", password: "Engineering validation passphrase 42" } });
+assert.equal(registration.statusCode, 201, registration.body);
+const session = registration.json();
+const cookie = registration.headers["set-cookie"].split(";")[0];
+const headers = { cookie, "x-csrf-token": session.csrfToken };
+const request = async (method, url, payload) => {
+  const response = await app.inject({ method, url, payload, headers });
+  assert.ok(response.statusCode < 400, `${url}: ${response.body}`);
+  return response.statusCode === 204 ? undefined : response.json();
+};
+const initial = await request("GET", "/api/projects");
+assert.equal(initial.projects.length, 1);
+const projectId = initial.projects[0].id;
+let project = (await request("GET", `/api/projects/${projectId}`)).project;
+project.context.assignments = [{ memberId: session.user.memberId, roleId: "captain", sectorId: "" }];
+project.context.configured = true;
+const artifact = (await request("POST", "/api/artifacts", { kind: "document", label: "Validation memory", description: "Explicit test fixture", url: `data:text/plain;base64,${Buffer.from(validationMemoryText).toString("base64")}`, scope: "project", ownerId: projectId, tags: [], fileName: "validation.txt", mimeType: "text/plain", size: Buffer.byteLength(validationMemoryText) })).artifact;
+artifactId = artifact.id;
+project.context.projectArtifactIds = [artifact.id];
+await request("PUT", `/api/projects/${projectId}`, project);
+const vite = spawn(process.execPath, ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { env: { ...process.env, VITE_DEMO_MODE: "false" }, stdio: ["ignore", "pipe", "pipe"] });
+const viteReady = new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error("Vite startup timeout")), 15000); vite.stdout.on("data", (chunk) => { if (String(chunk).includes("Local:")) { clearTimeout(timer); resolve(); } }); vite.once("exit", (code) => reject(new Error(`Vite exited ${code}`))); });
+const browser = await chromium.launch({ executablePath: process.env.NORTE_CHROME || "/opt/google/chrome/chrome", headless: true, args: ["--no-sandbox"] });
+const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+const split = cookie.indexOf("=");
+await context.addCookies([{ name: cookie.slice(0, split), value: cookie.slice(split + 1), url: new URL(baseUrl).origin }]);
+const errors = [];
 const page = await context.newPage();
-await page.goto(baseUrl, { waitUntil: "networkidle" });
-await page.evaluate(() => localStorage.clear());
-await page.reload({ waitUntil: "networkidle" });
-
-await page.screenshot({ path: "/tmp/norte-home-desktop.png", fullPage: true });
-const homeActions = page.locator(".home-action-grid > button");
-if (await homeActions.count() !== 3) throw new Error("Home should expose exactly three square actions.");
-if ((await homeActions.nth(0).innerText()).includes("Abrir projeto") === false) throw new Error("Open project should appear before new project.");
-if ((await homeActions.nth(1).innerText()).includes("Novo projeto") === false) throw new Error("New project should be the second action.");
-if (await page.getByText("PROJETOS ASSOCIADOS", { exact: true }).count()) throw new Error("Associated projects must not be permanently visible on home.");
-if ((await page.locator("h1").innerText()) !== "NORTE") throw new Error("Home should keep NORTE as its only heading.");
-const avatarLoaded = await page.locator(".home-landing-topbar .account-badge-trigger .avatar img").evaluate((image) => image.complete && image.naturalWidth > 0);
-if (!avatarLoaded) throw new Error("The demo profile image did not load.");
-const results = [await measure(page, "home-desktop")];
-await page.locator(".mission-sidebar-toggle").click();
-if (await page.locator(".mission-context-switcher select").count() !== 2) throw new Error("Expanded navigation should provide project and default team selectors.");
-await page.screenshot({ path: "/tmp/norte-sidebar-expanded.png", fullPage: true });
-await page.locator(".mission-sidebar-toggle").click();
-
-await homeActions.first().click();
-await page.locator(".home-project-dialog").waitFor();
-const initialProjectCount = await page.locator(".home-project-picker-row").count();
-if (initialProjectCount < 1) throw new Error("Open project should list the demo account projects inside a dialog.");
-await page.locator(".home-project-open").first().click();
-await page.waitForURL(/#\/study-setup$/u);
-await page.screenshot({ path: "/tmp/norte-memory-populated.png", fullPage: true });
-if (await page.locator(".pm-artifact-card").count() < 3) throw new Error("Project memory should show linked team and project artifacts.");
-results.push(await measure(page, "memory-populated"));
-
-const teamArtifactRows = page.locator(".pm-artifact-band").first().locator(".pm-artifact-card");
-const initialTeamArtifactCount = await teamArtifactRows.count();
-await teamArtifactRows.first().locator(".pm-artifact-actions button").last().click();
-if (await teamArtifactRows.count() !== initialTeamArtifactCount - 1) throw new Error("Unlinking should remove only the artifact from project memory.");
-await page.locator(".pm-artifact-band").first().getByRole("button", { name: "Selecionar" }).click();
-await page.locator(".pm-selection-list.artifacts label").first().click();
-await page.locator(".pm-dialog").getByRole("button", { name: "Salvar" }).click();
-if (await teamArtifactRows.count() !== initialTeamArtifactCount) throw new Error("A team artifact should be linkable again.");
-
-await page.locator(".pm-team-band").getByRole("button", { name: "Configurar equipe" }).click();
-if (await page.locator(".ptc-list-scroll > article").count() < 4) throw new Error("The demo team should expose the captain and three mock members.");
-await page.getByRole("button", { name: "Hierarquia", exact: true }).click();
-if (await page.locator(".ptc-member").count() < 4) throw new Error("The roles hierarchy should show project participants and responsibilities.");
-await page.screenshot({ path: "/tmp/norte-team-config-roles.png", fullPage: true });
-await page.getByRole("button", { name: "Setores", exact: true }).click();
-if (await page.locator(".ptc-sector-node").count() < 3) throw new Error("The sectors hierarchy should show persisted organizational units.");
-if (await page.locator(".ptc-member").count() !== 0) throw new Error("The sectors hierarchy must not render project members.");
-await page.screenshot({ path: "/tmp/norte-team-config-sectors.png", fullPage: true });
-await page.locator(".pm-dialog").getByRole("button", { name: "Fechar" }).click();
-
-await page.locator(".pm-topbar .account-badge-trigger").click();
-await page.getByRole("button", { name: /Ver e editar perfil/u }).click();
-await page.locator(".profile-dialog").waitFor();
-const profilePhotoLoaded = await page.locator(".profile-avatar-editor img").evaluate((image) => image.complete && image.naturalWidth > 0);
-if (!profilePhotoLoaded) throw new Error("The profile dialog image did not load.");
-await page.screenshot({ path: "/tmp/norte-profile.png", fullPage: true });
-await page.locator(".profile-dialog").getByRole("button", { name: "Fechar" }).click();
-
-await page.goto(baseUrl + "#/teams", { waitUntil: "networkidle" });
-await page.locator(".teams-hub-layout").waitFor();
-if (await page.locator(".teams-hub-tabs > button").count() !== 2) throw new Error("Teams should separate private teams and the OBSAT community.");
-if (await page.locator(".teams-project-list > article").count() < 2) throw new Error("A private team should show its associated projects.");
-await page.screenshot({ path: "/tmp/norte-teams-private.png", fullPage: true });
-
-await page.getByRole("button", { name: /Comunidade/u }).click();
-await page.locator(".teams-private-notice").waitFor();
-if (await page.locator(".teams-member-list article").count()) throw new Error("Public team profiles must not expose the private member list.");
-if (await page.locator(".teams-artifact-list article").count()) throw new Error("Public team profiles must not expose private artifacts.");
-await page.screenshot({ path: "/tmp/norte-teams-community.png", fullPage: true });
-
-await page.getByRole("button", { name: /Minhas equipes/u }).click();
-await page.locator(".teams-hub-layout").waitFor();
-await page.getByRole("button", { name: "Criar equipe" }).click();
-await page.locator('.teams-dialog input[name="name"]').fill("Equipe Temporária");
-await page.locator('.teams-dialog textarea[name="description"]').fill("Equipe criada para validar o ciclo de exclusão.");
-await page.locator(".teams-dialog").getByRole("button", { name: "Salvar" }).click();
-await page.locator(".teams-hub-detail h2", { hasText: "Equipe Temporária" }).waitFor();
-await acceptNextDialog(page);
-await page.locator('.teams-detail-actions button[aria-label="Excluir equipe"]').click();
-await page.locator(".teams-hub-detail h2", { hasText: "Equipe Aurora" }).waitFor();
-
-await page.locator(".teams-hub-list section > button", { hasText: "Equipe Aurora" }).click();
-const artifactCountBeforeUpload = await page.locator(".teams-artifact-list article").count();
-await page.getByRole("button", { name: "Adicionar documento" }).click();
-await page.locator('.teams-dialog input[name="name"]').fill("Matriz de decisões");
-await page.locator(".teams-dialog").getByRole("button", { name: "Arquivo" }).click();
-await page.locator(".artifact-file-input").setInputFiles({ name: "decisoes.csv", mimeType: "text/csv", buffer: Buffer.from("decisao,responsavel\nTeste,Equipe\n") });
-await page.locator(".artifact-file-ready").waitFor();
-await page.locator(".teams-dialog").getByRole("button", { name: "Salvar" }).click();
-if (await page.locator(".teams-artifact-list article").count() !== artifactCountBeforeUpload + 1) throw new Error("A dropped local file should persist in the team library.");
-const uploadedArtifact = page.locator(".teams-artifact-list article", { hasText: "Matriz de decisões" });
-await acceptNextDialog(page);
-await uploadedArtifact.getByRole("button", { name: /Excluir documento/u }).click();
-await uploadedArtifact.waitFor({ state: "detached" });
-results.push(await measure(page, "teams-desktop"));
-
-await page.goto(baseUrl + "#/", { waitUntil: "networkidle" });
-await page.locator(".home-action-card.accent-create").click();
-await page.waitForURL(/#\/study-setup$/u);
-const projectCountWhileDraft = await page.evaluate(() => {
-  const state = JSON.parse(localStorage.getItem("norte-pages-demo-v2") || "{}" );
-  return Object.keys(state.projects || {}).length;
+page.on("pageerror", (error) => errors.push(error.message));
+await context.route("**/api/**", async (route) => {
+  const incoming = route.request();
+  const response = await app.inject({ method: incoming.method(), url: new URL(incoming.url()).pathname + new URL(incoming.url()).search, headers: { ...await incoming.allHeaders(), host: `127.0.0.1:${port}` }, ...(incoming.postData() ? { payload: incoming.postData() } : {}) });
+  const outputHeaders = Object.fromEntries(Object.entries(response.headers).filter(([name]) => !["content-length", "transfer-encoding", "connection", "set-cookie"].includes(name)).map(([name, value]) => [name, String(value)]));
+  await route.fulfill({ status: response.statusCode, headers: outputHeaders, body: response.body });
 });
-if (projectCountWhileDraft !== initialProjectCount) throw new Error("Clicking New project must not persist an untitled project.");
-const createProjectButton = page.locator(".pm-footer > button", { hasText: "Criar projeto e começar" });
-await createProjectButton.waitFor();
-if (await createProjectButton.count() !== 1) throw new Error("A draft should clearly require final project creation.");
-
-await page.locator(".pm-project-name input").fill("Projeto de validação");
-await page.locator(".pm-empty-program").click();
-await page.locator('.pm-program-picker [role="radio"]').filter({ hasText: "OBSAT" }).click();
-if (await page.locator(".pm-official-library a").count() < 2) throw new Error("Program details should expose official documents and the next milestone.");
-await page.locator(".pm-dialog").getByRole("button", { name: "Salvar" }).click();
-await page.locator(".pm-team-band .pm-track-empty").click();
-await page.locator(".pm-team-config > label select").selectOption("team-aurora");
-const memberChoices = page.locator(".ptc-list-scroll > article:not(.selected) > label");
-while (await memberChoices.count()) await memberChoices.first().click();
-await page.locator(".pm-dialog").getByRole("button", { name: /Salvar configuração/u }).click();
-if (await page.locator(".pm-footer > button").isDisabled()) throw new Error("A complete project memory should enable project creation.");
-await page.screenshot({ path: "/tmp/norte-memory-new.png", fullPage: true });
-await page.locator(".pm-footer > button").click();
-await page.waitForURL(/#\/brainstorming$/u);
-
-const conceptionTabs = page.locator(".brain-mode-tabs > button");
-if (await conceptionTabs.count() !== 3) throw new Error("Conception should expose timeline, discovery, and consolidated system tabs.");
-if ((await conceptionTabs.nth(0).innerText()).includes("Cronograma") === false) throw new Error("Timeline should be the first conception view.");
-if ((await conceptionTabs.nth(1).innerText()).includes("Descoberta") === false || (await conceptionTabs.nth(1).innerText()).includes("BETA") === false) throw new Error("Discovery should be the first map and remain marked as beta.");
-await page.locator(".lab-canvas").waitFor();
-await page.waitForTimeout(1800);
-await page.getByRole("button", { name: "Nova ideia", exact: true }).click();
-const discoveryComposer = page.locator(".lab-composer textarea");
-await discoveryComposer.waitFor();
-await discoveryComposer.fill("Observar queimadas na Amazônia");
-await discoveryComposer.press("Enter");
-await discoveryComposer.fill("Detectar focos durante a noite");
-await discoveryComposer.press("Enter");
-await discoveryComposer.fill("Usar câmera térmica");
-await discoveryComposer.press("Enter");
-await discoveryComposer.press("Escape");
-await page.waitForTimeout(1100);
-if (await page.locator(".lab-node").count() !== 3) throw new Error("Discovery should create ideas continuously with Enter.");
-const positionsBeforeArrange = await page.locator(".lab-node").evaluateAll((nodes) => nodes.map((node) => [node.style.left, node.style.top]));
-await page.getByRole("button", { name: "Organização automática", exact: true }).click();
-await page.getByRole("button", { name: "Arrumar mapa", exact: true }).click();
-await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent?.trim() === "Arrumar mapa" && !button.disabled));
-await page.waitForTimeout(1000);
-const positionsAfterArrange = await page.locator(".lab-node").evaluateAll((nodes) => nodes.map((node) => [node.style.left, node.style.top]));
-if (JSON.stringify(positionsAfterArrange) === JSON.stringify(positionsBeforeArrange)) throw new Error("Arrange map should perform a manual hierarchy pass even when Auto is disabled.");
-await page.getByRole("button", { name: "Organização automática", exact: true }).click();
-await page.getByRole("button", { name: "Estruturar missão", exact: true }).click();
-await page.locator(".lab-domain").first().waitFor();
-await page.waitForTimeout(1000);
-if (await page.locator(".lab-domain").count() < 2) throw new Error("Mission structure should separate ideas into contextual areas.");
-if (await page.locator(".lab-gap").count() < 1) throw new Error("Disconnected hierarchy fragments should expose a question instead of inventing a relation.");
-await page.locator(".lab-gap").first().click();
-await page.locator(".lab-gap-review").waitFor();
-if ((await page.locator(".lab-gap-review").innerText()).trim().length < 20) throw new Error("A gap marker should open the missing-context question.");
-await page.locator(".lab-gap-review .icon").click();
-await page.screenshot({ path: "/tmp/norte-discovery-structured.png", fullPage: true });
-
-await page.locator(".lab-node").first().locator(".lab-node-head button").click();
-await page.locator(".lab-card-menu").getByRole("button", { name: "Decidida", exact: true }).click();
-await page.waitForFunction(() => [...document.querySelectorAll(".brain-mode-tabs .tab-count")].some((element) => element.textContent?.trim() === "1"));
-await page.getByRole("tab", { name: /Sistema consolidado/u }).click();
-await page.locator(".mission-node-title", { hasText: "Observar queimadas na Amazônia" }).waitFor();
-await page.screenshot({ path: "/tmp/norte-system-consolidated.png", fullPage: true });
-
-await page.getByRole("tab", { name: /Cronograma/u }).click();
-await page.locator(".conception-timeline").waitFor();
-if (await page.locator(".timeline-project-flow").count()) throw new Error("The redundant conception flow strip should not appear above the Gantt chart.");
-if ((await page.locator(".timeline-program-mark").innerText()).includes("Próximo marco oficial") === false) throw new Error("The timeline header should expose the next useful official milestone.");
-if (await page.locator(".timeline-phase-list > a").count() < 5) throw new Error("The OBSAT timeline should expose the official conception phases.");
-if (await page.locator(".gantt-bar").count() < 5) throw new Error("The official schedule should render every phase as a Gantt bar.");
-const ganttWidths = await page.locator(".gantt-bar").evaluateAll((bars) => bars.map((bar) => Math.round(bar.getBoundingClientRect().width)));
-if (new Set(ganttWidths).size < 3) throw new Error("Gantt phase bars should reflect different schedule durations.");
-await page.screenshot({ path: "/tmp/norte-conception-timeline.png", fullPage: true });
-
-await page.getByRole("tab", { name: /Descoberta/u }).click();
-await page.locator(".lab-domain").first().waitFor();
-for (let index = 0; index < 7; index += 1) await page.getByRole("button", { name: "Diminuir zoom", exact: true }).click();
-await page.locator(".lab-canvas.semantic-overview").waitFor();
-const overviewNodeOpacity = await page.locator(".lab-canvas.semantic-overview .lab-node").first().evaluate((element) => getComputedStyle(element).opacity);
-if (overviewNodeOpacity !== "0") throw new Error("Semantic overview should summarize domains instead of rendering every idea.");
-await page.screenshot({ path: "/tmp/norte-discovery-overview.png", fullPage: true });
-await page.getByRole("button", { name: /Abrir área:/u }).first().click();
-await page.locator(".lab-canvas:not(.semantic-overview)").waitFor();
-await page.screenshot({ path: "/tmp/norte-discovery-domain.png", fullPage: true });
-
-await page.goto(baseUrl + "#/", { waitUntil: "networkidle" });
-await page.locator(".home-action-card.accent-open").click();
-if (await page.locator(".home-project-picker-row").count() !== initialProjectCount + 1) throw new Error("A project should appear only after final confirmation.");
-await page.locator(".home-project-picker-row", { hasText: "Projeto de validação" }).locator(".home-project-open").click();
-await page.waitForURL(/#\/brainstorming$/u);
-await page.goto(baseUrl + "#/", { waitUntil: "networkidle" });
-await page.locator(".home-action-card.accent-open").click();
-const createdProjectRow = page.locator(".home-project-picker-row", { hasText: "Projeto de validação" });
-await acceptNextDialog(page);
-await createdProjectRow.locator(".home-project-delete").click();
-await createdProjectRow.waitFor({ state: "detached" });
-
-const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
-await mobile.goto(baseUrl + "#/", { waitUntil: "networkidle" });
-await mobile.screenshot({ path: "/tmp/norte-home-mobile.png", fullPage: true });
-results.push(await measure(mobile, "home-mobile"));
-
-const laptop = await browser.newPage({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1 });
-await laptop.goto(baseUrl + "#/study-setup", { waitUntil: "networkidle" });
-await laptop.locator(".pm-workspace").waitFor();
-await laptop.screenshot({ path: "/tmp/norte-memory-laptop.png", fullPage: true });
-results.push(await measure(laptop, "memory-laptop"));
-
-const laptopConception = await browser.newPage({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1 });
-await laptopConception.goto(baseUrl + "?view=discovery#/brainstorming", { waitUntil: "networkidle" });
-await laptopConception.locator(".brainstorm-lab").waitFor();
-const conceptionLayout = await laptopConception.evaluate(() => {
-  const tabs = document.querySelector(".brain-mode-tabs")?.getBoundingClientRect();
-  const toolbar = document.querySelector(".lab-toolbar")?.getBoundingClientRect();
-  return {
-    tabsRight: tabs?.right ?? 0,
-    toolbarRight: toolbar?.right ?? 0,
-    toolbarBottom: toolbar?.bottom ?? 0
-  };
-});
-if (conceptionLayout.tabsRight > 1366 || conceptionLayout.toolbarRight > 1366 || conceptionLayout.toolbarBottom > 768) {
-  throw new Error("The conception navigation or toolbar does not fit a 1366x768 notebook viewport.");
-}
-await laptopConception.screenshot({ path: "/tmp/norte-conception-laptop.png", fullPage: true });
-results.push(await measure(laptopConception, "conception-laptop"));
-
-const mobileTeams = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
-await mobileTeams.goto(baseUrl + "#/teams", { waitUntil: "networkidle" });
-await mobileTeams.locator(".teams-hub-tabs").waitFor();
-await mobileTeams.screenshot({ path: "/tmp/norte-teams-mobile.png", fullPage: true });
-results.push(await measure(mobileTeams, "teams-mobile"));
-
-const mobileConception = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
-await mobileConception.goto(baseUrl + "?view=timeline#/brainstorming", { waitUntil: "networkidle" });
-await mobileConception.locator(".brain-mode-tabs").waitFor();
-await mobileConception.screenshot({ path: "/tmp/norte-conception-mobile.png", fullPage: true });
-results.push(await measure(mobileConception, "conception-mobile"));
-
-for (const result of results) {
-  if (result.bodyOverflowX > 1) throw new Error(`${result.label} overflows horizontally by ${result.bodyOverflowX}px.`);
-}
-
-console.log(JSON.stringify({ homeActionCount: await homeActions.count(), initialProjectCount, initialTeamArtifactCount, results }, null, 2));
-await browser.close();
+const node = (id) => page.locator(`[data-entity-id="${id}"]`);
+const closeDialog = () => page.getByRole("dialog").getByRole("button", { name: /^(Fechar|Close)$/u }).click();
+const waitSaved = () => page.waitForTimeout(450);
+const results = [];
+try {
+  await viteReady;
+  await page.goto(baseUrl, { waitUntil: "networkidle" });
+  await page.locator(".home-action-card.accent-create").waitFor();
+  console.log("Browser: authenticated home loaded");
+  assert.ok(await page.locator(".home-action-card.accent-create").isDisabled());
+  await page.locator(".home-action-card.accent-create").dispatchEvent("click");
+  await page.locator(".home-action-card.accent-create").dispatchEvent("keydown", { key: "Enter" });
+  assert.ok(page.url().endsWith("/norte/"));
+  await page.locator(".mission-sidebar-toggle").click();
+  assert.equal(await page.locator(".mission-context-switcher select").count(), 1);
+  assert.equal(await page.locator(".mission-project-team strong").innerText(), "Norte Validation Team");
+  assert.ok(await page.locator(".mission-phase").nth(1).isDisabled());
+  await page.locator(".home-action-card.accent-team").click();
+  const createTeam = page.locator(".teams-hub-heading > button");
+  assert.ok(await createTeam.isDisabled());
+  await createTeam.dispatchEvent("click");
+  await createTeam.dispatchEvent("keydown", { key: " " });
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  await page.goto(baseUrl, { waitUntil: "networkidle" });
+  await page.locator(".home-action-card.accent-open").click();
+  await page.locator(".home-project-open").click();
+  await page.locator(".pm-footer > button").click();
+  await page.locator(".pm-feedback").waitFor();
+  assert.ok((await page.locator(".pm-feedback").innerText()).includes("temporariamente indisponível"));
+  assert.equal((await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem, undefined);
+  assert.ok(page.url().includes("study-setup"));
+  failGeneration = false;
+  await page.locator(".pm-footer > button").click();
+  await page.locator(".engineering-graph").waitFor();
+  assert.equal(generations, 2);
+  assert.equal(await page.getByRole("tab", { selected: true }).innerText(), "Sistema");
+  assert.equal(await page.getByRole("button", { name: /Gerar arquitetura|Generate initial/u }).count(), 0);
+  const baseline = (await request("GET", `/api/projects/${projectId}`)).project;
+  assert.ok(baseline.engineeringSystem);
+  assert.equal(baseline.phaseProgress.highestUnlockedStep, 1);
+  assert.equal(await page.locator(".engineering-node").count(), 6);
+  assert.equal(await page.locator('[data-entity-id^="REQ-"]').count(), 0);
+  await page.locator(".mission-phase").first().click();
+  await page.locator(".pm-workspace").waitFor();
+  assert.equal(await page.locator(".mission-phase").nth(1).isDisabled(), false);
+  await page.reload({ waitUntil: "networkidle" });
+  assert.equal(await page.locator(".mission-phase").nth(1).isDisabled(), false);
+  await page.locator(".mission-phase").nth(1).click();
+  await page.locator(".engineering-graph").waitFor();
+  assert.equal(generations, 2);
+  await page.locator(".mission-sidebar-toggle").click();
+  await page.waitForTimeout(220);
+  await page.screenshot({ path: "/tmp/norte-system-macro.png", fullPage: true });
+  await node("communication").locator(".engineering-node-main").click();
+  await node("radio").waitFor();
+  await node("radio").locator(".engineering-node-main").click();
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  const graphWidth = await page.locator(".engineering-graph").evaluate((element) => element.clientWidth);
+  await node("radio").locator(".engineering-node-info").click();
+  await page.getByRole("dialog").waitFor();
+  await page.getByRole("dialog").locator(".engineering-evidence summary").first().click();
+  assert.ok((await page.getByRole("dialog").innerText()).includes("400 mA"));
+  await closeDialog();
+  assert.equal(await page.locator(".engineering-graph").evaluate((element) => element.clientWidth), graphWidth);
+  await node("radio").getByRole("button", { name: "E se…", exact: true }).click();
+  await page.getByLabel("Novo valor", { exact: true }).fill("1.2");
+  await page.getByLabel("Unidade", { exact: true }).fill("A");
+  await page.getByRole("button", { name: "Ver consequências" }).click();
+  await page.locator(".engineering-scenario").waitFor();
+  assert.ok((await node("regulator").getAttribute("class")).includes("status-critical"));
+  assert.ok((await node("regulator").innerText()).includes("1.2 A > 0.8 A"));
+  await node("regulator").locator(".engineering-node-info").click();
+  assert.ok((await page.getByRole("dialog").innerText()).includes("1.2 A > 0.8 A"));
+  await page.getByRole("dialog").getByRole("button", { name: "Fechar", exact: true }).focus();
+  await page.keyboard.press("Tab");
+  assert.equal(await page.evaluate(() => document.activeElement.tagName), "SUMMARY");
+  await page.keyboard.press("Enter");
+  assert.ok(await page.getByRole("dialog").locator("details[open]").count());
+  await page.keyboard.press("Escape");
+  assert.equal(await node("regulator").locator(".engineering-node-info").evaluate((element) => document.activeElement === element), true);
+  await page.screenshot({ path: "/tmp/norte-impact-current.png", fullPage: true });
+  await page.getByRole("button", { name: "EN", exact: true }).click();
+  await page.getByRole("button", { name: "Save scenario", exact: true }).waitFor();
+  await page.screenshot({ path: "/tmp/norte-impact-current-en.png", fullPage: true });
+  await page.getByRole("button", { name: "PT", exact: true }).click();
+  await page.getByRole("button", { name: "Salvar cenário" }).click();
+  await waitSaved();
+  assert.equal((await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem.scenarios.length, 1);
+  assert.deepEqual((await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem.entities, baseline.engineeringSystem.entities);
+  await page.getByRole("button", { name: "Limpar análise" }).click();
+  await page.locator(".engineering-requirements-trigger").click();
+  assert.equal(await page.locator(".engineering-requirement-row").count(), 2);
+  await page.getByLabel("Buscar requisitos").fill("mass");
+  assert.equal(await page.locator(".engineering-requirement-row").count(), 1);
+  await page.getByLabel("Buscar requisitos").fill("");
+  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
+  await page.locator(".engineering-requirement-facets select").first().selectOption("Power");
+  assert.equal(await page.locator(".engineering-requirement-row").count(), 1);
+  await page.getByRole("button", { name: "Limpar filtros" }).click();
+  assert.equal(await page.locator(".engineering-requirement-row").count(), 2);
+  await page.locator(".engineering-requirement-row").first().locator("button").last().click();
+  await page.getByRole("button", { name: "Corrigir", exact: true }).click();
+  await page.getByLabel("Enunciado revisado").fill("Autonomy ≥ 90 min, reviewed by the team");
+  await page.getByLabel("Revisões (separadas por vírgula)").fill("PDR");
+  await page.getByRole("button", { name: "Salvar correção" }).click();
+  await waitSaved();
+  const revised = (await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem.requirements.find((item) => item.id === "REQ-07");
+  assert.equal(revised.statement, "Autonomy ≥ 90 min, reviewed by the team");
+  assert.equal(revised.originalStatement, "Autonomy ≥ 90 min");
+  assert.deepEqual(revised.originalSourceRefs, ["req-duration"]);
+  assert.deepEqual(revised.reviewTags, ["PDR"]);
+  await closeDialog();
+  await page.locator(".engineering-requirements-trigger").click();
+  // Requirements list is independent of graph selection and is dismissed by trace.
+  await page.locator(".engineering-requirement-row").first().locator("button").first().click();
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  await page.locator(".engineering-trace-bar").waitFor();
+  await page.getByRole("tab", { name: /Descoberta/u }).click();
+  await page.locator(".lab-canvas").waitFor();
+  for (const removed of ["Arrumar mapa", "Estruturar missão", "Organização automática"]) assert.equal(await page.getByRole("button", { name: removed, exact: true }).count(), 0);
+  await page.getByRole("button", { name: "Nova ideia", exact: true }).first().click();
+  await page.locator(".lab-composer textarea").fill("Payload 280 g");
+  await page.locator(".lab-composer textarea").press("Enter");
+  await page.locator(".lab-composer textarea").press("Escape");
+  await page.locator(".lab-node").getByRole("button", { name: "Ver impacto" }).click();
+  assert.equal(await page.getByLabel("Novo valor", { exact: true }).inputValue(), "280");
+  await page.getByRole("button", { name: "Ver consequências" }).click();
+  await page.locator(".engineering-scenario").waitFor();
+  assert.equal(await node("radio").count(), 0);
+  assert.ok((await page.locator(".engineering-requirement-impact").innerText()).includes("Conflito"));
+  await page.screenshot({ path: "/tmp/norte-discovery-impact.png", fullPage: true });
+  await page.getByRole("button", { name: "Limpar análise" }).click();
+  assert.equal(await page.locator(".lab-node").count(), 1);
+  await page.getByRole("button", { name: "Desfazer", exact: true }).click();
+  assert.equal(await page.locator(".lab-node").count(), 0);
+  await page.getByRole("button", { name: "Refazer", exact: true }).click();
+  assert.equal(await page.locator(".lab-node").count(), 1);
+  await waitSaved();
+  await page.reload({ waitUntil: "networkidle" });
+  await page.locator(".lab-node").waitFor();
+  assert.equal(generations, 2);
+  // Each selected project brings its own progress, team and workspace.
+  const secondTeam = (await request("POST", "/api/teams", { name: "Independent test team", description: "Temporary acceptance fixture" })).team;
+  const secondProject = { ...project, id: "independent-browser-project", name: "Independent project", phaseProgress: { highestUnlockedStep: 0 }, navigation: { lastRoute: "setup" }, context: { ...project.context, teamId: secondTeam.id, teamName: secondTeam.name, projectArtifactIds: [] } };
+  await request("POST", "/api/projects", secondProject);
+  await page.reload({ waitUntil: "networkidle" });
+  await page.locator(".mission-sidebar-toggle").click();
+  await page.locator(".mission-context-switcher select").selectOption(secondProject.id);
+  await page.locator(".pm-workspace").waitFor();
+  assert.ok(await page.locator(".mission-phase").nth(1).isDisabled());
+  assert.equal(await page.locator(".mission-project-team strong").innerText(), secondTeam.name);
+  await page.locator(".mission-context-switcher select").selectOption(projectId);
+  await page.locator(".lab-canvas").waitFor();
+  // The current phase is aria-disabled because it is already selected, but remains unlocked.
+  assert.equal(await page.locator(".mission-phase").nth(1).getAttribute("disabled"), null);
+  assert.equal(await page.locator(".mission-phase").nth(1).getAttribute("aria-current"), "step");
+  assert.equal(await page.locator(".mission-project-team strong").innerText(), "Norte Validation Team");
+  await page.locator(".mission-sidebar-toggle").click();
+  await page.getByRole("tab", { name: /Cronograma/u }).click();
+  await page.locator(".conception-timeline").waitFor();
+  for (const [width, height] of [[1366, 768], [390, 844]]) {
+    await page.setViewportSize({ width, height });
+    await page.getByRole("tab", { name: "Sistema", exact: true }).click();
+    await page.locator(".engineering-graph").waitFor();
+    assert.ok(await page.evaluate(() => document.body.scrollWidth <= window.innerWidth + 1), `Horizontal overflow at ${width}`);
+    await page.screenshot({ path: `/tmp/norte-system-${width}.png`, fullPage: true });
+    results.push({ width, height, overflow: false });
+  }
+  await request("DELETE", `/api/projects/${projectId}`);
+  await request("DELETE", "/api/projects/independent-browser-project");
+  await page.goto(baseUrl, { waitUntil: "networkidle" });
+  await page.locator(".home-action-card.accent-open").click();
+  assert.ok(await page.locator(".home-project-dialog-empty button").isDisabled());
+  await page.locator(".home-project-dialog-empty button").dispatchEvent("click");
+  await page.locator(".home-project-dialog-empty button").dispatchEvent("keydown", { key: "Enter" });
+  assert.equal(await page.locator(".pm-workspace").count(), 0);
+  assert.deepEqual(errors, []);
+  console.log(JSON.stringify({ passed: true, generations, checks: ["disabled creation", "owning team", "persistent phases", "automatic initialization and recovery", "macro and drilldown", "contextual details", "provenance", "current conflict", "scenario save", "requirement filtering/editing/source preservation", "requirement trace", "project-specific progress and team switching", "Discovery mass conflict", "undo redo persistence", "timeline", "responsive"], viewports: results }, null, 2));
+} catch (error) { await page.screenshot({ path: "/tmp/norte-browser-failure.png", fullPage: true }).catch(() => undefined); throw error; }
+finally { await browser.close(); await app.close(); vite.kill("SIGTERM"); await rm(directory, { recursive: true, force: true }); }

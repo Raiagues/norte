@@ -2,226 +2,83 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
-const DEFAULT_TEAM_ID = "team-aurora";
-const TEAM_ARTIFACT_IDS = ["team-aurora-report", "team-aurora-lessons"];
-const MOCK_MEMBER_IDS = ["aurora-lucas", "aurora-marina", "aurora-rafael"];
-const OBSAT_COMMUNITY = [
-  { id: "team-zenith", name: "Zenith CubeSat", institution: "Universidade Federal de Minas Gerais", description: "Equipe OBSAT dedicada a CubeSats e sistemas embarcados.", people: ["Ana Luiza Prado", "Caio Mendes", "Helena Vaz"] },
-  { id: "team-sirius", name: "Sirius Nanosat", institution: "Instituto Federal de Santa Catarina", description: "Equipe OBSAT de instrumentação, telemetria e operação de pequenos satélites.", people: ["Beatriz Sampaio", "Matheus Lima", "Yuri Campos"] },
-  { id: "team-caracara", name: "Carcará Space", institution: "Universidade Federal de Pernambuco", description: "Equipe OBSAT voltada a sensoriamento remoto e monitoramento ambiental.", people: ["Lívia Moura", "João Vieira", "Noemi Alves"] },
-  { id: "team-gauchosat", name: "GaúchoSat Lab", institution: "Universidade Federal do Rio Grande do Sul", description: "Equipe OBSAT de comunicação, energia e testes de missão.", people: ["Aline Rocha", "Davi Reis", "Pedro Silveira"] }
-];
+export const VALIDATION_TEAM_ID = "team-norte-validation";
+export const VALIDATION_PROJECT_ID = "engineering-validation-project";
 
-function communityMembers(createdAt) {
-  return OBSAT_COMMUNITY.flatMap((team) => team.people.map((displayName, index) => ({
-    id: `${team.id}-member-${index + 1}`,
-    accountId: null,
-    displayName,
-    email: `${team.id}-${index + 1}@norte.demo`,
-    missionRole: index === 0 ? "captain" : index === 1 ? "manager" : "member",
-    primaryArea: index === 0 ? "systems" : index === 1 ? "electronics" : "flight_software",
-    secondaryAreas: [],
-    institution: team.institution,
-    course: index === 2 ? "Ciência da Computação" : "Engenharia Aeroespacial",
-    academicStage: `${5 + index}º período`,
-    skills: [], availabilityHours: 7 + index, notes: "", accountStatus: "active", accessRole: null, avatarUrl: "", createdAt, updatedAt: createdAt
-  })));
-}
-
-function defaultMembers(createdAt) {
-  return [
-    {
-      id: MOCK_MEMBER_IDS[0], accountId: null, displayName: "Lucas Ferreira", email: "lucas.ferreira@norte.demo",
-      missionRole: "manager", primaryArea: "electronics", secondaryAreas: [], institution: "Universidade Federal de Santa Maria",
-      course: "Engenharia Elétrica", academicStage: "7º período", skills: [], availabilityHours: 10, notes: "",
-      accountStatus: "invited", accessRole: null, avatarUrl: "", createdAt, updatedAt: createdAt
+export function createValidationProject(timestamp = new Date().toISOString()) {
+  return {
+    schemaVersion: 2,
+    id: VALIDATION_PROJECT_ID,
+    name: "Engineering Validation Project",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    navigation: { lastRoute: "setup" },
+    phaseProgress: { highestUnlockedStep: 0 },
+    memoryRevision: 0,
+    context: {
+      configured: false, programId: null, modalityId: null, categoryId: null,
+      teamId: VALIDATION_TEAM_ID, teamName: "Norte Validation Team",
+      teamArtifactIds: [], projectArtifactIds: [],
+      roles: [{ id: "captain", name: "Lead" }, { id: "manager", name: "Manager" }, { id: "member", name: "Member" }, { id: "advisor", name: "Advisor" }],
+      sectors: [], assignments: []
     },
-    {
-      id: MOCK_MEMBER_IDS[1], accountId: null, displayName: "Marina Costa", email: "marina.costa@norte.demo",
-      missionRole: "member", primaryArea: "flight_software", secondaryAreas: [], institution: "Universidade Federal de Santa Maria",
-      course: "Engenharia de Computação", academicStage: "6º período", skills: [], availabilityHours: 8, notes: "",
-      accountStatus: "invited", accessRole: null, avatarUrl: "", createdAt, updatedAt: createdAt
-    },
-    {
-      id: MOCK_MEMBER_IDS[2], accountId: null, displayName: "Rafael Nunes", email: "rafael.nunes@norte.demo",
-      missionRole: "member", primaryArea: "structures", secondaryAreas: [], institution: "Universidade Federal de Santa Maria",
-      course: "Engenharia Mecânica", academicStage: "8º período", skills: [], availabilityHours: 6, notes: "",
-      accountStatus: "invited", accessRole: null, avatarUrl: "", createdAt, updatedAt: createdAt
-    },
-    ...communityMembers(createdAt)
-  ];
-}
-
-function defaultArtifacts(createdAt) {
-  return [
-    {
-      id: "team-aurora-report",
-      kind: "document",
-      label: "Relatório final · Missão Aurora",
-      url: "artifacts/relatorio-final-missao-aurora.md",
-      description: "Relatório de referência produzido pela equipe em uma missão anterior.",
-      tags: [],
-      official: false,
-      scope: "team",
-      ownerId: DEFAULT_TEAM_ID,
-      createdBy: null,
-      connectedAt: createdAt,
-      updatedAt: createdAt
-    },
-    {
-      id: "team-aurora-lessons",
-      kind: "dataset",
-      label: "Lições aprendidas · Missão Aurora",
-      url: "artifacts/licoes-aprendidas-missao-aurora.csv",
-      description: "Decisões, falhas e ações corretivas registradas pela equipe.",
-      tags: [],
-      official: false,
-      scope: "team",
-      ownerId: DEFAULT_TEAM_ID,
-      createdBy: null,
-      connectedAt: createdAt,
-      updatedAt: createdAt
-    },
-    {
-      id: "norte-aurora-telemetry",
-      kind: "repository",
-      label: "norte-aurora-telemetria",
-      url: "https://github.com/Raiagues/norte-aurora-telemetria",
-      description: "Repositório GitHub de demonstração conectado ao projeto.",
-      tags: [],
-      official: false,
-      scope: "project",
-      ownerId: null,
-      createdBy: null,
-      connectedAt: createdAt,
-      updatedAt: createdAt
-    }
-  ];
-}
-
-function defaultTeams(createdAt) {
-  return [{
-    id: DEFAULT_TEAM_ID,
-    name: "Equipe Aurora",
-    description: "Equipe universitária de desenvolvimento de pequenos satélites.",
-    memberIds: [...MOCK_MEMBER_IDS],
-    artifactIds: [...TEAM_ARTIFACT_IDS],
-    joinRequests: [],
-    createdBy: null,
-    createdAt,
-    updatedAt: createdAt
-  }, ...OBSAT_COMMUNITY.map((team, teamIndex) => ({
-    id: team.id,
-    name: team.name,
-    description: team.description,
-    memberIds: team.people.map((_, index) => `${team.id}-member-${index + 1}`),
-    artifactIds: [], joinRequests: [], projectCount: [2, 1, 3, 2][teamIndex], createdBy: null, createdAt, updatedAt: createdAt
-  }))];
+    setup: { intent: "problem", statement: "", framework: "norte-core", references: [] },
+    board: { nodes: [], links: [] },
+    progress: { mode: "standard", customCriteria: [] },
+    studies: [], resolvedIssueKeys: [],
+    templates: { activeTemplateId: "norte-core-v1", lockedPaths: [] }
+  };
 }
 
 export function createInitialData() {
   const timestamp = new Date().toISOString();
+  const project = { document: createValidationProject(timestamp), revision: 1, updatedAt: timestamp };
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     createdAt: timestamp,
     updatedAt: timestamp,
-    users: [],
-    members: defaultMembers(timestamp),
-    artifacts: defaultArtifacts(timestamp),
-    teams: defaultTeams(timestamp),
-    sessions: [],
-    workspace: {
-      project: null,
-      projects: {},
-      labs: {}
-    }
+    users: [], members: [], artifacts: [], sessions: [],
+    teams: [{
+      id: VALIDATION_TEAM_ID, name: "Norte Validation Team", description: "",
+      memberIds: [], artifactIds: [], joinRequests: [], createdBy: null,
+      createdAt: timestamp, updatedAt: timestamp
+    }],
+    workspace: { project, projects: { [VALIDATION_PROJECT_ID]: project }, labs: {} }
   };
 }
 
 export function normalizeStoredData(value) {
-  if (!value || ![1, 2, 3, 4, 5, 6, 7].includes(value.schemaVersion) || !Array.isArray(value.users) || !Array.isArray(value.members) || !Array.isArray(value.artifacts)) {
+  if (!value || ![1, 2, 3, 4, 5, 6, 7, 8].includes(value.schemaVersion) || !Array.isArray(value.users) || !Array.isArray(value.members) || !Array.isArray(value.artifacts)) {
     throw new Error("Unsupported Norte data schema.");
   }
-  const migratingTeams = !Array.isArray(value.teams);
+  // Normal startup only normalizes shape. Removing old demo data is an explicit,
+  // guarded operation in scripts/reset-validation-data.mjs, never a migration.
   const data = structuredClone(value);
-  data.schemaVersion = 7;
+  data.schemaVersion = 8;
   data.sessions = Array.isArray(data.sessions) ? data.sessions : [];
+  data.teams = Array.isArray(data.teams) ? data.teams : [];
   data.workspace = data.workspace && typeof data.workspace === "object" && !Array.isArray(data.workspace)
-    ? data.workspace
-    : { project: null, projects: {}, labs: {} };
+    ? data.workspace : { project: null, projects: {}, labs: {} };
   data.workspace.project ??= null;
   if (!data.workspace.projects || typeof data.workspace.projects !== "object" || Array.isArray(data.workspace.projects)) data.workspace.projects = {};
   if (data.workspace.project?.document?.id) data.workspace.projects[data.workspace.project.document.id] ??= data.workspace.project;
   if (!data.workspace.labs || typeof data.workspace.labs !== "object" || Array.isArray(data.workspace.labs)) data.workspace.labs = {};
-  data.members = data.members.filter((member) => member.accountStatus !== "demo" || Boolean(member.accountId));
-  if (value.schemaVersion < 5) {
-    for (const member of defaultMembers(data.createdAt || new Date().toISOString())) {
-      if (!data.members.some((item) => item.id === member.id)) data.members.push(member);
-    }
-  }
-  if (value.schemaVersion < 7) {
-    for (const member of communityMembers(data.createdAt || new Date().toISOString())) {
-      if (!data.members.some((item) => item.id === member.id)) data.members.push(member);
-    }
-  }
-  const retiredSeedLabels = new Set([
-    "Edital oficial · Modalidade Prática",
-    "Cronograma oficial OBSAT",
-    "Lições aprendidas · Aurora",
-    "aurora/telemetria-arduino"
-  ]);
-  if (value.schemaVersion < 4) {
-    retiredSeedLabels.add("Relatório final · Missão Aurora");
-    retiredSeedLabels.add("Lições aprendidas · Missão Aurora");
-  }
-  data.artifacts = data.artifacts.filter((artifact) => !artifact.official && !retiredSeedLabels.has(artifact.label)).map((artifact) => ({
+  data.artifacts = data.artifacts.map((artifact) => ({
     ...artifact,
-    url: typeof artifact.url === "string" ? artifact.url.replace(/^\/mission-dev\/artifacts\//u, "artifacts/") : artifact.url
+    url: typeof artifact.url === "string" ? artifact.url.replace(/^\/mission-dev\/artifacts\//u, "artifacts/") : artifact.url,
+    scope: artifact.scope === "team" ? "team" : "project", ownerId: artifact.ownerId ?? null
   }));
-  if (value.schemaVersion < 4) {
-    for (const artifact of defaultArtifacts(data.createdAt || new Date().toISOString())) {
-      if (!data.artifacts.some((item) => item.id === artifact.id)) data.artifacts.push(artifact);
-    }
+  for (const team of data.teams) {
+    team.memberIds = Array.isArray(team.memberIds) ? team.memberIds : [];
+    team.artifactIds = Array.isArray(team.artifactIds) ? team.artifactIds : [];
+    team.joinRequests = Array.isArray(team.joinRequests) ? team.joinRequests : [];
   }
-  data.artifacts = data.artifacts.map((artifact) => {
-    if (TEAM_ARTIFACT_IDS.includes(artifact.id)) return { ...artifact, scope: "team", ownerId: DEFAULT_TEAM_ID };
-    return { ...artifact, scope: artifact.scope === "team" ? "team" : "project", ownerId: artifact.ownerId ?? null };
-  });
-
-  data.teams = Array.isArray(data.teams) ? data.teams : [];
-  if (value.schemaVersion < 6 && !data.teams.some((team) => team.id === DEFAULT_TEAM_ID)) data.teams.unshift(defaultTeams(data.createdAt || new Date().toISOString())[0]);
-  if (value.schemaVersion < 7) {
-    for (const team of defaultTeams(data.createdAt || new Date().toISOString()).slice(1)) {
-      if (!data.teams.some((item) => item.id === team.id)) data.teams.push(team);
-    }
-  }
-  const primaryTeam = data.teams.find((team) => team.id === DEFAULT_TEAM_ID);
-  if (primaryTeam) {
-    primaryTeam.memberIds = [...new Set([...(Array.isArray(primaryTeam.memberIds) ? primaryTeam.memberIds : []), ...(migratingTeams ? data.members.map((member) => member.id) : [])])];
-    if (value.schemaVersion < 5) primaryTeam.memberIds = [...new Set([...primaryTeam.memberIds, ...MOCK_MEMBER_IDS])];
-    const existingArtifactIds = new Set(data.artifacts.map((artifact) => artifact.id));
-    const currentArtifactIds = (Array.isArray(primaryTeam.artifactIds) ? primaryTeam.artifactIds : []).filter((artifactId) => existingArtifactIds.has(artifactId));
-    primaryTeam.artifactIds = value.schemaVersion < 4 ? [...new Set([...currentArtifactIds, ...TEAM_ARTIFACT_IDS])] : currentArtifactIds;
-    primaryTeam.joinRequests = Array.isArray(primaryTeam.joinRequests) ? primaryTeam.joinRequests : [];
-    primaryTeam.createdBy ??= data.users.find((user) => user.accessRole === "owner_admin")?.id ?? null;
-  }
-
   for (const record of Object.values(data.workspace.projects)) {
     const project = record?.document;
     if (!project?.context) continue;
-    project.context.teamId ??= project.context.teamName ? DEFAULT_TEAM_ID : null;
-    project.context.teamArtifactIds = Array.isArray(project.context.teamArtifactIds)
-      ? project.context.teamArtifactIds
-      : project.context.teamId === DEFAULT_TEAM_ID ? [...TEAM_ARTIFACT_IDS] : [];
+    project.context.teamId ??= data.teams.find((team) => team.name === project.context.teamName)?.id ?? null;
+    project.context.teamArtifactIds = Array.isArray(project.context.teamArtifactIds) ? project.context.teamArtifactIds : [];
     project.context.projectArtifactIds = Array.isArray(project.context.projectArtifactIds) ? project.context.projectArtifactIds : [];
-    if (project.context.teamId === DEFAULT_TEAM_ID && !project.context.teamName) project.context.teamName = primaryTeam?.name || "Equipe Aurora";
-  }
-  const activeProjectId = data.workspace.project?.document?.id;
-  const repository = data.artifacts.find((artifact) => artifact.id === "norte-aurora-telemetry");
-  if (repository && activeProjectId && value.schemaVersion < 4) {
-    repository.ownerId ??= activeProjectId;
-    const project = data.workspace.projects[activeProjectId]?.document;
-    if (project?.context && !project.context.projectArtifactIds.includes(repository.id)) project.context.projectArtifactIds.push(repository.id);
   }
   return data;
 }

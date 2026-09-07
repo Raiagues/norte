@@ -1,4 +1,5 @@
 import type { Language, MissionLink, MissionNode, NodeState } from "./types";
+import type { EngineeringSystemModel } from "./engineeringSystem";
 
 export type StudyIntent = "problem" | "technology" | "science" | "open";
 export type ProgressMode = "standard" | "custom";
@@ -70,7 +71,12 @@ export type MissionProject = {
   updatedAt: string;
   navigation: {
     lastRoute: "setup" | "brainstorm";
+    lastConceptionWorkspace?: "system" | "timeline" | "discovery";
   };
+  phaseProgress: { highestUnlockedStep: 0 | 1 };
+  memoryRevision: number;
+  systemGeneratedFromRevision?: number;
+  engineeringSystem?: EngineeringSystemModel;
   context: ProjectContext;
   setup: {
     intent: StudyIntent;
@@ -130,6 +136,8 @@ export function createEmptyProject(language: Language = "pt"): MissionProject {
     navigation: {
       lastRoute: "setup"
     },
+    phaseProgress: { highestUnlockedStep: 0 },
+    memoryRevision: 0,
     context: {
       configured: false,
       programId: null,
@@ -172,6 +180,10 @@ export function normalizeProject(project: MissionProject, language: Language = "
   return {
     ...defaults,
     ...project,
+    // Old projects that already reached conception keep their access even after
+    // returning to memory. New projects have no engineering baseline yet.
+    phaseProgress: { highestUnlockedStep: project.phaseProgress?.highestUnlockedStep === 1 || Boolean(project.engineeringSystem) || (!project.phaseProgress && (project.navigation?.lastRoute === "brainstorm" || project.board?.nodes?.length > 0)) ? 1 : 0 },
+    memoryRevision: Number.isSafeInteger(project.memoryRevision) && project.memoryRevision >= 0 ? project.memoryRevision : 0,
     navigation: {
       ...defaults.navigation,
       ...(project.navigation && typeof project.navigation === "object" ? project.navigation : {})
@@ -278,6 +290,8 @@ export function buildVirtualProjectFiles(project: MissionProject): VirtualProjec
     { path: "/config/context.json", description: "Reference program, modality, category and project team", content: project.context },
     { path: "/config/study.json", description: "Study intent, starting statement and references", content: project.setup },
     { path: "/config/progress.json", description: "Definition framework and custom criteria", content: project.progress },
+    { path: "/system/architecture.json", description: "Engineering baseline, requirements and evidence", content: project.engineeringSystem ?? null },
+    { path: "/config/phase-progress.json", description: "Persisted phase access and memory revision", content: { ...project.phaseProgress, memoryRevision: project.memoryRevision, systemGeneratedFromRevision: project.systemGeneratedFromRevision } },
     { path: "/boards/problem.json", description: "Problem conception graph", content: project.board },
     { path: "/studies/inconsistencies.json", description: "Focused inconsistency studies and conclusions", content: project.studies },
     { path: "/templates/active.json", description: "Active project template and locked configuration paths", content: project.templates }
@@ -301,4 +315,18 @@ export function strongestStateForNodeIds(nodes: MissionNode[], nodeIds: number[]
   if (evidence.some((item) => item.state === "defined")) return "defined";
   if (evidence.some((item) => item.state === "hypothesis")) return "hypothesis";
   return "open";
+}
+
+/** Only engineering context changes invalidate the memory revision, not navigation or canvas moves. */
+export function memoryContextFingerprint(project: MissionProject): string {
+  return JSON.stringify({ name: project.name, setup: project.setup, teamId: project.context.teamId, teamArtifactIds: [...project.context.teamArtifactIds].sort(), projectArtifactIds: [...project.context.projectArtifactIds].sort(), programId: project.context.programId, modalityId: project.context.modalityId, categoryId: project.context.categoryId });
+}
+
+export function recordMemoryRevision(previous: MissionProject, next: MissionProject): MissionProject {
+  if (previous.id !== next.id || memoryContextFingerprint(previous) === memoryContextFingerprint(next)) return next;
+  return { ...next, memoryRevision: Math.max(previous.memoryRevision + 1, next.memoryRevision) };
+}
+
+export function completeConception(project: MissionProject, engineeringSystem: EngineeringSystemModel): MissionProject {
+  return { ...project, engineeringSystem, systemGeneratedFromRevision: engineeringSystem.generatedFromRevision, phaseProgress: { highestUnlockedStep: 1 }, navigation: { ...project.navigation, lastRoute: "brainstorm", lastConceptionWorkspace: project.navigation.lastConceptionWorkspace ?? "system" } };
 }

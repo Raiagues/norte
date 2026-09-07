@@ -27,7 +27,8 @@
     "test:api": "node --test server/*.test.mjs",
     "security:secrets": "node scripts/scan-secrets.mjs",
     "security:audit": "npm audit --audit-level=high",
-    "quality": "npm run typecheck && npm run lint && npm run test && npm run build"
+    "quality": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "test:visual": "node scripts/visual-check.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

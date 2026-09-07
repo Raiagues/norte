@@ -1,18 +1,17 @@
-import { createEmptyProject } from "./projectStore";
+import { completeConception, createEmptyProject } from "./projectStore";
 import type { MissionProject } from "./projectStore";
 import type { ConnectedArtifact, DirectoryMember, ProjectSummary, SessionUser, TeamMember, TeamProjectSummary, TeamRecord } from "./team";
 
 const STORAGE_KEY = "norte-pages-demo-v2";
 const LEGACY_STORAGE_KEY = "norte-pages-demo-v1";
-const DEMO_SCHEMA_VERSION = 5;
-const TEAM_ID = "team-aurora";
-const PROJECT_ID = "mission-aurora-demo";
-const MOCK_MEMBER_IDS = ["aurora-lucas", "aurora-marina", "aurora-rafael"];
-const COMMUNITY_MEMBER_IDS = ["zenith-ana", "zenith-caio", "sirius-beatriz", "sirius-matheus"];
+const DEMO_SCHEMA_VERSION = 6;
+const TEAM_ID = "team-norte-validation";
+const PROJECT_ID = "engineering-validation-project";
 const avatarUrl = `${import.meta.env.BASE_URL}profiles/emily-raiane.png`;
 
 type DemoState = {
   schemaVersion: number;
+  validationResetId?: string;
   members: TeamMember[];
   artifacts: ConnectedArtifact[];
   teams: TeamRecord[];
@@ -42,240 +41,99 @@ function id(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
-function demoProject(now: string): MissionProject {
-  const project = createEmptyProject("pt");
-  return {
-    ...project,
-    id: PROJECT_ID,
-    name: "Missão Aurora",
-    createdAt: now,
-    updatedAt: now,
-    context: {
-      ...project.context,
-      configured: true,
-      programId: "obsat",
-      modalityId: "practical",
-      categoryId: "n3",
-      teamId: TEAM_ID,
-      teamName: "Equipe Aurora",
-      teamArtifactIds: ["team-aurora-report", "team-aurora-lessons"],
-      projectArtifactIds: ["norte-aurora-telemetry"],
-      sectors: [
-        { id: "systems", name: "Sistemas" },
-        { id: "electronics", name: "Eletrônica e aviônica" },
-        { id: "software", name: "Software de voo" }
-      ],
-      assignments: [
-        { memberId: DEMO_USER.memberId, roleId: "captain", sectorId: "systems" },
-        { memberId: MOCK_MEMBER_IDS[0], roleId: "manager", sectorId: "electronics" },
-        { memberId: MOCK_MEMBER_IDS[1], roleId: "member", sectorId: "software" },
-        { memberId: MOCK_MEMBER_IDS[2], roleId: "member", sectorId: "systems" }
-      ]
-    }
-  };
-}
-
-function demoPayloadProject(now: string): MissionProject {
-  const project = createEmptyProject("pt");
-  return {
-    ...project,
-    id: "mission-sentinel-demo",
-    name: "Payload Sentinel",
-    createdAt: now,
-    updatedAt: now,
-    context: {
-      ...project.context,
-      configured: true,
-      programId: "obsat",
-      modalityId: "practical",
-      categoryId: "n3",
-      teamId: TEAM_ID,
-      teamName: "Equipe Aurora",
-      sectors: [
-        { id: "payload", name: "Payload" },
-        { id: "operations", name: "Operações" }
-      ],
-      assignments: [
-        { memberId: DEMO_USER.memberId, roleId: "captain", sectorId: "operations" },
-        { memberId: MOCK_MEMBER_IDS[1], roleId: "manager", sectorId: "payload" },
-        { memberId: MOCK_MEMBER_IDS[2], roleId: "member", sectorId: "payload" }
-      ]
-    }
-  };
-}
-
 function initialState(): DemoState {
   const now = timestamp();
-  const project = demoProject(now);
-  const payloadProject = demoPayloadProject(now);
+  const blank = createEmptyProject("pt");
+  const project: MissionProject = {
+    ...blank, id: PROJECT_ID, name: "Engineering Validation Project", createdAt: now, updatedAt: now,
+    context: { ...blank.context, teamId: TEAM_ID, teamName: "Norte Validation Team" }
+  };
   const members: TeamMember[] = [{
-    id: DEMO_USER.memberId,
-    accountId: DEMO_USER.id,
-    displayName: DEMO_USER.name,
-    email: DEMO_USER.email,
-    missionRole: "captain",
-    primaryArea: "systems",
-    secondaryAreas: [],
-    institution: "Universidade Federal de Santa Maria",
-    course: "Engenharia Aeroespacial",
-    academicStage: "9º período",
-    skills: [],
-    availabilityHours: 8,
-    notes: "",
-    accountStatus: "active",
-    accessRole: "owner_admin",
-    avatarUrl,
-    createdAt: now,
-    updatedAt: now
-  }, {
-    id: MOCK_MEMBER_IDS[0], accountId: null, displayName: "Lucas Ferreira", email: "lucas.ferreira@norte.demo",
-    missionRole: "manager", primaryArea: "electronics", secondaryAreas: [], institution: "Universidade Federal de Santa Maria",
-    course: "Engenharia Elétrica", academicStage: "7º período", skills: [], availabilityHours: 10, notes: "",
-    accountStatus: "invited", accessRole: null, createdAt: now, updatedAt: now
-  }, {
-    id: COMMUNITY_MEMBER_IDS[0], accountId: "demo-zenith-ana", displayName: "Ana Luiza Prado", email: "ana@norte.demo",
-    missionRole: "captain", primaryArea: "systems", secondaryAreas: [], institution: "Universidade Federal de Minas Gerais",
-    course: "Engenharia Aeroespacial", academicStage: "6º período", skills: [], availabilityHours: 9, notes: "",
-    accountStatus: "active", accessRole: "captain", createdAt: now, updatedAt: now
-  }, {
-    id: COMMUNITY_MEMBER_IDS[1], accountId: "demo-zenith-caio", displayName: "Caio Mendes", email: "caio@norte.demo",
-    missionRole: "member", primaryArea: "flight_software", secondaryAreas: [], institution: "Universidade Federal de Minas Gerais",
-    course: "Ciência da Computação", academicStage: "5º período", skills: [], availabilityHours: 7, notes: "",
-    accountStatus: "active", accessRole: "member", createdAt: now, updatedAt: now
-  }, {
-    id: COMMUNITY_MEMBER_IDS[2], accountId: "demo-icarus-beatriz", displayName: "Beatriz Sampaio", email: "beatriz@norte.demo",
-    missionRole: "manager", primaryArea: "aerodynamics", secondaryAreas: [], institution: "Universidade Federal de Itajubá",
-    course: "Engenharia Mecânica", academicStage: "8º período", skills: [], availabilityHours: 8, notes: "",
-    accountStatus: "active", accessRole: "manager", createdAt: now, updatedAt: now
-  }, {
-    id: COMMUNITY_MEMBER_IDS[3], accountId: "demo-icarus-matheus", displayName: "Matheus Lima", email: "matheus@norte.demo",
-    missionRole: "member", primaryArea: "electronics", secondaryAreas: [], institution: "Universidade Federal de Itajubá",
-    course: "Engenharia Elétrica", academicStage: "7º período", skills: [], availabilityHours: 6, notes: "",
-    accountStatus: "active", accessRole: "member", createdAt: now, updatedAt: now
-  }, {
-    id: MOCK_MEMBER_IDS[1], accountId: null, displayName: "Marina Costa", email: "marina.costa@norte.demo",
-    missionRole: "member", primaryArea: "flight_software", secondaryAreas: [], institution: "Universidade Federal de Santa Maria",
-    course: "Engenharia de Computação", academicStage: "6º período", skills: [], availabilityHours: 8, notes: "",
-    accountStatus: "invited", accessRole: null, createdAt: now, updatedAt: now
-  }, {
-    id: MOCK_MEMBER_IDS[2], accountId: null, displayName: "Rafael Nunes", email: "rafael.nunes@norte.demo",
-    missionRole: "member", primaryArea: "structures", secondaryAreas: [], institution: "Universidade Federal de Santa Maria",
-    course: "Engenharia Mecânica", academicStage: "8º período", skills: [], availabilityHours: 6, notes: "",
-    accountStatus: "invited", accessRole: null, createdAt: now, updatedAt: now
+    id: DEMO_USER.memberId, accountId: DEMO_USER.id, displayName: DEMO_USER.name,
+    email: DEMO_USER.email, missionRole: "captain", primaryArea: "systems", secondaryAreas: [],
+    institution: DEMO_USER.institution, course: "", academicStage: "", skills: [], availabilityHours: 0,
+    notes: "", accountStatus: "active", accessRole: "owner_admin", avatarUrl, createdAt: now, updatedAt: now
   }];
-  const artifacts: ConnectedArtifact[] = [
-    {
-      id: "team-aurora-report", kind: "document", label: "Relatório final · Missão Aurora",
-      url: `${import.meta.env.BASE_URL}artifacts/relatorio-final-missao-aurora.md`, description: "Relatório de uma missão anterior da equipe.",
-      tags: [], official: false, scope: "team", ownerId: TEAM_ID, createdBy: DEMO_USER.id, connectedAt: now, updatedAt: now
-    },
-    {
-      id: "team-aurora-lessons", kind: "dataset", label: "Lições aprendidas · Missão Aurora",
-      url: `${import.meta.env.BASE_URL}artifacts/licoes-aprendidas-missao-aurora.csv`, description: "Registro de decisões e ações corretivas da equipe.",
-      tags: [], official: false, scope: "team", ownerId: TEAM_ID, createdBy: DEMO_USER.id, connectedAt: now, updatedAt: now
-    },
-    {
-      id: "norte-aurora-telemetry", kind: "repository", label: "norte-aurora-telemetria",
-      url: "https://github.com/Raiagues/norte-aurora-telemetria", description: "Repositório GitHub deste projeto.",
-      tags: [], official: false, scope: "project", ownerId: PROJECT_ID, createdBy: DEMO_USER.id, connectedAt: now, updatedAt: now
-    }
-  ];
   const teams: TeamRecord[] = [{
-    id: TEAM_ID,
-    name: "Equipe Aurora",
-    description: "Equipe universitária de pequenos satélites.",
-    memberIds: [DEMO_USER.memberId, ...MOCK_MEMBER_IDS],
-    artifactIds: ["team-aurora-report", "team-aurora-lessons"],
-    joinRequests: [],
-    createdBy: DEMO_USER.id,
-    createdAt: now,
-    updatedAt: now,
-    membership: "member",
-    canManage: true
-  }, {
-    id: "team-zenith",
-    name: "Zenith CubeSat",
-    description: "Equipe OBSAT dedicada a CubeSats e sistemas embarcados.",
-    memberIds: [COMMUNITY_MEMBER_IDS[0], COMMUNITY_MEMBER_IDS[1]],
-    artifactIds: [],
-    joinRequests: [],
-    createdBy: "demo-zenith-ana",
-    createdAt: now,
-    updatedAt: now,
-    membership: "available",
-    canManage: false,
-    memberCount: 7,
-    artifactCount: 0,
-    projectCount: 2
-  }, {
-    id: "team-sirius",
-    name: "Sirius Nanosat",
-    description: "Equipe OBSAT de instrumentação, telemetria e operação de pequenos satélites.",
-    memberIds: [COMMUNITY_MEMBER_IDS[2], COMMUNITY_MEMBER_IDS[3]],
-    artifactIds: [],
-    joinRequests: [],
-    createdBy: "demo-sirius-beatriz",
-    createdAt: now,
-    updatedAt: now,
-    membership: "available",
-    canManage: false,
-    memberCount: 6,
-    artifactCount: 0,
-    projectCount: 1
-  }, {
-    id: "team-caracara",
-    name: "Carcará Space",
-    description: "Equipe OBSAT voltada a sensoriamento remoto e monitoramento ambiental.",
-    memberIds: ["caracara-livia", "caracara-joao", "caracara-noemi"],
-    artifactIds: [], joinRequests: [], createdBy: "demo-caracara-livia", createdAt: now, updatedAt: now,
-    membership: "available", canManage: false, memberCount: 9, artifactCount: 0, projectCount: 3
-  }, {
-    id: "team-gauchosat",
-    name: "GaúchoSat Lab",
-    description: "Equipe OBSAT de comunicação, energia e testes de missão.",
-    memberIds: ["gauchosat-aline", "gauchosat-davi", "gauchosat-pedro"],
-    artifactIds: [], joinRequests: [], createdBy: "demo-gauchosat-aline", createdAt: now, updatedAt: now,
-    membership: "available", canManage: false, memberCount: 8, artifactCount: 0, projectCount: 2
+    id: TEAM_ID, name: "Norte Validation Team", description: "", memberIds: [DEMO_USER.memberId],
+    artifactIds: [], joinRequests: [], createdBy: DEMO_USER.id, createdAt: now, updatedAt: now,
+    membership: "member", canManage: true
   }];
-  return { schemaVersion: DEMO_SCHEMA_VERSION, members, artifacts, teams, projects: { [project.id]: project, [payloadProject.id]: payloadProject }, project, labs: {} };
+  return { schemaVersion: DEMO_SCHEMA_VERSION, members, artifacts: [], teams, projects: { [project.id]: project }, project, labs: {} };
 }
 
-function normalizeState(value: Partial<DemoState>, seedDefaults = false): DemoState {
+function normalizeState(value: Partial<DemoState>): DemoState {
   const fresh = initialState();
-  const migrateMockMembers = Number(value.schemaVersion || 0) < DEMO_SCHEMA_VERSION;
-  const projects = value.projects && typeof value.projects === "object" ? value.projects : {};
+  const projects = value.projects && typeof value.projects === "object" ? { ...value.projects } : {};
   if (value.project?.id) projects[value.project.id] = value.project;
-  if (Object.keys(projects).length === 0 && Number(value.schemaVersion || 0) < DEMO_SCHEMA_VERSION) projects[fresh.project!.id] = fresh.project!;
-  if (migrateMockMembers) {
-    for (const project of Object.values(fresh.projects)) if (!projects[project.id]) projects[project.id] = project;
-  }
   const members = Array.isArray(value.members) ? value.members : fresh.members;
-  const owner = members.find((member) => member.accountId === DEMO_USER.id || member.id === DEMO_USER.memberId);
-  if (owner) Object.assign(owner, { displayName: DEMO_USER.name, email: DEMO_USER.email, avatarUrl, accountStatus: "active", accessRole: "owner_admin" });
-  else members.unshift(fresh.members[0]);
-  if (migrateMockMembers) {
-    for (const member of fresh.members.filter((item) => [...MOCK_MEMBER_IDS, ...COMMUNITY_MEMBER_IDS].includes(item.id))) {
-      if (!members.some((item) => item.id === member.id)) members.push(member);
-    }
+  if (!members.some((member) => member.id === DEMO_USER.memberId)) members.unshift(fresh.members[0]);
+  return {
+    schemaVersion: DEMO_SCHEMA_VERSION,
+    validationResetId: value.validationResetId,
+    members,
+    artifacts: Array.isArray(value.artifacts) ? value.artifacts : [],
+    teams: Array.isArray(value.teams) ? value.teams : [],
+    projects,
+    project: (value.project?.id ? projects[value.project.id] : Object.values(projects)[0]) || null,
+    labs: value.labs && typeof value.labs === "object" ? value.labs : {}
+  };
+}
+
+// Deliberate reset for the browser-only validation environment. Normal startup
+// preserves existing browser data, including projects created before this refactor.
+export function resetDemoValidationData(confirmation: string): void {
+  if (confirmation !== "RESET_VALIDATION_DATA") throw new Error("Explicit validation reset confirmation is required.");
+  const previous = readState();
+  const next = initialState();
+  const owner = previous.members.find((member) => member.accountId === DEMO_USER.id);
+  if (owner) next.members = [owner];
+  next.validationResetId = crypto.randomUUID();
+  localStorage.setItem(`${STORAGE_KEY}-backup-${Date.now()}-${crypto.randomUUID()}`, JSON.stringify(previous));
+  writeState(next);
+  notifyValidationUpdate(next.project!);
+}
+
+/** Explicit example loading is available only in the browser demo/test environment. */
+export async function loadEngineeringValidationExample(confirmation: string): Promise<MissionProject> {
+  if (confirmation !== "LOAD_ENGINEERING_VALIDATION") throw new Error("Explicit engineering example confirmation is required.");
+  if (import.meta.env.VITE_DEMO_MODE !== "true" && import.meta.env.MODE !== "test") throw new Error("Load this example in the frontend demo: start Vite with VITE_DEMO_MODE=true.");
+  const { createEngineeringValidationModel, validationMemoryText } = await import("../../examples/engineering-validation.mjs");
+  const previous = readState();
+  if (previous.project?.id !== PROJECT_ID || !previous.projects[PROJECT_ID] || previous.project.context.teamId !== TEAM_ID) {
+    throw new Error("Open Engineering Validation Project before loading the engineering example.");
   }
-  const artifacts = Array.isArray(value.artifacts) ? value.artifacts.filter((artifact) => !artifact.official) : fresh.artifacts;
-  if (seedDefaults) {
-    for (const artifact of fresh.artifacts) if (!artifacts.some((item) => item.id === artifact.id)) artifacts.push(artifact);
+  const state = structuredClone(previous);
+  const now = timestamp();
+  const sourceId = "validation-memory";
+  const source: ConnectedArtifact = {
+    id: sourceId, kind: "document", label: "Explicit engineering validation fixture",
+    description: "Synthetic facts for a deliberately loaded validation example.",
+    url: `data:text/plain;base64,${btoa(validationMemoryText)}`, fileName: "engineering-validation.txt", mimeType: "text/plain",
+    size: new TextEncoder().encode(validationMemoryText).length, tags: ["synthetic", "validation"],
+    official: false, scope: "project", ownerId: PROJECT_ID, createdBy: DEMO_USER.id, connectedAt: now, updatedAt: now
+  };
+  state.artifacts = [...state.artifacts.filter((artifact) => artifact.id !== sourceId), source];
+  const project = state.projects[PROJECT_ID];
+  project.memoryRevision = (project.memoryRevision || 0) + 1;
+  project.updatedAt = now;
+  project.context.projectArtifactIds = [...new Set([...project.context.projectArtifactIds, sourceId])];
+  const model = createEngineeringValidationModel();
+  model.generatedFromRevision = project.memoryRevision;
+  model.generatedAt = now;
+  state.project = completeConception(project, model);
+  state.project.navigation.lastConceptionWorkspace = "system";
+  state.projects[PROJECT_ID] = state.project;
+  localStorage.setItem(`${STORAGE_KEY}-example-backup-${Date.now()}-${crypto.randomUUID()}`, JSON.stringify(previous));
+  writeState(state);
+  notifyValidationUpdate(state.project);
+  return structuredClone(state.project);
+}
+
+function notifyValidationUpdate(project: MissionProject) {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("norte-demo-validation-updated", { detail: { project: structuredClone(project) } }));
   }
-  const teams = Array.isArray(value.teams) ? value.teams.filter((team) => team.id !== "team-icarus") : fresh.teams;
-  if (migrateMockMembers) {
-    for (const team of fresh.teams) if (!teams.some((item) => item.id === team.id)) teams.push(team);
-  }
-  const primaryTeam = teams.find((team) => team.id === TEAM_ID);
-  if (primaryTeam) {
-    primaryTeam.memberIds = [...new Set([...primaryTeam.memberIds, DEMO_USER.memberId])];
-    if (migrateMockMembers) primaryTeam.memberIds = [...new Set([...primaryTeam.memberIds, ...MOCK_MEMBER_IDS])];
-    const existingArtifactIds = new Set(artifacts.map((artifact) => artifact.id));
-    const currentArtifactIds = primaryTeam.artifactIds.filter((artifactId) => existingArtifactIds.has(artifactId));
-    primaryTeam.artifactIds = seedDefaults ? [...new Set([...currentArtifactIds, "team-aurora-report", "team-aurora-lessons"])] : currentArtifactIds;
-  }
-  const activeProject = value.project?.id ? projects[value.project.id] : Object.values(projects)[0];
-  return { schemaVersion: DEMO_SCHEMA_VERSION, members, artifacts, teams, projects, project: activeProject || null, labs: value.labs || {} };
 }
 
 function readState(): DemoState {
@@ -284,7 +142,7 @@ function readState(): DemoState {
     const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
     const raw = current || legacy;
     if (raw) {
-      const state = normalizeState(JSON.parse(raw) as Partial<DemoState>, !current && Boolean(legacy));
+      const state = normalizeState(JSON.parse(raw) as Partial<DemoState>);
       writeState(state);
       return state;
     }
@@ -298,6 +156,15 @@ function readState(): DemoState {
 
 function writeState(state: DemoState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function markArtifactMemoryChanged(state: DemoState, artifactId: string) {
+  for (const project of Object.values(state.projects)) {
+    if (![...project.context.teamArtifactIds, ...project.context.projectArtifactIds].includes(artifactId)) continue;
+    project.memoryRevision = (project.memoryRevision || 0) + 1;
+    project.updatedAt = timestamp();
+    if (state.project?.id === project.id) state.project = project;
+  }
 }
 
 function bodyOf(init: RequestInit): Record<string, unknown> {
@@ -329,6 +196,15 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
   const teamProjectsMatch = path.match(/^\/teams\/([^/]+)\/projects$/u);
   const projectMatch = path.match(/^\/projects\/([^/]+)$/u);
   const labMatch = path.match(/^\/workspace\/labs\/([^/]+)$/u);
+
+  if (path === "/system-ai/generate" && method === "POST") {
+    const project = state.projects[String(body.projectId)];
+    if (!project) throw new Error(body.language === "pt" ? "Projeto não encontrado." : "Project was not found.");
+    if (project.engineeringSystem) return { engineeringSystem: project.engineeringSystem, memoryRevision: project.memoryRevision || 0 } as T;
+    throw new Error(body.language === "pt"
+      ? "A demonstração frontend não extrai documentos. A memória foi preservada; use o Norte com servidor para construir o sistema."
+      : "The frontend demo cannot extract documents. Your project memory was preserved; use Norte with its server to build the system.");
+  }
 
   if (path === "/profile" && method === "GET") return { profile: state.members.find((member) => member.id === DEMO_USER.memberId) } as T;
   if (path === "/profile" && method === "PATCH") {
@@ -444,7 +320,7 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
     return undefined as T;
   }
 
-  if (path === "/projects" && method === "GET") return { projects: Object.values(state.projects).map(summary).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)) } as T;
+  if (path === "/projects" && method === "GET") return { validationResetId: state.validationResetId, projects: Object.values(state.projects).map(summary).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)) } as T;
   if (path === "/projects" && method === "POST") {
     const project = body as unknown as MissionProject;
     state.projects[project.id] = project;
@@ -473,7 +349,7 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
 
   if (path === "/team/members" && method === "GET") return { members: state.members } as T;
   if (path === "/artifacts" && method === "GET") return { artifacts: state.artifacts } as T;
-  if (path === "/workspace/project" && method === "GET") return { project: state.project, revision: state.project ? 1 : 0 } as T;
+  if (path === "/workspace/project" && method === "GET") return { validationResetId: state.validationResetId, project: state.project, revision: state.project ? 1 : 0 } as T;
   if (path === "/workspace/project" && method === "PUT") {
     const project = body as unknown as MissionProject;
     state.project = project;
@@ -535,13 +411,23 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
   }
   if (artifactMatch && method === "PATCH") {
     const artifact = state.artifacts.find((item) => item.id === artifactMatch[1]);
-    if (artifact) Object.assign(artifact, body, { updatedAt: timestamp() });
+    if (artifact) {
+      Object.assign(artifact, body, { updatedAt: timestamp() });
+      markArtifactMemoryChanged(state, artifact.id);
+    }
     writeState(state);
     return { artifact } as T;
   }
   if (artifactMatch && method === "DELETE") {
-    state.artifacts = state.artifacts.filter((item) => item.id !== artifactMatch[1] || item.official);
+    const artifact = state.artifacts.find((item) => item.id === artifactMatch[1]);
+    if (artifact?.official) throw new Error("Official references cannot be disconnected.");
+    if (artifact) markArtifactMemoryChanged(state, artifact.id);
+    state.artifacts = state.artifacts.filter((item) => item.id !== artifactMatch[1]);
     state.teams.forEach((team) => { team.artifactIds = team.artifactIds.filter((artifactId) => artifactId !== artifactMatch[1]); });
+    for (const project of Object.values(state.projects)) {
+      project.context.teamArtifactIds = project.context.teamArtifactIds.filter((artifactId) => artifactId !== artifactMatch[1]);
+      project.context.projectArtifactIds = project.context.projectArtifactIds.filter((artifactId) => artifactId !== artifactMatch[1]);
+    }
     writeState(state);
     return undefined as T;
   }

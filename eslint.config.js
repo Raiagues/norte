@@ -20,10 +20,11 @@ export default tseslint.config(
     }
   },
   {
-    files: ["server/**/*.mjs", "scripts/**/*.mjs"],
+    files: ["server/**/*.mjs", "scripts/**/*.mjs", "shared/**/*.mjs"],
     languageOptions: {
       globals: {
         Buffer: "readonly",
+        TextDecoder: "readonly",
         AbortSignal: "readonly",
         URL: "readonly",
         console: "readonly",

@@ -1,48 +1,116 @@
 # Norte
 
-Ambiente colaborativo para concepção e engenharia de missões espaciais universitárias.
+Norte is an AI-assisted engineering workspace for understanding dependencies inside complex physical systems and exploring the impact of design changes.
 
-## Abrir localmente
+[![CI / Quality](https://github.com/Raiagues/norte/actions/workflows/ci.yml/badge.svg)](https://github.com/Raiagues/norte/actions/workflows/ci.yml)
+[![Security](https://github.com/Raiagues/norte/actions/workflows/security.yml/badge.svg)](https://github.com/Raiagues/norte/actions/workflows/security.yml)
+[![Frontend demo deployment](https://github.com/Raiagues/norte/actions/workflows/pages.yml/badge.svg)](https://github.com/Raiagues/norte/actions/workflows/pages.yml)
 
-Use Node `24.20+` e execute:
+## Official app
+
+Production runs on Render with Neon PostgreSQL. Its canonical application URL has **not yet been verified** and is therefore not published here. Repository configuration and public GitHub deployment metadata currently identify only the frontend demo; a Render hostname must not be inferred from the service name.
+
+**[Frontend demo](https://raiagues.github.io/norte/)** — a separate GitHub Pages build with browser storage. It cannot run the private server-side document extraction service or share a production database.
+
+## What Norte does
+
+Project Memory connects a project's documents, files, links and team context. System presents an engineering baseline with typed entities, properties, dependencies and requirements. Discovery BETA is a space for testing hypotheses against that baseline.
+
+The core interaction is a proposed change followed by its consequences: an altered component, the dependencies that need review, a compatible interface, or a concrete limit violation. Sources and calculation inputs stay accessible beside the engineering model.
+
+![A synthetic radio change reveals a regulator current conflict and the dependencies that require review.](docs/images/engineering-impact.png)
+
+*Explicit validation example: a 1.2 A radio scenario exceeds a documented 0.8 A regulator limit; the baseline remains unchanged.*
+
+## Current product state
+
+| State | Scope |
+| --- | --- |
+| Implemented | Project Memory, account and team context, project persistence, timeline and freeform canvas navigation. |
+| Beta | Automatic engineering-model extraction, System navigation, requirement traceability, contextual what-if scenarios and a small deterministic impact engine. Extraction quality depends on the linked evidence. |
+| Planned | Broader document ingestion, more validated engineering rules, controlled promotion of scenarios to the baseline and measured validation metrics. |
+
+New project and team creation are temporarily disabled in the interface. Fresh validation data contains one neutral team and one minimal project. Engineering examples are separate fixtures and must be selected deliberately; generation failures never substitute an example architecture.
+
+Norte is not a general physics simulator. An inferred dependency is a hypothesis for review. A deterministic result is limited to its inputs, units and explicit rule.
+
+## Core workflow
+
+1. Open the validation project and attach relevant sources in **Project Memory**.
+2. Select **Start conception**. Norte reads the linked memory, builds and persists the initial engineering model, then opens **System**. Failed extraction can be retried after correcting the memory.
+3. Inspect the macro architecture, focus a subsystem and open object information intentionally. Requirements are a separate layer linked to the architecture.
+4. Propose a component, parameter or requirement change. Inspect the affected path, source facts and calculations. Scenarios remain separate from the baseline.
+5. Use **Discovery BETA** to write hypotheses and explore recognized engineering changes. Return to the existing baseline without regenerating it.
+
+## Architecture
+
+- **Client:** React, TypeScript and Vite; Dagre for graph layout. Browser storage provides a local fallback.
+- **Engineering model:** typed entities, properties with units, explicit relations, requirements, evidence and scenario records inside the project document.
+- **Reasoning:** deterministic comparisons and graph traversal in ordinary code; Gemini handles conservative document extraction and assisted interpretation through the API.
+- **API:** Fastify with schema validation, cookie sessions, CSRF protection, authorization and Swagger.
+- **Storage:** atomic JSON locally; the same versioned state in transactional PostgreSQL when `DATABASE_URL` is configured.
+- **Delivery:** GitHub Actions quality/security checks; GitHub Pages frontend demo; Render production service and Neon persistence.
+
+See [architecture](docs/architecture.md), [product research and UX decisions](docs/PRODUCT_RESEARCH_ENGINEERING_REASONING.md) and [deployment](docs/deployment.md).
+
+## Running locally
+
+Use **Node.js 24.20.0 or newer**, as declared in `.node-version` and `package.json`.
 
 ```bash
-cd /home/rodriger/Documents/mission-dev
+git clone https://github.com/Raiagues/norte.git
+cd norte
 npm ci
+cp .env.example .env
+# Set GEMINI_API_KEY in .env to enable server-side extraction.
 npm run dev
 ```
 
-- Site: `http://127.0.0.1:5173/norte/`
-- Swagger: `http://127.0.0.1:8787/docs`
+The launcher loads `.env` and `.env.local`, starts the client and API, and prints their addresses. It chooses the next available port when a preferred port is occupied.
 
-Se uma dessas portas já estiver em uso, o comando escolhe automaticamente a próxima livre e imprime os dois endereços corretos no terminal.
+| Service | Default URL |
+| --- | --- |
+| Web | `http://127.0.0.1:5173/norte/` |
+| API | `http://127.0.0.1:8787/api` |
+| Swagger | `http://127.0.0.1:8787/docs` |
+| Health | `http://127.0.0.1:8787/api/health` |
 
-A primeira conta criada vira proprietária/admin. As próximas contas podem ser criadas diretamente; quando um e-mail já foi adicionado a uma equipe, o novo perfil é associado a ela automaticamente.
+Without `DATABASE_URL`, the API uses `var/mission-dev-data.json`. The first registered account becomes the owner/admin. Keep the local data file and backups private.
 
-## Publicações
+## Environment variables
 
-### GitHub Pages
+| Variable | Purpose |
+| --- | --- |
+| `GEMINI_API_KEY` | Required for the private Gemini extraction/assistance service; never a `VITE_` variable. |
+| `GEMINI_MODEL` | Gemini model; the current default is in `.env.example`. |
+| `DATABASE_URL` | Optional PostgreSQL connection string; omit for local JSON storage. |
+| `NORTE_API_HOST`, `NORTE_API_PORT` | API bind address and preferred local port. |
+| `NORTE_WEB_PORT` | Preferred web port used by the development launcher. |
+| `NORTE_ALLOWED_ORIGINS` | Comma-separated allowed browser origins. |
+| `NODE_ENV` | Set `production` for the hosted API. |
+| `PORT` | Hosted service port, supplied by Render. |
+| `VITE_BASE_PATH` | Web base path: `/norte/` by default, `/` for Render. |
+| `VITE_DEMO_MODE` | Enables the browser-only demo build when `true`. |
+| `VITE_API_PROXY_TARGET` | Optional development proxy destination. |
 
-Cada atualização da `main` publica automaticamente uma demonstração navegável. Ela guarda alterações somente no navegador, usa perfis demonstrativos e não possui contas compartilhadas nem Gemini remoto.
+The API reads its process environment. `npm run dev` loads local environment files for both processes. When starting the API separately, export the variables or run `node --env-file=.env server/index.mjs`.
 
-[https://raiagues.github.io/norte/](https://raiagues.github.io/norte/)
+## Development commands
 
-### Norte completo
+```bash
+npm run dev              # Client and API, loading local environment files
+npm run dev:web          # Vite only
+npm run dev:api          # API only
+npm run typecheck
+npm run lint
+npm test                 # Vitest and Node API/engine tests
+npm run test:api
+npm run test:visual      # Isolated browser/API acceptance test (Chromium required)
+npm run build
+npm start                # API; also serves dist/ in production
+```
 
-A versão real serve frontend e API no mesmo endereço HTTPS, usa PostgreSQL e chama o Gemini apenas no servidor. A implantação é feita pelas telas do Neon e do Render, sem comandos:
-
-1. Crie um projeto gratuito no [Neon](https://console.neon.tech/) e copie a connection string **pooled**.
-2. Abra [Deploy to Render](https://render.com/deploy?repo=https://github.com/Raiagues/norte).
-3. Em `DATABASE_URL`, cole a connection string do Neon.
-4. Em `GEMINI_API_KEY`, cole a chave criada no [Google AI Studio](https://aistudio.google.com/app/apikey).
-5. Confirme a implantação e abra o endereço `onrender.com` criado pelo Render.
-6. Cadastre a primeira conta; ela será a proprietária/admin da equipe.
-
-O plano gratuito do Neon não tem prazo de expiração e escala a zero quando ocioso. O serviço web gratuito do Render pode hibernar sem uso, então a primeira abertura pode levar um pouco mais de tempo.
-
-Veja o passo a passo e as decisões de produção em [docs/deployment.md](docs/deployment.md).
-
-## Qualidade e segurança
+## Testing and quality
 
 ```bash
 npm run quality
@@ -50,13 +118,56 @@ npm run security:secrets
 npm run security:audit
 ```
 
-O GitHub executa automaticamente:
+The browser acceptance test uses a temporary database and a mocked external extraction provider. Set `NORTE_CHROME` to your Chromium/Chrome executable if it is not detected by the default path. It does not change the local application database.
 
-- tipagem TypeScript, ESLint, testes de frontend e API e build de produção;
-- auditoria de dependências e varredura de segredos;
-- CodeQL para JavaScript/TypeScript;
-- revisão de dependências em pull requests;
-- Dependabot semanal para npm e GitHub Actions;
-- CD do GitHub Pages somente depois do build validado.
+The quality gate runs TypeScript, ESLint, tests and the production build. CI additionally scans tracked files for secrets and audits dependencies. Security workflows run CodeQL and dependency review. The badges above report the real workflow status; no coverage percentage is claimed.
 
-Leia [docs/security.md](docs/security.md) antes de armazenar dados reais de uma equipe.
+## Deployment
+
+Render builds `dist/` and serves it alongside `/api` from one HTTPS origin. Configure its server-side `DATABASE_URL` and `GEMINI_API_KEY`; `render.yaml` uses `/api/health` and deploys after checks pass. GitHub Pages builds a distinct frontend demonstration and receives no API credentials. See [deployment instructions](docs/deployment.md).
+
+## Validation
+
+Fresh state is intentionally small: **Norte Validation Team** and **Engineering Validation Project**, with no invented system facts. Existing stored data is preserved during normal startup.
+
+To deliberately replace development/test projects, teams and associated workspaces, stop the API first and run:
+
+```bash
+NODE_ENV=development NORTE_ALLOW_DESTRUCTIVE_RESET=1 \
+  node scripts/reset-validation-data.mjs --file var/mission-dev-data.json
+```
+
+The utility writes a private backup before replacement, preserves accounts and sessions, clears removed projects' Discovery state, and prints the verified counts. Restart the API afterward. The utility does not load `.env` implicitly or delete data on app startup.
+
+For an explicitly local development/test PostgreSQL database:
+
+```bash
+NODE_ENV=test NORTE_ALLOW_DESTRUCTIVE_RESET=1 \
+  node --env-file=.env.test scripts/reset-validation-data.mjs --database
+```
+
+This requires a loopback host and a database name containing a separate `dev`, `development` or `test` segment. Remote databases, production mode and Render environments are refused. The PostgreSQL reset takes a backup and updates the state in a transaction.
+
+The browser demo exposes `resetDemoValidationData('RESET_VALIDATION_DATA')` from `src/lib/demoApi.ts` for an explicit validation reset. It backs up the prior demo state in browser storage and preserves the account profile. It is never called automatically during ordinary startup. To deliberately load the synthetic engineering model and its source without Gemini, follow the [local frontend validation guide](examples/README.md).
+
+**Planned validation metrics:** dependency recall, critical-impact precision, unsupported-claim rate, time to identify affected elements, task completion time and traceability coverage. These are evaluation targets, not measured results.
+
+## Security
+
+Gemini credentials stay on the server. Artifact content is untrusted data, rendered as text, and cannot supply model instructions. External links are not fetched arbitrarily. Unsupported file formats must remain explicitly unparsed; missing evidence cannot justify an invented critical conflict.
+
+The current hosted storage design represents a shared organization. Independent organizations need stronger tenant isolation before sharing one deployment. See [security policy](SECURITY.md).
+
+## Repository structure
+
+```text
+src/pages/       Project Memory, conception and team screens
+src/components/  Shared controls and engineering visualizations
+src/lib/         Project model, reasoning, persistence and API clients
+server/          Fastify API, AI services and data stores
+scripts/         Development, security, validation and visual checks
+tests/           Client/model tests
+examples/        Explicit engineering examples and fixtures
+docs/            Architecture, research and deployment notes
+.github/         Quality, security and deployment workflows
+```

@@ -13,7 +13,6 @@ type Props = {
   onLanguageChange: (language: Language) => void;
   projects?: ProjectSummary[];
   loadingProjects?: boolean;
-  onCreateProject?: () => void;
   onOpenProject?: (projectId: string) => void;
   onDeleteProject?: (projectId: string) => Promise<void> | void;
   onOpenTeams?: () => void;
@@ -25,7 +24,6 @@ export function HomePage({
   onLanguageChange,
   projects = [],
   loadingProjects = false,
-  onCreateProject,
   onOpenProject,
   onDeleteProject,
   onOpenTeams
@@ -35,15 +33,15 @@ export function HomePage({
 
   const c = language === "pt" ? {
     teams: "Equipes",
-    teamsDescription: "Crie, encontre e organize sua equipe.",
+    teamsDescription: "Encontre e organize sua equipe.",
     create: "Novo projeto",
-    createDescription: "Defina a memória e comece uma nova concepção.",
+    createDescription: "Em breve",
     open: "Abrir projeto",
     openDescription: "Retome exatamente de onde sua equipe parou.",
     chooseProject: "Escolha um projeto",
     chooseHint: "O projeto será aberto na última fase trabalhada.",
     empty: "Nenhum projeto criado ainda.",
-    emptyHint: "Crie o primeiro projeto para começar.",
+    emptyHint: "A criação de projetos estará disponível em breve.",
     loading: "Carregando projetos",
     untitled: "Projeto sem nome",
     noProgram: "Programa ainda não selecionado",
@@ -55,15 +53,15 @@ export function HomePage({
     close: "Fechar"
   } : {
     teams: "Teams",
-    teamsDescription: "Create, discover, and organize your team.",
+    teamsDescription: "Discover and organize your team.",
     create: "New project",
-    createDescription: "Set the memory and begin a new conception.",
+    createDescription: "Coming soon",
     open: "Open project",
     openDescription: "Resume exactly where your team stopped.",
     chooseProject: "Choose a project",
     chooseHint: "The project opens at the last phase your team worked on.",
     empty: "No projects have been created yet.",
-    emptyHint: "Create the first project to get started.",
+    emptyHint: "Project creation will be available soon.",
     loading: "Loading projects",
     untitled: "Untitled project",
     noProgram: "Program not selected yet",
@@ -114,7 +112,7 @@ export function HomePage({
               <small>{c.openDescription}</small>
               <ArrowRight className="home-card-arrow" aria-hidden="true" />
             </button>
-            <button className="home-action-card accent-create" type="button" onClick={onCreateProject}>
+            <button className="home-action-card accent-create" type="button" disabled>
               <span className="home-card-icon"><Plus aria-hidden="true" /></span>
               <strong>{c.create}</strong>
               <small>{c.createDescription}</small>
@@ -138,7 +136,7 @@ export function HomePage({
           </header>
           <div className="home-project-picker-list">
             {loadingProjects ? <div className="home-project-dialog-empty"><LoaderCircle className="home-spin" aria-hidden="true" />{c.loading}</div> : projects.length === 0 ? (
-              <div className="home-project-dialog-empty"><FolderOpen aria-hidden="true" /><strong>{c.empty}</strong><span>{c.emptyHint}</span><button type="button" onClick={() => { setProjectPickerOpen(false); onCreateProject?.(); }}><Plus aria-hidden="true" />{c.create}</button></div>
+              <div className="home-project-dialog-empty"><FolderOpen aria-hidden="true" /><strong>{c.empty}</strong><span>{c.emptyHint}</span><button type="button" disabled><Plus aria-hidden="true" />{c.create}</button></div>
             ) : projects.map((project) => {
               const program = referenceProgram(project.programId);
               const date = new Intl.DateTimeFormat(language === "pt" ? "pt-BR" : "en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(project.updatedAt));

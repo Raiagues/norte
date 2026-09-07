@@ -12,6 +12,7 @@ import argon2 from "argon2";
 import { JsonDataStore } from "./data-store.mjs";
 import { PostgresDataStore } from "./postgres-store.mjs";
 import { brainstormRequestSchema, createBrainstormAiService } from "./brainstorm-ai.mjs";
+import { analysisRequestSchema, createSystemAiService, generationRequestSchema, projectArtifacts, validateEngineeringSystem } from "./system-ai.mjs";
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const PASSWORD_MIN_LENGTH = 15;
@@ -285,7 +286,34 @@ function validProjectDocument(value) {
     && value.schemaVersion === 2
     && typeof value.id === "string" && value.id.length > 0 && value.id.length <= 100
     && value.board && typeof value.board === "object"
-    && Array.isArray(value.board.nodes) && Array.isArray(value.board.links);
+    && Array.isArray(value.board.nodes) && Array.isArray(value.board.links)
+    && (value.engineeringSystem === undefined || validateEngineeringSystem(value.engineeringSystem))
+    && (value.memoryRevision === undefined || (Number.isInteger(value.memoryRevision) && value.memoryRevision >= 0))
+    && (value.systemGeneratedFromRevision === undefined || (Number.isInteger(value.systemGeneratedFromRevision) && value.systemGeneratedFromRevision >= 0))
+    && (value.phaseProgress === undefined || (value.phaseProgress && [0, 1].includes(value.phaseProgress.highestUnlockedStep)));
+}
+
+function preserveProjectProgress(previous, next) {
+  if (!previous || previous.id !== next.id) return next;
+  const memory = (project) => ({ name: project.name, setup: project.setup, teamId: project.context?.teamId, teamArtifactIds: project.context?.teamArtifactIds, projectArtifactIds: project.context?.projectArtifactIds, programId: project.context?.programId, modalityId: project.context?.modalityId, categoryId: project.context?.categoryId });
+  const changed = !isDeepStrictEqual(memory(previous), memory(next));
+  return { ...next,
+    memoryRevision: Math.max(next.memoryRevision || 0, (previous.memoryRevision || 0) + (changed ? 1 : 0)),
+    phaseProgress: { highestUnlockedStep: Math.max(previous.phaseProgress?.highestUnlockedStep || 0, next.phaseProgress?.highestUnlockedStep || 0) },
+    ...(previous.engineeringSystem && !next.engineeringSystem ? { engineeringSystem: previous.engineeringSystem, systemGeneratedFromRevision: previous.systemGeneratedFromRevision } : {})
+  };
+}
+
+function markArtifactMemoryChanged(data, artifactId) {
+  for (const record of Object.values(data.workspace.projects || {})) {
+    const project = record?.document;
+    if (![...(project?.context?.teamArtifactIds || []), ...(project?.context?.projectArtifactIds || [])].includes(artifactId)) continue;
+    project.memoryRevision = (project.memoryRevision || 0) + 1;
+    project.updatedAt = new Date().toISOString();
+    record.updatedAt = project.updatedAt;
+    record.revision = (record.revision || 0) + 1;
+    if (data.workspace.project?.document?.id === project.id) data.workspace.project = record;
+  }
 }
 
 function validLabBoard(value) {
@@ -303,6 +331,8 @@ export async function buildApp(options = {}) {
     ? new JsonDataStore(options.storeFile || resolve("var/mission-dev-data.json"))
     : new PostgresDataStore(databaseUrl)).init();
   const ai = createBrainstormAiService(options.ai);
+  const systemAi = createSystemAiService(options.systemAi || options.ai);
+  const initializingSystems = new Map();
   const logger = options.logger ?? {
     level: process.env.LOG_LEVEL || "info",
     redact: ["req.headers.cookie", "req.headers.authorization", "password", "body.password"]
@@ -710,7 +740,7 @@ export async function buildApp(options = {}) {
           })
         };
       });
-    return { projects };
+    return { projects, validationResetId: data.workspace.validationResetId ?? null };
   });
 
   app.get("/api/directory/members", {
@@ -1091,6 +1121,7 @@ export async function buildApp(options = {}) {
       else if (existing.createdBy !== request.auth.user.id) requireRole(request.auth.user, ["owner_admin", "captain", "manager"]);
       const merged = cleanArtifactInput({ ...existing, ...request.body, scope: existing.scope, ownerId: existing.ownerId });
       Object.assign(existing, merged, { updatedAt: new Date().toISOString() });
+      markArtifactMemoryChanged(data, existing.id);
       return existing;
     });
     return { artifact };
@@ -1112,6 +1143,7 @@ export async function buildApp(options = {}) {
       if (artifact.official) throw httpError(409, "OFFICIAL_SOURCE", "Official mission references cannot be disconnected.");
       if (artifact.scope === "team") requireNamedTeamManager(data, request.auth.user, data.teams.find((team) => team.id === artifact.ownerId));
       else if (artifact.createdBy !== request.auth.user.id) requireRole(request.auth.user, ["owner_admin", "captain", "manager"]);
+      markArtifactMemoryChanged(data, artifact.id);
       data.artifacts.splice(index, 1);
       for (const team of data.teams) team.artifactIds = team.artifactIds.filter((id) => id !== artifact.id);
       for (const record of Object.values(data.workspace.projects || {})) {
@@ -1141,6 +1173,53 @@ export async function buildApp(options = {}) {
     }
   }, async (request) => ai.analyze(request.body));
 
+  app.get("/api/system-ai/status", {
+    preHandler: [requireAuth],
+    schema: { tags: ["System"], summary: "Check engineering extraction availability", security: [{ sessionCookie: [] }] }
+  }, async () => systemAi.status());
+
+  app.post("/api/system-ai/generate", {
+    preHandler: [requireAuth, requireCsrf],
+    config: { rateLimit: { max: 12, timeWindow: "1 hour" } },
+    schema: { tags: ["System"], summary: "Initialize engineering architecture from this project's persisted artifacts", security: [{ sessionCookie: [], csrfToken: [] }], body: generationRequestSchema }
+  }, async (request) => {
+    const data = store.read();
+    const record = data.workspace.projects?.[request.body.projectId];
+    if (!record) throw httpError(404, "PROJECT_NOT_FOUND", "Project was not found.");
+    if (!canAccessProject(data, request.auth.user, record)) throw httpError(403, "FORBIDDEN", "You cannot open this project.");
+    if (request.auth.user.accessRole === "advisor") throw httpError(403, "FORBIDDEN", "Advisors have read-only access to the project workspace.");
+    const project = record.document;
+    if (project.engineeringSystem) return { engineeringSystem: project.engineeringSystem, memoryRevision: project.memoryRevision || 0 };
+    if (initializingSystems.has(project.id)) return initializingSystems.get(project.id);
+    const memoryFingerprint = JSON.stringify({ revision: project.memoryRevision || 0, context: project.context, setup: project.setup, artifacts: projectArtifacts(project, data.artifacts) });
+    const operation = (async () => {
+      const engineeringSystem = await systemAi.generate(project, data.artifacts, request.body.language);
+      return store.update((current) => {
+        const latest = current.workspace.projects?.[project.id];
+        if (!latest) throw httpError(409, "PROJECT_CHANGED", "This project changed during initialization.");
+        if (!canAccessProject(current, request.auth.user, latest)) throw httpError(403, "FORBIDDEN", "Project access changed during initialization.");
+        if (latest.document.engineeringSystem) return { engineeringSystem: latest.document.engineeringSystem, memoryRevision: latest.document.memoryRevision || 0 };
+        const latestFingerprint = JSON.stringify({ revision: latest.document.memoryRevision || 0, context: latest.document.context, setup: latest.document.setup, artifacts: projectArtifacts(latest.document, current.artifacts) });
+        if (memoryFingerprint !== latestFingerprint) throw httpError(409, "PROJECT_MEMORY_CHANGED", "Project memory changed during initialization. Retry with the current memory.");
+        latest.document = { ...latest.document, engineeringSystem, phaseProgress: { highestUnlockedStep: 1 }, systemGeneratedFromRevision: engineeringSystem.generatedFromRevision, updatedAt: new Date().toISOString() };
+        latest.revision = (latest.revision || 0) + 1;
+        latest.updatedAt = latest.document.updatedAt;
+        latest.updatedBy = request.auth.user.id;
+        if (current.workspace.project?.document?.id === project.id) current.workspace.project = latest;
+        return { engineeringSystem, memoryRevision: latest.document.memoryRevision || 0 };
+      });
+    })();
+    initializingSystems.set(project.id, operation);
+    try { return await operation; } finally { initializingSystems.delete(project.id); }
+  });
+
+  app.post("/api/system-ai/analyze-change", {
+    preHandler: [requireAuth, requireCsrf],
+    bodyLimit: 2 * 1024 * 1024,
+    config: { rateLimit: { max: 60, timeWindow: "1 hour" } },
+    schema: { tags: ["System"], summary: "Analyze a temporary engineering scenario with auditable calculations", security: [{ sessionCookie: [], csrfToken: [] }], body: analysisRequestSchema }
+  }, async (request) => systemAi.analyze(request.body.engineeringSystem, request.body.change, request.body.language));
+
   const projectParams = {
     type: "object",
     additionalProperties: false,
@@ -1157,7 +1236,7 @@ export async function buildApp(options = {}) {
       .filter((record) => canAccessProject(data, request.auth.user, record))
       .sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)))
       .map(projectSummary);
-    return { projects };
+    return { projects, validationResetId: data.workspace.validationResetId ?? null };
   });
 
   app.post("/api/projects", {
@@ -1218,7 +1297,7 @@ export async function buildApp(options = {}) {
       }
       const record = {
         ...previous,
-        document: request.body,
+        document: preserveProjectProgress(previous.document, request.body),
         revision: (previous.revision ?? 0) + 1,
         updatedAt: new Date().toISOString(),
         updatedBy: request.auth.user.id
@@ -1259,7 +1338,7 @@ export async function buildApp(options = {}) {
     schema: { tags: ["System"], summary: "Read the shared mission project", security: [{ sessionCookie: [] }] }
   }, async () => {
     const record = store.read().workspace.project;
-    return { project: record?.document ?? null, revision: record?.revision ?? 0, updatedAt: record?.updatedAt ?? null };
+    return { project: record?.document ?? null, revision: record?.revision ?? 0, updatedAt: record?.updatedAt ?? null, validationResetId: store.read().workspace.validationResetId ?? null };
   });
 
   app.put("/api/workspace/project", {
@@ -1282,7 +1361,7 @@ export async function buildApp(options = {}) {
       const record = {
         createdAt: previous?.createdAt ?? new Date().toISOString(),
         createdBy: previous?.createdBy ?? request.auth.user.id,
-        document: request.body,
+        document: preserveProjectProgress(previous?.document, request.body),
         revision: (previous?.revision ?? 0) + 1,
         updatedAt: new Date().toISOString(),
         updatedBy: request.auth.user.id
@@ -1330,7 +1409,7 @@ export async function buildApp(options = {}) {
     return store.update((data) => {
       const previous = data.workspace.labs[request.params.projectId];
       const record = {
-        document: request.body,
+        document: preserveProjectProgress(previous?.document, request.body),
         revision: (previous?.revision ?? 0) + 1,
         updatedAt: new Date().toISOString(),
         updatedBy: request.auth.user.id

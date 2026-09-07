@@ -408,3 +408,32 @@
   .timeline-gantt-scroll { margin-inline: -14px; border-inline: 0; }
   .timeline-gantt { min-width: 860px; --gantt-label-width: 210px; }
 }
+
+.engineering-conception .conception-workspace-content { height: 100%; min-height: 0; min-width: 0; overflow: hidden; }
+.engineering-conception .brain-workspace { grid-template-rows: auto minmax(0, 1fr); }
+.engineering-conception .brain-title-row { flex-shrink: 0; }
+.quiet-discovery { position: relative; }
+.quiet-discovery .lab-node { padding: 15px 16px; height: auto; background: #0b2237; border: 1px solid #385c7c; box-shadow: 0 6px 16px #0002; }
+.quiet-discovery .lab-node.selected { border-color: #79b8f7; }
+.quiet-discovery .lab-node-head { margin-bottom: 10px; }
+.quiet-discovery .lab-node-head span { color: #96aec2; font-size: 9px; letter-spacing: .08em; }
+.quiet-discovery .lab-node-head button svg { width: 13px; height: 13px; }
+.quiet-discovery .discovery-node-text { display: block; width: 100%; text-align: left; border: 0; padding: 0; color: #dce8f4; background: none; font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; cursor: pointer; }
+.quiet-discovery .discovery-impact-action { display: inline-flex; align-items: center; gap: 6px; border: 0; border-top: 1px solid #345674; padding: 9px 0 0; margin-top: 12px; color: #8ac5ff; background: none; font-size: 11px; cursor: pointer; }
+.discovery-impact-action svg { width: 13px; height: 13px; }
+.discovery-node-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 8px; }
+.discovery-node-actions button { padding: 3px; background: none; border: 0; color: #a6bfd5; cursor: pointer; }
+.discovery-node-actions svg { width: 14px; height: 14px; }
+.discovery-navigation { position: absolute; z-index: 10; bottom: 16px; right: 16px; display: flex; align-items: center; gap: 4px; padding: 4px; background: #0a2034; border: 1px solid #304a61; border-radius: 5px; }
+.discovery-navigation button { display: grid; place-items: center; width: 29px; height: 29px; padding: 0; border: 0; background: transparent; color: #b6d0e7; cursor: pointer; }
+.discovery-navigation button:disabled { opacity: .3; cursor: default; }
+.discovery-navigation svg { width: 15px; height: 15px; }
+.discovery-navigation > span { height: 20px; border-left: 1px solid #304a61; margin: 0 5px; }
+.discovery-navigation output { min-width: 36px; text-align: center; font-size: 10px; color: #9cb7cf; }
+.discovery-notice { position: absolute; z-index: 11; left: 16px; bottom: 16px; max-width: min(470px, 75%); background: #10273b; border: 1px solid #3e5770; color: #b5c8d9; padding: 10px 14px; font-size: 11px; }
+.discovery-notice button { border: 0; background: none; color: #8fcaff; cursor: pointer; }
+.quiet-discovery .lab-composer { z-index: 8; }
+.quiet-discovery .lab-composer button svg { width: 15px; height: 15px; }
+.quiet-discovery .lab-composer textarea { font: inherit; font-size: 14px; }
+.engineering-conception .brain-toolbar svg { width: 14px; height: 14px; }
+@media (max-width: 600px) { .engineering-conception .brain-title-row { flex-wrap: wrap; gap: 8px; } .discovery-navigation { right: 8px; bottom: 8px; } }

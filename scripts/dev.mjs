@@ -3,6 +3,11 @@ import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
+// Keep Gemini configuration server-side while supporting the documented local setup.
+for (const envFile of [".env", ".env.local"]) {
+  try { process.loadEnvFile?.(envFile); } catch (error) { if (error.code !== "ENOENT") throw error; }
+}
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const node = process.execPath;
 const vite = resolve(root, "node_modules/vite/bin/vite.js");
