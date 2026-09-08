@@ -14,7 +14,7 @@ await mkdir(reportDirectory, { recursive: true, mode: 0o700 });
 const port = Number(process.env.NORTE_VISUAL_PORT || 5281);
 const base = `http://127.0.0.1:${port}/norte/`;
 let generations = 0, vite, browser;
-const report = { startedAt: new Date().toISOString(), execution: "LIVE provider, real UI/API, isolated database; no model fixtures", requests: [], interactions: [], checks: [], passed: false };
+const report = { startedAt: new Date().toISOString(), execution: "LIVE provider, real UI/API, isolated database; no model fixtures", requests: [], apiResponses: [], interactions: [], checks: [], passed: false };
 const saveReport = () => writeFile(join(reportDirectory, "report.json"), JSON.stringify(report, null, 2), { mode: 0o600 });
 const app = await buildApp({ storeFile: join(directory, "state.json"), logger: false, systemAi: { model: process.env.NORTE_LIVE_MODEL || process.env.GEMINI_MODEL, onAttempt: async (record, payload) => {
   generations++;
@@ -42,6 +42,11 @@ try {
   await context.route("**/api/**", async (route) => {
     const request = route.request();
     const response = await app.inject({ method: request.method(), url: new URL(request.url()).pathname + new URL(request.url()).search, headers: { ...await request.allHeaders(), host: `127.0.0.1:${port}` }, ...(request.postData() ? { payload: request.postData() } : {}) });
+    if (new URL(request.url()).pathname.endsWith("/system-ai/generate")) {
+      const data = response.json();
+      report.apiResponses.push({ status: response.statusCode, code: (typeof data.error === "string" ? data.error : data.error?.code) || data.code || null, message: data.error?.message || data.message || null });
+      await saveReport();
+    }
     const outputHeaders = Object.fromEntries(Object.entries(response.headers).filter(([name]) => !["content-length", "transfer-encoding", "connection", "set-cookie"].includes(name)).map(([name, value]) => [name, String(value)]));
     await route.fulfill({ status: response.statusCode, headers: outputHeaders, body: response.body });
   });
@@ -63,6 +68,7 @@ try {
     ]);
     report.interactions.push({ interaction, outcome, elapsedMs: performance.now() - started });
     if (outcome === "system") break;
+    report.interactions.at(-1).message = await page.locator(".pm-feedback").innerText();
     assert.equal((await saved()).engineeringSystem, undefined);
     assert.equal((await saved()).context.projectArtifactIds.length, 2);
     report.checks.push("Failed live extraction preserved Memory and created no fixture baseline");

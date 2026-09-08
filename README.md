@@ -146,13 +146,17 @@ Live checks use the server's configured provider and send only the allowed desig
 ```bash
 node --env-file=.env.local scripts/extract-quetzal.mjs --runs 3 --evaluation-revision v0.1-development.1
 node --env-file=.env.local scripts/probe-quetzal-contamination.mjs
+npm run diagnose:extraction -- --strategy A --models gemini-3.5-flash-lite --runs 10 --acceptance true --output-dir var/benchmarks/new-acceptance-series
+npm run test:visual:live
 ```
 
 Use the environment file where your server credentials are configured. The fixed contamination probe is metadata, not a benchmark score. C2 uses a separately authored neutral architecture and perturbed values; its deterministic result does not measure foundation-model generalization.
 
 The user-approved [V0.1 validation specification](docs/VALIDATED.md) retains a separate requirement for independent engineering review, which remains pending. No public preflight snapshot was established, and model pretraining contamination cannot be ruled out. C1 is **historical causal reconstruction**, not an unseen-failure prediction. These are development results until review. See [sources, licenses, cases, metrics and reproduction](docs/VALIDATION_QUETZAL1.md).
 
-The latest development checks passed nine deterministic cases. The six recorded live extraction attempts yielded no model approved under the final validation contract: evidence/hierarchy defects and provider HTTP 503/timeouts remain documented. Live extraction quality and availability still require validation; passing the browser fixture does not establish either.
+The latest development checks passed nine deterministic cases. After 50 exploratory provider requests, the separate final live series completed 5 of 6 requests: **1/5 completed outputs passed the contract; 0/5 passed complete A0**. This fails the preregistered 80% targets. A real browser run verified generation, persistence, sources, requirements and re-entry after an explicit retry, but four of five outputs across both live browser runs were rejected. Extraction reliability remains unresolved with the available provider configuration. See the [product audit, experiments and limitations](docs/EXTRACTION_RELIABILITY_AUDIT.md) and [frozen acceptance protocol](docs/EXTRACTION_EXPERIMENT_PLAN.md).
+
+Diagnostics retain every physical request and separate transport completion, JSON/schema validity, contract validity and A0. To compare retained runs without sending new requests, use `node scripts/summarize-extraction.mjs RUN_DIRECTORY [RUN_DIRECTORY ...] --output var/benchmarks/new-comparison.md`. Use a new output path; private reports and model responses stay ignored by Git. Live commands consume the configured provider quota; fixture browser tests are separate commands.
 
 To deliberately replace development/test projects, teams and associated workspaces, stop the API first and run:
 

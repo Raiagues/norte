@@ -353,8 +353,19 @@ export function App() {
         SYSTEM_AI_UNAVAILABLE: "O serviço de engenharia está temporariamente indisponível. A memória foi preservada. Tente novamente.",
         SYSTEM_RESPONSE_INVALID: "Não foi possível validar a arquitetura gerada. Tente novamente ou revise as fontes na memória.",
         SYSTEM_EVIDENCE_INVALID: "Não foi possível confirmar os dados nas fontes. Revise os arquivos vinculados e tente novamente.",
+        SYSTEM_HIERARCHY_INVALID: "Não foi possível validar a organização do sistema. A memória foi preservada; tente novamente.",
+        SYSTEM_FORMULA_INVALID: "Não foi possível validar as dependências dos cálculos. A memória foi preservada; tente novamente.",
         PROJECT_MEMORY_CHANGED: "A memória mudou durante a leitura. Tente novamente para usar a versão atual."
-      } : {};
+      } : {
+        SYSTEM_MEMORY_INSUFFICIENT: "Link a text or PDF file describing the system to Project Memory and try again.",
+        SYSTEM_AI_NOT_CONFIGURED: "Assisted reading is not configured yet. Your memory is saved; retry when the service is available.",
+        SYSTEM_AI_UNAVAILABLE: "The engineering service is temporarily unavailable. Your memory is preserved; try again.",
+        SYSTEM_RESPONSE_INVALID: "The generated architecture could not be validated. Retry or review the sources in Project Memory.",
+        SYSTEM_EVIDENCE_INVALID: "The extracted data could not be confirmed in its sources. Review the linked files and retry.",
+        SYSTEM_HIERARCHY_INVALID: "The system hierarchy could not be validated. Your memory is preserved; try again.",
+        SYSTEM_FORMULA_INVALID: "The calculation dependencies could not be validated. Your memory is preserved; try again.",
+        PROJECT_MEMORY_CHANGED: "Project Memory changed during extraction. Retry to use the current version."
+      };
       const message = (reason instanceof ApiError && messages[reason.code]) || (reason instanceof Error ? reason.message : language === "pt" ? "Não foi possível ler a memória. Tente novamente." : "Could not read project memory. Try again.");
       setInitializationError(message);
       throw new Error(message, { cause: reason });
