@@ -1238,11 +1238,19 @@ export async function buildApp(options = {}) {
     if (!canAccessProject(data, request.auth.user, record)) throw httpError(403, "FORBIDDEN", "You cannot open this project.");
     if (request.auth.user.accessRole === "advisor") throw httpError(403, "FORBIDDEN", "Advisors have read-only access to the project workspace.");
     const project = record.document;
-    if (project.engineeringSystem) return { engineeringSystem: project.engineeringSystem, memoryRevision: project.memoryRevision || 0 };
-    if (initializingSystems.has(project.id)) return initializingSystems.get(project.id);
+    if (project.engineeringSystem && !request.body.preview) return { engineeringSystem: project.engineeringSystem, memoryRevision: project.memoryRevision || 0 };
+    const operationKey = `${project.id}:${request.body.preview ? "preview" : "initialize"}`;
+    if (initializingSystems.has(operationKey)) return initializingSystems.get(operationKey);
     const memorySnapshot = projectMemorySnapshot(project, data.artifacts);
     const operation = (async () => {
-      const engineeringSystem = await systemAi.generate(project, data.artifacts, request.body.language);
+      const engineeringSystem = await systemAi.generate(request.body.preview ? { ...project, engineeringSystem: undefined } : project, data.artifacts, request.body.language);
+      if (request.body.preview) {
+        const current = store.read();
+        const latest = current.workspace.projects?.[project.id];
+        if (!latest || !canAccessProject(current, request.auth.user, latest)) throw httpError(403, "FORBIDDEN", "Project access changed during review.");
+        if (!isDeepStrictEqual(memorySnapshot, projectMemorySnapshot(latest.document, current.artifacts))) throw httpError(409, "PROJECT_MEMORY_CHANGED", "Project memory changed during review. Retry with the current memory.");
+        return { engineeringSystem, memoryRevision: latest.document.memoryRevision || 0 };
+      }
       return store.update((current) => {
         const latest = current.workspace.projects?.[project.id];
         if (!latest) throw httpError(409, "PROJECT_CHANGED", "This project changed during initialization.");
@@ -1259,8 +1267,8 @@ export async function buildApp(options = {}) {
         return { engineeringSystem, memoryRevision: latest.document.memoryRevision || 0 };
       });
     })();
-    initializingSystems.set(project.id, operation);
-    try { return await operation; } finally { initializingSystems.delete(project.id); }
+    initializingSystems.set(operationKey, operation);
+    try { return await operation; } finally { initializingSystems.delete(operationKey); }
   });
 
   app.post("/api/system-ai/analyze-change", {

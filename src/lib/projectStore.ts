@@ -74,6 +74,7 @@ export type MissionProject = {
   navigation: {
     lastRoute: "setup" | "brainstorm";
     lastConceptionWorkspace?: "system" | "timeline" | "discovery";
+    systemLayouts?: Record<string, Record<string, { x: number; y: number }>>;
   };
   phaseProgress: { highestUnlockedStep: 0 | 1 };
   memoryRevision: number;

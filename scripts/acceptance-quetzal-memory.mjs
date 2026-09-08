@@ -166,6 +166,29 @@ try {
   const reopened = await saved();
   await check("re-entering conception reopens the saved model without regenerating", report.providerAttempts.length === providerCallsBefore && JSON.stringify(reopened.engineeringSystem) === JSON.stringify(model));
 
+  if (process.env.NORTE_ACCEPTANCE_PREVIEW === "true") {
+    console.log("\nExplicit document review in the browser");
+    await page.getByRole("button", { name: /Review documents|Revisar documentos/u }).click();
+    const responsePromise = page.waitForResponse((response) => response.url().endsWith("/api/system-ai/generate"), { timeout: 300000 });
+    await page.getByRole("button", { name: /Generate new interpretation|Gerar nova interpretação/u }).click();
+    const response = await responsePromise;
+    const body = await response.json();
+    report.preview = { status: response.status(), ...(response.ok() ? { entities: body.engineeringSystem.entities.length, relations: body.engineeringSystem.relations.length, requirements: body.engineeringSystem.requirements.length } : { error: body.code ?? body.error }) };
+    await save();
+    await check("live document review returns a new valid interpretation", response.ok());
+    await writeFile(join(reportDirectory, "preview-system.json"), JSON.stringify(body.engineeringSystem, null, 2), { mode: 0o600 });
+    await check("review alone preserves the saved architecture", JSON.stringify((await saved()).engineeringSystem) === JSON.stringify(model));
+    await page.screenshot({ path: join(reportDirectory, "document-review.png"), fullPage: true });
+    await page.getByRole("button", { name: /Use this interpretation|Usar esta interpretação/u }).click();
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
+    await page.waitForTimeout(700);
+    const accepted = (await saved()).engineeringSystem;
+    await check("explicitly accepting the interpretation persists its actual entities", JSON.stringify(accepted.entities) === JSON.stringify(body.engineeringSystem.entities));
+    await page.getByRole("button", { name: /All levels|Todos os níveis/u }).click();
+    await check("all levels exposes every extracted entity", await page.locator("[data-entity-id]").count() === accepted.entities.length);
+    await page.screenshot({ path: join(reportDirectory, "reviewed-system.png"), fullPage: true });
+  }
+
   report.passed = report.checks.every((item) => item.value);
   await save();
   console.log(`\nAcceptance ${report.passed ? "PASSED" : "FAILED"} — report: ${reportDirectory}`);

@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { chromium } from "playwright-core";
 import { buildApp } from "../server/app.mjs";
 import { attachBenchmarkContext } from "./attach-benchmark-context.mjs";
-import { createQuetzalDesignModel } from "../benchmark/quetzal1/context/design-context.mjs";
+import { createQuetzalDesignModel, contextDocuments } from "../benchmark/quetzal1/context/design-context.mjs";
 
 // Browser friction measurement with real project/API persistence and explicit provider fixture.
 // This is an interface test, never a claim of live extraction accuracy or student outcomes.
@@ -14,12 +14,15 @@ const directory = await mkdtemp(join(tmpdir(), "norte-quetzal-browser-"));
 const port = Number(process.env.NORTE_VISUAL_PORT || 5277);
 const base = `http://127.0.0.1:${port}/norte/`;
 let generations = 0, vite, browser;
+const artifactIds = new Map();
 const app = await buildApp({ storeFile: join(directory, "state.json"), logger: false, systemAi: { apiKey: "test-provider", fetch: async (_url, options) => {
   const payload = JSON.parse(options.body);
   assert.ok(payload.contents[0].parts[0].text.includes("transmit input power 2640 mW"));
   assert.ok(!options.body.includes("QUETZAL_EVALUATOR_ONLY"));
   generations += 1;
-  return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(createQuetzalDesignModel()) }] } }] }), { status: 200 });
+  const model = createQuetzalDesignModel();
+  model.evidence = model.evidence.map((item) => ({ ...item, artifactId: artifactIds.get(item.artifactId) ?? item.artifactId }));
+  return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(model) }] } }] }), { status: 200 });
 } } });
 try {
   const registration = await app.inject({ method: "POST", url: "/api/auth/register", payload: { name: "Validation Engineer", email: "quetzal-validation@example.test", password: "Quetzal validation passphrase 42" } });
@@ -29,7 +32,8 @@ try {
   const projectId = (await app.inject({ method: "GET", url: "/api/projects", headers })).json().projects[0].id;
   const saved = async () => (await app.inject({ method: "GET", url: `/api/projects/${projectId}`, headers })).json().project;
   assert.equal((await saved()).context.programId, null);
-  await attachBenchmarkContext(app, headers, projectId);
+  const uploadedIds = await attachBenchmarkContext(app, headers, projectId);
+  contextDocuments.forEach((document, index) => artifactIds.set(document.id, uploadedIds[index]));
   assert.equal((await saved()).context.projectArtifactIds.length, 2);
   assert.equal((await saved()).engineeringSystem, undefined);
   vite = spawn(process.execPath, ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { env: { ...process.env, VITE_DEMO_MODE: "false" }, stdio: ["ignore", "pipe", "pipe"] });
@@ -51,8 +55,10 @@ try {
   await page.locator(".home-action-card.accent-open").click();
   await page.locator(".home-project-open").click();
   await page.locator(".pm-workspace").waitFor();
+  await page.locator(".pm-loading").waitFor({ state: "hidden" });
   const initializationStart = performance.now();
-  await page.locator(".pm-footer > button").click();
+  const [initialized] = await Promise.all([page.waitForResponse((response) => response.url().endsWith("/api/system-ai/generate")), page.locator(".pm-footer > button").click()]);
+  assert.equal(initialized.status(), 200, await initialized.text());
   await page.locator(".engineering-graph").waitFor();
   const initializationMs = performance.now() - initializationStart;
   assert.equal(generations, 1);

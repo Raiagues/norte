@@ -315,3 +315,31 @@ test("artifact edits increment linked memory revisions while preserving the gene
   assert.equal(changed.systemGeneratedFromRevision, 3);
   assert.deepEqual(changed.engineeringSystem, generated.json().engineeringSystem);
 });
+
+// A preview is an explicit provider call; accepting it is a separate project edit.
+test("API previews a new interpretation without replacing an existing baseline or progress", async (t) => {
+  let calls = 0;
+  const { app, store, headers } = await setupApi(t, async () => { calls++; return geminiResponse(createEngineeringValidationModel()); });
+  const payload = { projectId: project.id };
+  assert.equal((await app.inject({ method: "POST", url: "/api/system-ai/generate", headers, payload })).statusCode, 200);
+  const before = structuredClone(store.read().workspace.projects[project.id].document);
+  const preview = await app.inject({ method: "POST", url: "/api/system-ai/generate", headers, payload: { ...payload, preview: true } });
+  assert.equal(preview.statusCode, 200, preview.body);
+  assert.equal(calls, 2);
+  assert.equal(preview.json().engineeringSystem.generatedFromRevision, 3);
+  assert.deepEqual(store.read().workspace.projects[project.id].document, before);
+});
+
+test("API preview neither initializes a project nor unlocks it, and rejects changed memory", async (t) => {
+  let mutate = async () => {};
+  const { app, store, headers } = await setupApi(t, async () => { await mutate(); return geminiResponse(createEngineeringValidationModel()); });
+  const before = structuredClone(store.read().workspace.projects[project.id].document);
+  const options = { method: "POST", url: "/api/system-ai/generate", headers, payload: { projectId: project.id, preview: true } };
+  assert.equal((await app.inject(options)).statusCode, 200);
+  assert.deepEqual(store.read().workspace.projects[project.id].document, before);
+  mutate = () => store.update((data) => { data.artifacts[0].url = dataUrl(`${validationMemoryText}\nEdited during preview`); return null; });
+  const conflict = await app.inject(options);
+  assert.equal(conflict.statusCode, 409, conflict.body);
+  assert.equal(conflict.json().error, "PROJECT_MEMORY_CHANGED");
+  assert.equal(store.read().workspace.projects[project.id].document.engineeringSystem, undefined);
+});

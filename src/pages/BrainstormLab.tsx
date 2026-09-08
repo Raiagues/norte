@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { ArrowRight, Link2, Pencil, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
+import { ArrowRight, Link2, Pencil, Plus, Redo2, Trash2, Undo2, Network, Copy, FlaskConical } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { createLabLink, createLabNode, LAB_NODE_WIDTH, LAB_NODE_HEIGHT, LAB_WORLD_HEIGHT, LAB_WORLD_WIDTH, loadLabBoard, normalizeLabBoard, saveLabBoard } from "../lib/brainstormLab";
 import type { LabBoard, LabNode } from "../lib/brainstormLab";
@@ -36,7 +35,7 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
   const [composer, setComposer] = useState<Composer | null>(null);
   const [hypothesis, setHypothesis] = useState<DiscoveryHypothesis | null>(null);
   const [scenario, setScenario] = useState<EngineeringAnalysis | null>(null);
-  const [toolbarTarget, setToolbarTarget] = useState<HTMLElement | null>(null);
+  const [systemTools, setSystemTools] = useState(false);
   const [panning, setPanning] = useState(false);
   const prompt = useAnimatedPrompt(PROMPTS[language]);
   const copy = language === "pt" ? { add: "Nova ideia", edit: "Editar ideia", remove: "Excluir ideia", connect: "Conectar ideia", undo: "Desfazer", redo: "Refazer", fit: "Enquadrar ideias", in: "Aumentar zoom", out: "Diminuir zoom", placeholder: "Escreva uma hipótese…", impact: "Ver impacto", save: "Salvar", cancel: "Cancelar", idea: "HIPÓTESE", sync: "Não foi possível sincronizar. As ideias estão salvas neste navegador." } : { add: "New idea", edit: "Edit idea", remove: "Delete idea", connect: "Connect idea", undo: "Undo", redo: "Redo", fit: "Fit ideas", in: "Zoom in", out: "Zoom out", placeholder: "Write a hypothesis…", impact: "See impact", save: "Save", cancel: "Cancel", idea: "HYPOTHESIS", sync: "Could not sync. Ideas are saved in this browser." };
@@ -89,6 +88,14 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
       return { scale, x: point.x - (point.x - current.x) * scale / current.scale, y: point.y - (point.y - current.y) * scale / current.scale };
     });
   }
+  function freePosition(origin: { x: number; y: number }) {
+    const nodes = boardRef.current.nodes;
+    for (let step = 0; step <= nodes.length; step++) {
+      const position = { x: origin.x + (step % 3) * (LAB_NODE_WIDTH + 40), y: origin.y + Math.floor(step / 3) * (LAB_NODE_HEIGHT + 50) };
+      if (!nodes.some((node) => Math.abs(node.x - position.x) < LAB_NODE_WIDTH + 20 && Math.abs(node.y - position.y) < LAB_NODE_HEIGHT + 30)) return position;
+    }
+    return { x: origin.x, y: Math.max(...nodes.map((node) => node.y)) + LAB_NODE_HEIGHT + 50 };
+  }
   function openComposer(point?: { x: number; y: number }, node?: LabNode) {
     const rect = viewportRef.current?.getBoundingClientRect();
     const center = point ?? { x: (rect?.width ?? 800) / 2, y: (rect?.height ?? 500) / 2 };
@@ -101,10 +108,11 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
     if (composer.nodeId) {
       commit({ ...boardRef.current, nodes: boardRef.current.nodes.map((node) => node.id === composer.nodeId ? { ...node, text } : node) }); setComposer(null);
     } else {
-      const node = createLabNode(text, composer.x, composer.y);
+      const position = freePosition(composer);
+      const node = createLabNode(text, position.x, position.y);
       commit({ ...boardRef.current, nodes: [...boardRef.current.nodes, node] });
       setComposer({ x: composer.x, y: composer.y + LAB_NODE_HEIGHT + 30, text: "" });
-      setSelected(node.id);
+      setSelected(node.id); fit();
     }
   }
   function selectNode(node: LabNode) {
@@ -116,7 +124,7 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
     setSelected(node.id);
   }
   function pointerDown(event: React.PointerEvent, node?: LabNode) {
-    if (event.button !== 0 || (event.target as HTMLElement).closest("button,textarea,[data-control]")) return;
+    if (event.button !== 0 || (event.target as HTMLElement).closest("textarea,[data-control]") || (event.target as HTMLElement).closest("button:not(.discovery-node-text)")) return;
     event.stopPropagation();
     if (node) selectNode(node); else { setSelected(null); setConnecting(null); }
     gestureRef.current = { kind: node ? "node" : "pan", pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, x: node?.x ?? transform.x, y: node?.y ?? transform.y, nodeId: node?.id, before: structuredClone(boardRef.current), moved: false };
@@ -144,7 +152,6 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
     }
   }
 
-  useEffect(() => { setToolbarTarget(document.getElementById("brainstorm-lab-toolbar")); }, []);
   useEffect(() => { if (composer) textareaRef.current?.focus(); }, [composer?.nodeId, Boolean(composer)]);
   useEffect(() => {
     let cancelled = false;
@@ -187,7 +194,16 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
   });
 
   return <div className="brainstorm-lab quiet-discovery">
-    {toolbarTarget && !scenario && createPortal(<button className="primary" type="button" onClick={() => openComposer()} disabled={!ready}><Plus aria-hidden="true" />{copy.add}</button>, toolbarTarget)}
+    {!scenario && <div className="discovery-tools" role="toolbar" aria-label={language === "pt" ? "Ferramentas do Discovery" : "Discovery tools"}>
+      <button className="primary" type="button" onClick={() => openComposer()} disabled={!ready}><Plus />{copy.add}</button>
+      <button type="button" onClick={() => setHypothesis({ targetEntityId: "" })} disabled={!project.engineeringSystem}><FlaskConical />{language === "pt" ? "Testar alteração" : "Test a change"}</button>
+      <button type="button" aria-pressed={systemTools} onClick={() => setSystemTools(!systemTools)} disabled={!project.engineeringSystem}><Network />{language === "pt" ? "Elementos do sistema" : "System elements"}</button>
+      <span />
+      <button type="button" disabled={!selected} onClick={() => setConnecting(connecting ? null : selected)} aria-pressed={Boolean(connecting)}><Link2 />{language === "pt" ? "Conectar" : "Connect"}</button>
+      <button type="button" disabled={!selected} onClick={() => { const original = boardRef.current.nodes.find((node) => node.id === selected); if (original) { const position = freePosition({ x: original.x + LAB_NODE_WIDTH + 40, y: original.y }); const node = createLabNode(original.text, position.x, position.y); commit({ ...boardRef.current, nodes: [...boardRef.current.nodes, node] }); setSelected(node.id); fit(); } }}><Copy />{language === "pt" ? "Duplicar" : "Duplicate"}</button>
+      <button type="button" disabled={!selected} onClick={() => { if (selected) remove(selected); }}><Trash2 />{language === "pt" ? "Excluir" : "Delete"}</button>
+    </div>}
+    {systemTools && !scenario && <div className="discovery-system-tools"><header><strong>{language === "pt" ? "O que você quer explorar?" : "What would you like to explore?"}</strong><button type="button" onClick={() => setSystemTools(false)} aria-label={language === "pt" ? "Fechar elementos" : "Close elements"}>×</button></header><div>{project.engineeringSystem?.entities.filter((entity) => entity.kind !== "system").map((entity) => <button type="button" key={entity.id} onClick={() => setHypothesis({ targetEntityId: entity.id })}><strong>{entity.name}</strong><small>{entity.properties.filter((property) => property.key !== "formula").map((property) => property.name).slice(0, 3).join(" · ") || (language === "pt" ? "Explorar com um dado técnico" : "Explore a technical value")}</small><ArrowRight /></button>)}</div></div>}
     {scenario && project.engineeringSystem ? <EngineeringScenario language={language} model={project.engineeringSystem} analysis={scenario} onClear={() => setScenario(null)} saved={project.engineeringSystem.scenarios?.some((item) => item.id === scenario.id)} onSave={() => onProjectChange({ ...project, engineeringSystem: { ...project.engineeringSystem!, scenarios: [...(project.engineeringSystem?.scenarios ?? []).filter((item) => item.id !== scenario.id), scenario] } })} /> : <div ref={viewportRef} className={`lab-canvas${panning ? " panning" : ""}`} onPointerDown={(event) => { if (ready) pointerDown(event); }} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onWheel={(event) => {
       if ((event.target as HTMLElement).closest("textarea")) return;
       const rect = event.currentTarget.getBoundingClientRect(); zoom(event.deltaY < 0 ? 1.08 : 1 / 1.08, { x: event.clientX - rect.left, y: event.clientY - rect.top });
@@ -204,7 +220,7 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
           return <article className={`lab-node${selected === node.id ? " selected" : ""}`} style={{ left: node.x, top: node.y, width: LAB_NODE_WIDTH, minHeight: LAB_NODE_HEIGHT }} key={node.id} data-node-id={node.id} onPointerDown={(event) => pointerDown(event, node)} onDoubleClick={() => openComposer(undefined, node)}>
             <div className="lab-node-head"><span>{copy.idea}</span><button type="button" title={copy.edit} aria-label={`${copy.edit}: ${node.text}`} onClick={() => openComposer(undefined, node)}><Pencil aria-hidden="true" /></button></div>
             <button className="discovery-node-text" type="button" onClick={() => selectNode(node)} onDoubleClick={() => openComposer(undefined, node)}>{node.text}</button>
-            {suggestion && <button className="discovery-impact-action" type="button" onClick={() => showImpact(suggestion, node.text)}><ArrowRight aria-hidden="true" />{copy.impact}</button>}
+            <button className="discovery-impact-action" type="button" disabled={!project.engineeringSystem} onClick={() => suggestion ? showImpact(suggestion, node.text) : setHypothesis({ targetEntityId: "" })}><ArrowRight aria-hidden="true" />{copy.impact}</button>
             {selected === node.id && <div className="discovery-node-actions" data-control><button type="button" aria-label={copy.connect} title={copy.connect} aria-pressed={connecting === node.id} onClick={() => setConnecting(connecting === node.id ? null : node.id)}><Link2 aria-hidden="true" /></button><button type="button" aria-label={copy.remove} title={copy.remove} onClick={() => remove(node.id)}><Trash2 aria-hidden="true" /></button></div>}
           </article>;
         })}

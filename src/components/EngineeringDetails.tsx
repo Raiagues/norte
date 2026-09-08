@@ -194,7 +194,7 @@ export function EngineeringRelationInfo({ language, model, relation, onClose, on
   </EngineeringDialog>;
 }
 
-export function EngineeringRequirements({ language, model, impacts = [], onClose, onTrace, onEdit }: { language: Language; model: EngineeringSystemModel; impacts?: EngineeringImpact[]; onClose: () => void; onTrace: (requirement: EngineeringRequirement) => void; onEdit: (requirement: EngineeringRequirement) => void }) {
+export function EngineeringRequirements({ language, model, impacts = [], onClose, onTrace, onEdit, docked = false }: { language: Language; model: EngineeringSystemModel; impacts?: EngineeringImpact[]; docked?: boolean; onClose: () => void; onTrace: (requirement: EngineeringRequirement) => void; onEdit: (requirement: EngineeringRequirement) => void }) {
   const [filters, setFilters] = useState<RequirementFilters>({});
   const [facets, setFacets] = useState(false);
   const pt = language === "pt";
@@ -202,7 +202,7 @@ export function EngineeringRequirements({ language, model, impacts = [], onClose
   const tags = [...new Set(model.requirements.flatMap((item) => [...item.subsystemTags, ...item.reviewTags, item.category ?? ""]).filter(Boolean))].sort();
   const sources = model.evidence.filter((item) => model.requirements.some((requirement) => requirement.sourceRefs.includes(item.id)));
   const filterCount = [filters.tag, filters.source, filters.status].filter(Boolean).length;
-  return <EngineeringDialog language={language} title={`${pt ? "Requisitos" : "Requirements"} · ${model.requirements.length}`} onClose={onClose} wide>
+  const content = <>
     <div className="engineering-requirements-search"><label><span className="engineering-sr-only">{pt ? "Buscar requisitos" : "Search requirements"}</span><input type="search" value={filters.query ?? ""} placeholder={pt ? "Buscar texto, referência ou disciplina" : "Search text, reference or discipline"} onChange={(event) => setFilters({ ...filters, query: event.target.value })} /></label><button type="button" aria-expanded={facets} onClick={() => setFacets(!facets)}><SlidersHorizontal aria-hidden="true" />{pt ? "Filtrar" : "Filter"}{filterCount ? ` · ${filterCount}` : ""}</button></div>
     {facets && <div className="engineering-requirement-facets"><label>{pt ? "Disciplina / revisão" : "Discipline / review"}<select value={filters.tag ?? ""} onChange={(event) => setFilters({ ...filters, tag: event.target.value })}><option value="">{pt ? "Todas" : "All"}</option>{tags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}</select></label><label>Status<select value={filters.status ?? ""} onChange={(event) => setFilters({ ...filters, status: event.target.value })}><option value="">{pt ? "Todos" : "All"}</option>{["unreviewed", "accepted", "review", "verified"].map((status) => <option value={status} key={status}>{engineeringLabel(status, language)}</option>)}</select></label><label>{pt ? "Fonte" : "Source"}<select value={filters.source ?? ""} onChange={(event) => setFilters({ ...filters, source: event.target.value })}><option value="">{pt ? "Todas" : "All"}</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.artifactLabel}{source.locator ? ` · ${source.locator}` : ""}</option>)}</select></label>{filterCount > 0 && <button type="button" onClick={() => setFilters({ query: filters.query })}>{pt ? "Limpar filtros" : "Clear filters"}</button>}</div>}
     <div className="engineering-requirements-list">{requirements.map((requirement) => {
@@ -211,7 +211,10 @@ export function EngineeringRequirements({ language, model, impacts = [], onClose
     })}</div>
     {!requirements.length && <p className="engineering-muted">{model.requirements.length ? pt ? "Nenhum requisito corresponde aos filtros." : "No requirements match these filters." : pt ? "A memória ainda não contém requisitos identificáveis." : "The memory does not contain identifiable requirements yet."}</p>}
     {requirements.length > 0 && <p className="engineering-muted">{pt ? "Selecione um requisito para ver o que ele restringe no sistema." : "Select a requirement to see what it constrains in the system."}</p>}
-  </EngineeringDialog>;
+  </>;
+  return docked ? <aside className="engineering-requirements-panel" aria-label={pt ? "Requisitos do sistema" : "System requirements"}>
+    <header><strong>{pt ? "Requisitos" : "Requirements"} <small>{model.requirements.length}</small></strong><button type="button" onClick={onClose} aria-label={pt ? "Fechar requisitos" : "Close requirements"}><X /></button></header>{content}
+  </aside> : <EngineeringDialog language={language} title={`${pt ? "Requisitos" : "Requirements"} · ${model.requirements.length}`} onClose={onClose} wide>{content}</EngineeringDialog>;
 }
 
 export function EngineeringRequirementInfo({ language, model, requirement, impact, onClose, onModelChange, onTrace, onWhatIf, correctionContext }: { language: Language; model: EngineeringSystemModel; requirement: EngineeringRequirement; impact?: EngineeringImpact; onClose: () => void; onModelChange?: (model: EngineeringSystemModel) => void; onTrace: () => void; onWhatIf?: () => void; correctionContext?: EngineeringCorrectionProjectContext }) {

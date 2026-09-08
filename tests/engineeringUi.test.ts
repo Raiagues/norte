@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AuthProvider } from "../src/lib/auth";
 import type { EngineeringEntity, EngineeringSystemModel } from "../src/lib/engineeringSystem";
-import { correctEngineeringEntity, correctEngineeringRequirement, editEngineeringRequirement, engineeringInitialScale, filterEngineeringRequirements, layoutEngineeringGraph, projectEngineeringScenario, removeEngineeringRelation, requirementTrace, systemVisibleEntities } from "../src/lib/engineeringUi";
+import { engineeringAncestors, engineeringCurve, engineeringInterfaceCurve, correctEngineeringEntity, correctEngineeringRequirement, editEngineeringRequirement, engineeringInitialScale, filterEngineeringRequirements, layoutEngineeringGraph, projectEngineeringScenario, removeEngineeringRelation, requirementTrace, systemVisibleEntities } from "../src/lib/engineeringUi";
 import { createEmptyProject } from "../src/lib/projectStore";
 import { SystemWorkspace, EngineeringScenario, EngineeringWhatIf } from "../src/pages/SystemWorkspace";
 import { EngineeringEntityInfo, EngineeringRequirements } from "../src/components/EngineeringDetails";
@@ -50,6 +50,37 @@ describe("engineering architecture and traceability", () => {
     expect(graph.nodes.find((item) => item.entity.id === "radio")!.y).toBeGreaterThan(graph.nodes.find((item) => item.entity.id === "communications")!.y);
     expect(graph.edges.map((edge) => edge.relation.id)).toEqual(["radio-parent"]);
     expect(JSON.stringify(model)).toBe(original);
+  });
+
+  it("keeps siblings on one hierarchy level even when power flows between them", () => {
+    const linked = { ...model, relations: [...model.relations, { ...model.relations[0], id: "subsystem-supply", from: "power", to: "communications" }] };
+    const graph = layoutEngineeringGraph(linked, systemVisibleEntities(linked, null));
+    expect(graph.nodes.find((node) => node.entity.id === "power")!.y).toBe(graph.nodes.find((node) => node.entity.id === "communications")!.y);
+    expect(graph.edges.some((edge) => edge.relation.id === "subsystem-supply")).toBe(true);
+    expect(engineeringAncestors(model, "radio").map((item) => item.id)).toEqual(["system", "communications", "radio"]);
+    const legacy = { ...model, entities: model.entities.map((item) => item.id === "radio" ? { ...item, parentId: undefined } : item) };
+    expect(engineeringAncestors(legacy, "radio").map((item) => item.id)).toEqual(["system", "communications", "radio"]);
+  });
+
+  it("does not hide independent components or truncate a multi-system overview", () => {
+    const roots = Array.from({ length: 15 }, (_, index) => entity(`root-${index}`, "component"));
+    expect(systemVisibleEntities({ ...model, entities: [...model.entities, ...roots] }, null)).toHaveLength(18);
+  });
+
+  it("routes arrows at node borders with stable directions as nodes are moved", () => {
+    expect(engineeringCurve({ x: 0, y: 0 }, { x: 400, y: 0 }).path).toMatch(/^M206,63 C.* 400,63$/);
+    expect(engineeringCurve({ x: 400, y: 0 }, { x: 0, y: 0 }).path).toMatch(/^M400,63 C.* 206,63$/);
+    expect(engineeringCurve({ x: 0, y: 0 }, { x: 0, y: 300 }).path).toMatch(/^M103,126 C.* 103,300$/);
+    expect(engineeringCurve({ x: 0, y: 300 }, { x: 0, y: 0 }).path).toMatch(/^M103,300 C.* 103,126$/);
+    expect(engineeringCurve({ x: 0, y: 0 }, { x: 0, y: 0 }).path).not.toContain("NaN");
+  });
+
+  it("routes sibling interfaces above the row and gives relationship exploration a causal layout", () => {
+    const route = engineeringInterfaceCurve({ x: 0, y: 250 }, { x: 600, y: 250 });
+    expect(route.label.y).toBeLessThan(250);
+    expect(route.path).toMatch(/^M103,250 C.* 703,250$/);
+    const graph = layoutEngineeringGraph(model, model.entities.filter((item) => ["regulator", "radio"].includes(item.id)), null, "relationships");
+    expect(graph.nodes.find((node) => node.entity.id === "regulator")!.y).toBeLessThan(graph.nodes.find((node) => node.entity.id === "radio")!.y);
   });
 
   it("combines search and metadata facets and traces exact requirement relationships", () => {
@@ -108,6 +139,17 @@ describe("engineering architecture and traceability", () => {
     expect(baseline.entities.find((item) => item.id === "radio")?.properties.find((property) => property.key === "peak_current")?.value).toBe(400);
   });
 
+  it("reopens saved scenarios against their archived architecture after a document reinterpretation", () => {
+    const before = createEngineeringValidationModel();
+    const analysis = analyzeImpact(before, validationChange());
+    const snapshot = { entities: before.entities, relations: before.relations, requirements: before.requirements, evidence: before.evidence };
+    const projected = projectEngineeringScenario({ ...before, entities: [], requirements: [], relations: [], evidence: [] }, { ...analysis, baseline: snapshot });
+    expect(projected.entities.some((item) => item.id === "radio")).toBe(true);
+    expect(projected.requirements).toHaveLength(before.requirements.length);
+    expect(projected.entities.find((item) => item.id === "radio")?.properties.find((item) => item.key === "peak_current")?.value).toBe(1.2);
+    expect(before.entities.find((item) => item.id === "radio")?.properties.find((item) => item.key === "peak_current")?.value).toBe(400);
+  });
+
   it("lays out impacts in causal order while retaining the real supply relationship for inspection", () => {
     const baseline = createEngineeringValidationModel();
     const analysis = analyzeImpact(baseline, validationChange());
@@ -161,11 +203,13 @@ describe("engineering architecture and traceability", () => {
 });
 
 describe("calm and explicit engineering controls", () => {
-  it("renders a full-width graph with explicit node information and an independent Requirements action", () => {
+  it("renders a graph with hierarchy and a docked requirements list without a modal", () => {
     const project = { ...createEmptyProject("en"), engineeringSystem: model };
     const html = render(createElement(SystemWorkspace, { language: "en", project, onProjectChange: noop, onBackSetup: noop }));
     expect(html).toContain('aria-label="Information about power"');
     expect(html).toContain("Requirements");
+    expect(html).toContain("engineering-requirements-panel");
+    expect(html).toContain("engineering-explorer");
     expect(html).not.toContain('role="dialog"');
     expect(html).not.toContain('data-entity-id="req-duration"');
     expect(html).not.toContain("detail-drawer");

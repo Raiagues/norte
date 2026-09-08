@@ -13,6 +13,7 @@
   border: 1px solid var(--engineering-line);
   border-radius: 8px;
 }
+
 .engineering-workspace *, .engineering-dialog * { box-sizing: border-box; }
 .engineering-workspace button, .engineering-dialog button, .engineering-dialog input, .engineering-dialog textarea, .engineering-dialog select {
   font: inherit;
@@ -248,4 +249,109 @@
 @media (max-width: 600px) {
   .engineering-desktop-hint { display: none; }
   .engineering-mobile-hint { display: inline; }
+}
+
+/* Architecture navigation is independent of the engineering baseline. */
+.engineering-workspace-body { display: flex; flex: 1; min-height: 0; min-width: 0; }
+.engineering-workspace-body > .engineering-canvas-shell { min-width: 0; }
+.engineering-view-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-height: 48px; padding: 8px 16px; border-bottom: 1px solid var(--engineering-line); background: #081e30; }
+.engineering-view-toolbar > strong { font-size: 12px; font-weight: 550; }
+.engineering-view-toolbar > span { color: #8ba6bf; font-size: 11px; }
+.engineering-view-toolbar > div { display: flex; gap: 5px; margin-left: auto; }
+.engineering-view-toolbar button { font-size: 11px; padding: 6px 9px; }
+.engineering-workspace button[aria-pressed="true"] { color: #a8d8ff; background: #173c57; border-color: #42749b; }
+.engineering-explorer { width: 230px; flex: 0 0 230px; display: flex; flex-direction: column; min-height: 0; background: #081b2b; border-right: 1px solid var(--engineering-line); }
+.engineering-explorer > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 18px 14px 12px; font-size: 10px; letter-spacing: .8px; color: #9ac1db; }
+.engineering-explorer > header small { letter-spacing: 0; color: #7699b3; }
+.engineering-tree-search { margin: 0 10px 12px; display: flex; align-items: center; gap: 7px; border: 1px solid #28465e; padding: 8px; border-radius: 6px; }
+.engineering-tree-search svg { width: 14px; flex-shrink: 0; color: #87a8c2; }
+.engineering-tree-search input { min-width: 0; width: 100%; color: #d8ebfa; background: transparent; border: 0; font: inherit; font-size: 12px; outline-offset: 4px; }
+.engineering-explorer > nav { overflow: auto; flex: 1; padding-bottom: 20px; }
+.engineering-tree-row { display: flex; align-items: center; gap: 2px; padding-right: 8px; min-height: 51px; }
+.engineering-tree-row.active { background: #153a54; box-shadow: inset 3px 0 #74b9f1; }
+.engineering-tree-row > button:last-child { justify-content: flex-start; min-width: 0; flex: 1; border: 0; background: transparent; padding: 7px 0; }
+.engineering-tree-row button > svg { width: 14px; flex-shrink: 0; color: #87b8d9; }
+.engineering-tree-row button > span { display: grid; gap: 4px; text-align: left; min-width: 0; }
+.engineering-tree-row strong { font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
+.engineering-tree-row small { color: #7699b3; font-size: 9px; }
+.engineering-tree-row em { font-size: 10px; font-style: normal; color: #8aaec7; margin-left: auto; }
+.engineering-tree-toggle, .engineering-tree-spacer { width: 18px; flex: 0 0 18px; }
+.engineering-workspace .engineering-tree-toggle { border: 0; background: transparent; padding: 0; }
+.engineering-workspace .engineering-overview-link { justify-content: flex-start; margin: 0 10px 8px; font-size: 11px; }
+.engineering-explorer > footer { padding: 12px 14px; font-size: 10px; line-height: 1.6; color: #7699b3; border-top: 1px solid var(--engineering-line); }
+.engineering-explorer nav > p { padding: 12px; color: #8ba6bf; font-size: 12px; }
+.engineering-requirements-panel { width: 290px; flex: 0 0 290px; min-height: 0; overflow-y: auto; background: #091e30; border-left: 1px solid var(--engineering-line); padding: 0 14px 14px; }
+.engineering-requirements-panel > header { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; position: sticky; top: 0; background: #091e30; z-index: 1; }
+.engineering-requirements-panel > header strong { font-size: 13px; font-weight: 550; }
+.engineering-requirements-panel > header small { color: #91b8d1; margin-left: 5px; }
+.engineering-requirements-panel .engineering-requirements-search { display: flex; flex-wrap: wrap; gap: 8px; }
+.engineering-requirements-panel .engineering-requirements-search label { flex: 1 1 100%; }
+.engineering-requirements-panel input, .engineering-requirements-panel select { width: 100%; min-width: 0; padding: 9px; font: inherit; font-size: 11px; color: #c7dfef; border: 1px solid #2b4b63; border-radius: 5px; background: #071929; }
+.engineering-requirements-panel .engineering-requirement-facets { display: grid; grid-template-columns: 1fr; gap: 8px; font-size: 10px; }
+.engineering-requirements-panel .engineering-requirement-row { display: flex; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--engineering-line); }
+.engineering-requirements-panel .engineering-requirement-main { min-width: 0; flex: 1; display: block; text-align: left; padding: 7px 0; border: 0; background: transparent; }
+.engineering-requirements-panel .engineering-requirement-main > span { display: grid; gap: 7px; }
+.engineering-requirements-panel .engineering-requirement-main strong { font-size: 12px; }
+.engineering-requirements-panel .engineering-requirement-main p { font-size: 11px; line-height: 1.65; color: #afc8dd; }
+.engineering-requirements-panel .engineering-requirement-main small, .engineering-requirements-panel .engineering-requirement-main em { font-size: 10px; color: #87aac5; }
+.engineering-breadcrumb > span { display: inline-flex; align-items: center; min-width: 0; }
+.engineering-world { overflow: visible; }
+.engineering-edges { overflow: visible; width: 100% !important; height: 100% !important; }
+.engineering-workspace .engineering-node { border-radius: 10px; box-shadow: 0 8px 20px #0003; user-select: none; touch-action: none; }
+.engineering-workspace .engineering-node-main { cursor: grab; padding: 16px 14px; gap: 8px; }
+.engineering-node-main:active { cursor: grabbing; }
+.engineering-workspace .engineering-node-main > strong { font-size: 14px; line-height: 1.35; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; max-width: 170px; }
+.engineering-workspace .engineering-node-kind { font-size: 9px; letter-spacing: .8px; }
+.engineering-workspace .engineering-node-enter { position: absolute; bottom: 8px; left: 12px; border: 0; background: #17384e; color: #a2cdea; font-size: 10px; padding: 4px 7px; border-radius: 4px; }
+.engineering-node:has(.engineering-node-enter) .engineering-node-values { display: none; }
+.engineering-workspace .engineering-edge path { stroke: currentColor; stroke-width: 1.6; fill: none; }
+.engineering-workspace .engineering-edge.structural path { stroke: #44617a; stroke-width: 1.2; stroke-dasharray: 5 5; }
+.engineering-workspace .engineering-edge-label { border: 1px solid #2f5771; border-radius: 5px; background: #0b2437; padding: 3px 7px; font-size: 10px; color: #bbd9ed; }
+.engineering-review-counts { display: flex; gap: 24px; margin: 20px 0; }
+.engineering-review-counts > span { display: grid; gap: 8px; font-size: 11px; color: #8cacc5; }
+.engineering-review-counts strong { font-size: 24px; color: #dceefe; }
+.engineering-source-coverage > div { display: grid; gap: 6px; padding: 12px 0; border-bottom: 1px solid #26455e; font-size: 12px; }
+.engineering-source-coverage small { color: #87aac5; }
+.engineering-review-preview { max-height: 250px; overflow: auto; margin-top: 18px; font-size: 12px; }
+.engineering-review-preview small { color: #82b4d8; }
+.engineering-review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+.quiet-discovery { display: flex; flex-direction: column; }
+.discovery-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 10px 12px; background: #0a2133; border-bottom: 1px solid #29465e; }
+.discovery-tools button { display: inline-flex; align-items: center; gap: 7px; color: #b9d3e7; background: #102d42; border: 1px solid #35556d; border-radius: 6px; padding: 8px 10px; font: inherit; font-size: 11px; cursor: pointer; }
+.discovery-tools button:disabled { opacity: .35; cursor: default; }
+.discovery-tools svg { width: 14px; height: 14px; }
+.discovery-tools > span { flex: 1; }
+.quiet-discovery > .lab-canvas { flex: 1; min-height: 300px; }
+.discovery-system-tools { padding: 12px 16px; max-height: 240px; overflow: auto; background: #0b2539; border-bottom: 1px solid #35556d; }
+.discovery-system-tools header { display: flex; justify-content: space-between; font-size: 12px; color: #bad3e5; margin-bottom: 12px; }
+.discovery-system-tools header button { color: #a8c9e2; background: transparent; border: 0; font-size: 20px; cursor: pointer; }
+.discovery-system-tools > div { display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 8px; }
+.discovery-system-tools > div > button { display: grid; grid-template-columns: 1fr 16px; gap: 6px; text-align: left; padding: 12px; border: 1px solid #35556d; border-radius: 6px; background: #102d42; color: #d2e4f1; cursor: pointer; }
+.discovery-system-tools small { grid-column: 1; font-size: 10px; color: #8cafc9; }
+.discovery-system-tools svg { grid-column: 2; grid-row: 1 / 3; width: 14px; }
+.quiet-discovery .discovery-node-text { cursor: grab; }
+@media (max-width: 1100px) {
+  .engineering-explorer { width: 190px; flex-basis: 190px; }
+  .engineering-requirements-panel { width: 250px; flex-basis: 250px; }
+  .engineering-workspace-bar { flex-wrap: wrap; gap: 8px; }
+}
+@media (max-width: 760px) {
+  .engineering-workspace-body { display: block; overflow: auto; }
+  .engineering-explorer { width: 100%; max-height: 230px; border-right: 0; border-bottom: 1px solid var(--engineering-line); }
+  .engineering-workspace-body > .engineering-canvas-shell { height: 440px; }
+  .engineering-requirements-panel { width: 100%; max-height: 350px; border-left: 0; border-top: 1px solid var(--engineering-line); }
+  .engineering-view-toolbar > div { margin-left: 0; }
+  .engineering-breadcrumb { flex-wrap: wrap; }
+  .engineering-bar-actions { flex-wrap: wrap; }
+  .discovery-tools > span { display: none; }
+}
+
+.engineering-edge { color: #74b5d5; }
+.engineering-edge[class*="status-"] { color: var(--impact-color); }
+
+@media (max-width: 760px) {
+  .engineering-view-toolbar > div { flex-wrap: wrap; width: 100%; }
+  .engineering-view-toolbar button { white-space: nowrap; }
+  .engineering-workspace-bar { flex-wrap: wrap; gap: 8px; }
+  .engineering-bar-actions { justify-content: flex-start; }
 }

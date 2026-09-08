@@ -6,6 +6,49 @@ import type { Language } from "./types";
 
 export const ENGINEERING_NODE_WIDTH = 206;
 export const ENGINEERING_NODE_HEIGHT = 126;
+export type GraphPositions = Record<string, { x: number; y: number }>;
+
+export function engineeringParentId(model: EngineeringSystemModel, entity: EngineeringEntity): string | undefined {
+  return entity.parentId || model.relations.find((relation) => relation.kind === "contains" && relation.to === entity.id)?.from;
+}
+
+export function engineeringAncestors(model: EngineeringSystemModel, id: string): EngineeringEntity[] {
+  const ancestors: EngineeringEntity[] = [];
+  const seen = new Set<string>();
+  let current = model.entities.find((entity) => entity.id === id);
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id); ancestors.unshift(current);
+    const parentId = engineeringParentId(model, current);
+    current = model.entities.find((entity) => entity.id === parentId);
+  }
+  return ancestors;
+}
+
+/** Visual routing only. Endpoints retain the semantic direction of the relation. */
+export function engineeringCurve(from: { x: number; y: number }, to: { x: number; y: number }, lane = 0, vertical = false) {
+  const horizontal = !vertical && Math.abs(to.x - from.x) > Math.abs(to.y - from.y);
+  const sign = (horizontal ? to.x - from.x : to.y - from.y) >= 0 ? 1 : -1;
+  const start = { x: from.x + ENGINEERING_NODE_WIDTH / 2 + (horizontal ? sign * ENGINEERING_NODE_WIDTH / 2 : lane), y: from.y + ENGINEERING_NODE_HEIGHT / 2 + (horizontal ? lane : sign * ENGINEERING_NODE_HEIGHT / 2) };
+  const end = { x: to.x + ENGINEERING_NODE_WIDTH / 2 - (horizontal ? sign * ENGINEERING_NODE_WIDTH / 2 : -lane), y: to.y + ENGINEERING_NODE_HEIGHT / 2 - (horizontal ? -lane : sign * ENGINEERING_NODE_HEIGHT / 2) };
+  const bend = Math.max(50, Math.abs(horizontal ? end.x - start.x : end.y - start.y) / 2);
+  const c1 = { x: start.x + (horizontal ? sign * bend : 0), y: start.y + (horizontal ? 0 : sign * bend) };
+  const c2 = { x: end.x - (horizontal ? sign * bend : 0), y: end.y - (horizontal ? 0 : sign * bend) };
+  if (from.x === to.x && from.y === to.y) {
+    return { path: `M${from.x + ENGINEERING_NODE_WIDTH},${from.y + 35} C${from.x + ENGINEERING_NODE_WIDTH + 110},${from.y - 70} ${from.x + ENGINEERING_NODE_WIDTH + 110},${from.y + 160} ${from.x + ENGINEERING_NODE_WIDTH},${from.y + 95}`, label: { x: from.x + ENGINEERING_NODE_WIDTH + 70, y: from.y + 65 } };
+  }
+  return { path: `M${start.x},${start.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${end.x},${end.y}`, label: { x: (start.x + 3 * c1.x + 3 * c2.x + end.x) / 8, y: (start.y + 3 * c1.y + 3 * c2.y + end.y) / 8 } };
+}
+
+/** Interfaces between siblings arc above the row instead of crossing intervening cards. */
+export function engineeringInterfaceCurve(from: { x: number; y: number }, to: { x: number; y: number }, lane = 0) {
+  if (Math.abs(to.y - from.y) < 30 && Math.abs(to.x - from.x) >= ENGINEERING_NODE_WIDTH) {
+    const start = { x: from.x + ENGINEERING_NODE_WIDTH / 2 + lane, y: from.y };
+    const end = { x: to.x + ENGINEERING_NODE_WIDTH / 2 + lane, y: to.y };
+    const arch = Math.min(from.y, to.y) - 80 - Math.min(80, Math.abs(to.x - from.x) / 8) - Math.abs(lane);
+    return { path: `M${start.x},${start.y} C${start.x},${arch} ${end.x},${arch} ${end.x},${end.y}`, label: { x: (start.x + end.x) / 2, y: (start.y + end.y + 6 * arch) / 8 } };
+  }
+  return engineeringCurve(from, to, lane);
+}
 
 export function engineeringInitialScale(viewport: { width: number; height: number }, graph: { width: number; height: number }, fitRequested = false, readableScenario = false): number {
   const overview = Math.min(1, Math.max(0.2, Math.min((viewport.width - 70) / graph.width, (viewport.height - 70) / graph.height)));
@@ -35,22 +78,24 @@ export function systemVisibleEntities(model: EngineeringSystemModel, parentId: s
   const entities = model.entities.filter((entity) => String(entity.kind) !== "requirement");
   if (relevantIds) return entities.filter((entity) => relevantIds.has(entity.id));
   if (parentId) return entities.filter((entity) => entity.id === parentId || entity.parentId === parentId || model.relations.some((relation) => relation.kind === "contains" && relation.from === parentId && relation.to === entity.id));
-  const macro = entities.filter((entity) => entity.kind === "system" || entity.kind === "subsystem" && !entities.some((parent) => parent.id === entity.parentId && parent.kind === "subsystem"));
-  return macro.length ? macro : entities.filter((entity) => !entity.parentId).slice(0, 12);
+  const roots = new Set(entities.filter((entity) => !entities.some((parent) => parent.id === engineeringParentId(model, entity))).map((entity) => entity.id));
+  return entities.filter((entity) => roots.has(entity.id) || roots.has(engineeringParentId(model, entity) ?? ""));
 }
 
-export function layoutEngineeringGraph(model: EngineeringSystemModel, entities: EngineeringEntity[], analysis?: EngineeringAnalysis | null) {
+export function layoutEngineeringGraph(model: EngineeringSystemModel, entities: EngineeringEntity[], analysis?: EngineeringAnalysis | null, mode: "hierarchy" | "relationships" = "hierarchy") {
   const visible = new Set(entities.map((entity) => entity.id));
   const traversed = analysis ? new Set(analysis.impacts.filter((impact) => impact.status !== "unaffected").flatMap((impact) => impact.traversedRelationIds)) : null;
   const relations = model.relations.filter((relation) => visible.has(relation.from) && visible.has(relation.to) && (!traversed || traversed.has(relation.id)));
   const graph = new graphlib.Graph({ directed: true, multigraph: true }).setGraph({ rankdir: "TB", nodesep: 42, ranksep: 90, marginx: 40, marginy: 40 }).setDefaultEdgeLabel(() => ({}));
   entities.forEach((entity) => graph.setNode(entity.id, { width: ENGINEERING_NODE_WIDTH, height: ENGINEERING_NODE_HEIGHT }));
   const reversedIds = new Set(relations.filter((relation) => analysis?.impacts.some((impact) => impact.path.some((id, index) => id === relation.to && impact.path[index + 1] === relation.from))).map((relation) => relation.id));
-  relations.forEach((relation) => graph.setEdge(reversedIds.has(relation.id) ? relation.to : relation.from, reversedIds.has(relation.id) ? relation.from : relation.to, { weight: relation.kind === "contains" ? 3 : 1 }, relation.id));
+  // Architecture ranks express containment. Power/dependency cycles must not
+  // turn sibling subsystems into a fake serial hierarchy.
+  relations.filter((relation) => analysis || mode === "relationships" || relation.kind === "contains").forEach((relation) => graph.setEdge(reversedIds.has(relation.id) ? relation.to : relation.from, reversedIds.has(relation.id) ? relation.from : relation.to, { weight: 3 }, relation.id));
   // A parentId carries containment too. This affects layout only; it is never evidence for impact.
   const containmentIds = new Set<string>();
   entities.forEach((entity) => {
-    if (!analysis && entity.parentId && visible.has(entity.parentId) && !relations.some((relation) => relation.from === entity.parentId && relation.to === entity.id)) {
+    if (!analysis && mode === "hierarchy" && entity.parentId && visible.has(entity.parentId) && !relations.some((relation) => relation.kind === "contains" && relation.from === entity.parentId && relation.to === entity.id)) {
       graph.setEdge(entity.parentId, entity.id, { weight: 3 }, `parent:${entity.id}`);
       containmentIds.add(entity.id);
     }
@@ -59,7 +104,7 @@ export function layoutEngineeringGraph(model: EngineeringSystemModel, entities: 
   return {
     width: Math.max(286, graph.graph().width ?? 286), height: Math.max(206, graph.graph().height ?? 206),
     nodes: entities.map((entity) => ({ entity, x: graph.node(entity.id).x - ENGINEERING_NODE_WIDTH / 2, y: graph.node(entity.id).y - ENGINEERING_NODE_HEIGHT / 2 })),
-    edges: relations.map((relation) => ({ relation, reversed: reversedIds.has(relation.id), points: graph.edge({ v: reversedIds.has(relation.id) ? relation.to : relation.from, w: reversedIds.has(relation.id) ? relation.from : relation.to, name: relation.id }).points as Array<{ x: number; y: number }> })),
+    edges: relations.map((relation) => ({ relation, reversed: reversedIds.has(relation.id), points: (graph.edge({ v: reversedIds.has(relation.id) ? relation.to : relation.from, w: reversedIds.has(relation.id) ? relation.from : relation.to, name: relation.id })?.points ?? []) as Array<{ x: number; y: number }> })),
     containments: entities.filter((entity) => containmentIds.has(entity.id)).map((entity) => ({ id: entity.id, points: graph.edge({ v: entity.parentId!, w: entity.id, name: `parent:${entity.id}` }).points as Array<{ x: number; y: number }> }))
   };
 }
@@ -96,6 +141,7 @@ export function editEngineeringRequirement(original: EngineeringRequirement, pat
 
 /** Project the analyzed values for display; no scenario ever writes its baseline. */
 export function projectEngineeringScenario(model: EngineeringSystemModel, analysis: EngineeringAnalysis): EngineeringSystemModel {
+  if (analysis.baseline) model = { ...model, ...analysis.baseline };
   const changed = analysis.change.newValues.map((property, index) => ({ ...property, source: "user" as const, evidenceRefs: property.evidenceRefs.length ? property.evidenceRefs : [`change:${analysis.change.id}:${index}`] }));
   const projectProperties = (id: string, properties: EngineeringProperty[]) => {
     let projected = properties;

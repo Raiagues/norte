@@ -207,6 +207,16 @@ The browser demo exposes `resetDemoValidationData('RESET_VALIDATION_DATA')` from
 
 **Current technical measurements:** per-case dependency recall, critical-impact precision, calculation accuracy, unsupported-claim rate, traceability coverage and requirement-impact recall. Browser checks also record interaction count and local fixture timings. **Planned human evaluation:** task completion time, missed/false impacts, source lookups and decision confidence with documents versus Norte. Browser timings are not student study results.
 
+## System and Discovery navigation
+
+System has a searchable hierarchy on the left and a docked requirements list on the right. Drag cards (or use Alt + arrow keys); their positions persist per view without changing engineering facts. Use **Explore** to enter a level, **All levels** to see the complete saved model, and **Element relationships** to follow an element's interfaces across subsystem boundaries. Structure and technical relationships can be shown independently. Fit and reset layout remain available.
+
+Discovery exposes creation, connection, duplication, deletion and **Test a change** directly in its toolbar. Every idea offers **See impact**: recognized engineering changes open their analysis; other ideas open the explicit element/property picker. **System elements** lists the current model's available targets.
+
+If the saved interpretation is incomplete, **Review documents** can request a fresh interpretation of the linked sources. Opening the dialog does not run extraction. A preview does not change the project; **Use this interpretation** explicitly applies it and records object changes in correction history. Existing scenarios carry their previous architecture when a reinterpretation is applied. The interface does not invent missing systems or promise that extraction covered every document.
+
+See [the interaction validation record](docs/SYSTEM_WORKSPACE_INTERACTIONS.md) for tested behavior and the remaining live-provider check.
+
 ## Security
 
 Gemini credentials stay on the server. Artifact content is untrusted data, rendered as text, and cannot supply model instructions. External links are not fetched arbitrarily. Unsupported file formats must remain explicitly unparsed; missing evidence cannot justify an invented critical conflict.
