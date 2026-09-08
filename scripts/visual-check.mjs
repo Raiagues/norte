@@ -1,4 +1,4 @@
-/* global document, window, clearTimeout */
+/* global document, window */
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -182,9 +182,9 @@ try {
   await page.locator(".lab-composer textarea").press("Enter");
   await page.locator(".lab-composer textarea").press("Escape");
   await page.locator(".lab-node").getByRole("button", { name: "Ver impacto" }).click();
-  assert.equal(await page.getByLabel("Novo valor", { exact: true }).inputValue(), "280");
-  await page.getByRole("button", { name: "Ver consequências" }).click();
   await page.locator(".engineering-scenario").waitFor();
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  assert.ok((await node("payload").innerText()).includes("280"));
   assert.equal(await node("radio").count(), 0);
   assert.ok((await page.locator(".engineering-requirement-impact").innerText()).includes("Conflito"));
   await page.screenshot({ path: "/tmp/norte-discovery-impact.png", fullPage: true });

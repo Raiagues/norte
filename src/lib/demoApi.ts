@@ -1,12 +1,13 @@
 import { completeConception, createEmptyProject } from "./projectStore";
 import type { MissionProject } from "./projectStore";
 import type { ConnectedArtifact, DirectoryMember, ProjectSummary, SessionUser, TeamMember, TeamProjectSummary, TeamRecord } from "./team";
+import { createQuetzalArtifacts, QUETZAL_PROJECT_ID, QUETZAL_PROJECT_NAME, contextDocuments } from "../../benchmark/quetzal1/context/design-context.mjs";
 
 const STORAGE_KEY = "norte-pages-demo-v2";
 const LEGACY_STORAGE_KEY = "norte-pages-demo-v1";
 const DEMO_SCHEMA_VERSION = 6;
 const TEAM_ID = "team-norte-validation";
-const PROJECT_ID = "engineering-validation-project";
+const PROJECT_ID = QUETZAL_PROJECT_ID;
 const avatarUrl = `${import.meta.env.BASE_URL}profiles/emily-raiane.png`;
 
 type DemoState = {
@@ -45,8 +46,8 @@ function initialState(): DemoState {
   const now = timestamp();
   const blank = createEmptyProject("pt");
   const project: MissionProject = {
-    ...blank, id: PROJECT_ID, name: "Engineering Validation Project", createdAt: now, updatedAt: now,
-    context: { ...blank.context, teamId: TEAM_ID, teamName: "Norte Validation Team" }
+    ...blank, id: PROJECT_ID, name: QUETZAL_PROJECT_NAME, createdAt: now, updatedAt: now, memoryRevision: 1,
+    context: { ...blank.context, teamId: TEAM_ID, teamName: "Norte Validation Team", projectArtifactIds: contextDocuments.map((document) => document.id), assignments: [{ memberId: DEMO_USER.memberId, roleId: "captain", sectorId: "" }] }
   };
   const members: TeamMember[] = [{
     id: DEMO_USER.memberId, accountId: DEMO_USER.id, displayName: DEMO_USER.name,
@@ -59,7 +60,7 @@ function initialState(): DemoState {
     artifactIds: [], joinRequests: [], createdBy: DEMO_USER.id, createdAt: now, updatedAt: now,
     membership: "member", canManage: true
   }];
-  return { schemaVersion: DEMO_SCHEMA_VERSION, members, artifacts: [], teams, projects: { [project.id]: project }, project, labs: {} };
+  return { schemaVersion: DEMO_SCHEMA_VERSION, members, artifacts: createQuetzalArtifacts(PROJECT_ID, now, DEMO_USER.id), teams, projects: { [project.id]: project }, project, labs: {} };
 }
 
 function normalizeState(value: Partial<DemoState>): DemoState {
@@ -95,30 +96,23 @@ export function resetDemoValidationData(confirmation: string): void {
 }
 
 /** Explicit example loading is available only in the browser demo/test environment. */
-export async function loadEngineeringValidationExample(confirmation: string): Promise<MissionProject> {
-  if (confirmation !== "LOAD_ENGINEERING_VALIDATION") throw new Error("Explicit engineering example confirmation is required.");
+export async function loadQuetzalValidationExample(confirmation: string): Promise<MissionProject> {
+  if (confirmation !== "LOAD_QUETZAL_VALIDATION") throw new Error("Explicit engineering example confirmation is required.");
   if (import.meta.env.VITE_DEMO_MODE !== "true" && import.meta.env.MODE !== "test") throw new Error("Load this example in the frontend demo: start Vite with VITE_DEMO_MODE=true.");
-  const { createEngineeringValidationModel, validationMemoryText } = await import("../../examples/engineering-validation.mjs");
+  const { createQuetzalDesignModel } = await import("../../benchmark/quetzal1/context/design-context.mjs");
   const previous = readState();
   if (previous.project?.id !== PROJECT_ID || !previous.projects[PROJECT_ID] || previous.project.context.teamId !== TEAM_ID) {
-    throw new Error("Open Engineering Validation Project before loading the engineering example.");
+    throw new Error("Open Quetzal-1 EPS + COMMS before loading its design preview.");
   }
   const state = structuredClone(previous);
   const now = timestamp();
-  const sourceId = "validation-memory";
-  const source: ConnectedArtifact = {
-    id: sourceId, kind: "document", label: "Explicit engineering validation fixture",
-    description: "Synthetic facts for a deliberately loaded validation example.",
-    url: `data:text/plain;base64,${btoa(validationMemoryText)}`, fileName: "engineering-validation.txt", mimeType: "text/plain",
-    size: new TextEncoder().encode(validationMemoryText).length, tags: ["synthetic", "validation"],
-    official: false, scope: "project", ownerId: PROJECT_ID, createdBy: DEMO_USER.id, connectedAt: now, updatedAt: now
-  };
-  state.artifacts = [...state.artifacts.filter((artifact) => artifact.id !== sourceId), source];
+  const sources = createQuetzalArtifacts(PROJECT_ID, now, DEMO_USER.id);
+  state.artifacts = [...state.artifacts.filter((artifact) => !sources.some((source) => source.id === artifact.id)), ...sources];
   const project = state.projects[PROJECT_ID];
   project.memoryRevision = (project.memoryRevision || 0) + 1;
   project.updatedAt = now;
-  project.context.projectArtifactIds = [...new Set([...project.context.projectArtifactIds, sourceId])];
-  const model = createEngineeringValidationModel();
+  project.context.projectArtifactIds = [...new Set([...project.context.projectArtifactIds, ...sources.map((source) => source.id)])];
+  const model = createQuetzalDesignModel();
   model.generatedFromRevision = project.memoryRevision;
   model.generatedAt = now;
   state.project = completeConception(project, model);

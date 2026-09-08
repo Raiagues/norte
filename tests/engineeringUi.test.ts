@@ -9,6 +9,7 @@ import { SystemWorkspace, EngineeringScenario, EngineeringWhatIf } from "../src/
 import { EngineeringEntityInfo, EngineeringRequirements } from "../src/components/EngineeringDetails";
 import { analyzeImpact } from "../src/lib/impactEngine";
 import { createEngineeringValidationModel, validationChange } from "../examples/engineering-validation.mjs";
+import { createQuetzalDesignModel } from "../benchmark/quetzal1/context/design-context.mjs";
 
 const entity = (id: string, kind: EngineeringEntity["kind"], parentId?: string): EngineeringEntity => ({ id, name: id, kind, ...(parentId ? { parentId } : {}), description: "", properties: [], source: "documented", confidence: 1, evidenceRefs: ["datasheet"] });
 const model: EngineeringSystemModel = {
@@ -31,6 +32,8 @@ describe("engineering architecture and traceability", () => {
     expect(engineeringInitialScale({ width: 316, height: 620 }, dimensions)).toBe(.72);
     expect(engineeringInitialScale({ width: 316, height: 620 }, dimensions, true)).toBeLessThan(.3);
     expect(engineeringInitialScale({ width: 1320, height: 740 }, dimensions)).toBe(engineeringInitialScale({ width: 1320, height: 740 }, dimensions, true));
+    expect(engineeringInitialScale({ width: 1320, height: 740 }, { width: 900, height: 1600 }, false, true)).toBe(.72);
+    expect(engineeringInitialScale({ width: 1320, height: 740 }, { width: 900, height: 1600 }, true, true)).toBeLessThan(.5);
   });
   it("keeps the macro view small and requirements outside every graph level", () => {
     expect(systemVisibleEntities(model, null).map((item) => item.id)).toEqual(["system", "power", "communications"]);
@@ -109,10 +112,29 @@ describe("engineering architecture and traceability", () => {
     const baseline = createEngineeringValidationModel();
     const analysis = analyzeImpact(baseline, validationChange());
     const projected = projectEngineeringScenario(baseline, analysis);
+    projected.relations.push({ ...baseline.relations.find((relation) => relation.id === "regulator-radio")!, id: "context-only", kind: "connects_to" });
     const relevant = new Set(analysis.impacts.filter((impact) => impact.status !== "unaffected").flatMap((impact) => [impact.entityId, ...impact.path]));
     const graph = layoutEngineeringGraph(projected, systemVisibleEntities(projected, null, relevant), analysis);
     expect(graph.nodes.find((node) => node.entity.id === "radio")!.y).toBeLessThan(graph.nodes.find((node) => node.entity.id === "regulator")!.y);
     expect(graph.edges.find((edge) => edge.relation.id === "regulator-radio")).toMatchObject({ reversed: true, relation: { from: "regulator", to: "radio", kind: "powers" } });
+    expect(graph.edges.some((edge) => edge.relation.id === "context-only")).toBe(false);
+  });
+
+  it("shows numeric results for reviewed energy balance without assigning that upstream result to the battery", () => {
+    const baseline = createQuetzalDesignModel();
+    const radio = baseline.entities.find((item) => item.id === "radio")!;
+    const duty = radio.properties.find((property) => property.key === "tx_duty_cycle")!;
+    const analysis = analyzeImpact(baseline, { ...validationChange(), oldValues: radio.properties, newValues: [{ ...duty, value: 100, source: "user", evidenceRefs: [] }] });
+    const projected = projectEngineeringScenario(baseline, analysis);
+    const properties = (id: string) => projected.entities.find((item) => item.id === id)!.properties;
+    expect(analysis.impacts.find((impact) => impact.entityId === "energy-balance")?.status).toBe("review");
+    expect(properties("comms-average").find((property) => property.key === "average_power")?.value).toBeCloseTo(2.64);
+    expect(properties("power-budget").find((property) => property.key === "total_power")?.value).toBeCloseTo(3.55111504);
+    expect(properties("energy-balance").find((property) => property.key === "power_margin")?.value).toBeCloseTo(-1.97111504);
+    expect(properties("battery").some((property) => property.key === "power_margin")).toBe(false);
+    const html = render(createElement(EngineeringScenario, { language: "en", model: baseline, analysis, onClear: noop }));
+    expect(html).toContain("3.5511 W");
+    expect(html).toContain("-1.9711 W");
   });
 
   it("records revised values as team inputs while retaining the original documentary source, and keeps containment consistent", () => {
@@ -181,5 +203,19 @@ describe("calm and explicit engineering controls", () => {
     expect(html).not.toContain('data-entity-id="system"');
     expect(html).not.toContain('data-entity-id="req-duration"');
     expect(JSON.stringify(model)).toBe(before);
+  });
+
+  it("keeps a critical requirement visible when more than three requirements are affected", () => {
+    const baseline = createEngineeringValidationModel();
+    const critical = baseline.requirements[0];
+    baseline.requirements = [...Array.from({ length: 3 }, (_, index) => ({ ...critical, id: `lenient-${index}`, title: `Lenient target ${index}`, properties: critical.properties.map((property) => ({ ...property, value: 10 })) })), critical];
+    const before = JSON.stringify(baseline);
+    const analysis = analyzeImpact(baseline, validationChange("operating_power", 2, "W"), "en");
+    const html = render(createElement(EngineeringScenario, { language: "en", model: baseline, analysis, onClear: noop }));
+    const chips = [...html.matchAll(/class="engineering-requirement-impact status-([a-z]+)"/gu)];
+    expect(chips).toHaveLength(3);
+    expect(chips[0][1]).toBe("critical");
+    expect(html).toContain("4 requirements affected");
+    expect(JSON.stringify(baseline)).toBe(before);
   });
 });

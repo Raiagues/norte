@@ -1,53 +1,50 @@
-# Engineering validation example
+# Validation examples
 
-[`engineering-validation.mjs`](engineering-validation.mjs) contains a deliberately synthetic physical system and its source text. It has 15 entities, two requirements and explicit current, power, energy and mass relationships. Nothing in this example is a production engineering fact.
+The primary application context is **Quetzal-1 EPS + COMMS**. Its source inventory, licenses, design/holdout separation and reproduction instructions are in [VALIDATION_QUETZAL1.md](../docs/VALIDATION_QUETZAL1.md).
 
-The normal application starts with an empty validation project. Neither startup nor failed document extraction loads this fixture.
+## Full application
 
-To test the real document-extraction flow, deliberately attach [`engineering-validation.txt`](engineering-validation.txt) in Project Memory and select **Start conception** with Gemini configured on the server. [`engineering-validation.json`](engineering-validation.json) is a static fixture for scripts and tests; the UI does not automatically import it.
+Start the API and client with `npm run dev` after configuring the server-side Gemini key. Fresh or explicitly reset development data already contains the two curated design documents. Open Quetzal-1, select **Start conception**, inspect System, then use the normal Discovery interaction to express a TX duty change.
 
-## Try the frontend locally
+The application receives only design context. It does not receive the benchmark answers, flight observations or a pre-generated architecture. A source URL is attribution; the full on-orbit paper is deliberately not attached because it contains holdout outcomes.
 
-Start the browser-only demo with the repository's Node version:
+## Browser-only preview
+
+GitHub Pages cannot execute the private extraction service. For local interface development, an explicit preview loads the separately curated design model; this is **not an extraction prediction**.
 
 ```bash
 VITE_DEMO_MODE=true npm run dev:web
 ```
 
-Open `http://127.0.0.1:5173/norte/` and select **Engineering Validation Project**. In the browser's developer console, run:
+Open `http://127.0.0.1:5173/norte/`. To replace old demo state with the new context, run this explicit, backed-up reset in the browser developer console:
+
+```js
+const demo = await import('/norte/src/lib/demoApi.ts');
+demo.resetDemoValidationData('RESET_VALIDATION_DATA');
+location.reload();
+```
+
+Then deliberately load the design preview:
 
 ```js
 await (await import('/norte/src/lib/demoApi.ts'))
-  .loadEngineeringValidationExample('LOAD_ENGINEERING_VALIDATION');
+  .loadQuetzalValidationExample('LOAD_QUETZAL_VALIDATION');
 location.reload();
 ```
 
-This development-server import deliberately attaches the synthetic text source, persists its system model and unlocks Conception for the active validation project. It backs up the previous demo state in browser storage. It refuses other active projects and the full production client. The import path assumes the default `/norte/` base; it is a local Vite command, not a GitHub Pages production URL.
+Open the Quetzal project. The preview backs up the previous browser state, attaches only design context and opens System. It refuses other active projects and the full production client. These import paths are local Vite development commands, not deployed Pages URLs.
 
-Open **System** to inspect the architecture. Try these changes in a scenario:
+## Regression fixtures
 
-| Change | Expected result |
-| --- | --- |
-| Radio peak current → `1.2 A` | Regulator critical: required current exceeds `800 mA`. |
-| Radio peak current → `600 mA` | Regulator compatible with that current constraint. |
-| Radio operating power → `1 W` | Autonomy calculation yields `80 min`, below the `90 min` requirement. |
-| Payload mass → `280 g` | Total mass becomes `380 g`, above the `350 g` requirement. |
+`engineering-validation.mjs`, `.json` and `.txt` describe the older, deliberately synthetic 15-entity rig used by engine/API regression tests. They test electrical compatibility, mass and autonomy rules independently of Quetzal. They are not seeded into the application and are not flight ground truth.
 
-Clear the scenario to return to the unchanged baseline. These results validate the declared fixture assumptions and the implemented rules; they do not validate an actual product.
-
-To explicitly restore a clean browser validation state, run this local Vite console command and reload:
-
-```js
-(await import('/norte/src/lib/demoApi.ts'))
-  .resetDemoValidationData('RESET_VALIDATION_DATA');
-location.reload();
-```
-
-## Test the model
+## Evaluation
 
 ```bash
-node --test server/impact-engine.test.mjs
-npx vitest run tests/demoApi.test.ts
+npm run benchmark:quetzal
+npm run benchmark:quetzal -- --prediction path/to/model.json
+npm run benchmark:structural
+npm run test:visual:quetzal
 ```
 
-The legacy Arduino example in its own subdirectory remains an optional reference. It is not part of the neutral validation seed.
+The deterministic benchmark and browser test isolate different uncertainties. Only a supplied provider prediction measures A0 (curated-context extraction). A1 raw-artifact extraction remains future work. The masked C2 uses a separate synthetic structure and perturbed values; it measures the generic deterministic engine, not foundation-model generalization. Reference answers remain provisional until independent engineering review under [V0.1](../docs/VALIDATED.md); browser fixture timings do not measure end-user learning or mission accuracy.

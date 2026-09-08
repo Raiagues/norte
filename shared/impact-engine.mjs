@@ -6,14 +6,23 @@ const UNITS = {
   W: ["power", 1, "W"], mW: ["power", 0.001, "W"], kW: ["power", 1000, "W"],
   g: ["mass", 1, "g"], kg: ["mass", 1000, "g"], mg: ["mass", 0.001, "g"],
   min: ["time", 1, "min"], h: ["time", 60, "min"], s: ["time", 1 / 60, "min"],
-  Wh: ["energy", 1, "Wh"], mWh: ["energy", 0.001, "Wh"], kWh: ["energy", 1000, "Wh"], J: ["energy", 1 / 3600, "Wh"]
+  Wh: ["energy", 1, "Wh"], mWh: ["energy", 0.001, "Wh"], kWh: ["energy", 1000, "Wh"], J: ["energy", 1 / 3600, "Wh"],
+  "%": ["ratio", 0.01, "1"], "1": ["ratio", 1, "1"], "×": ["multiplier", 1, "1"]
 };
+const REQUIREMENT_RULES = [
+  ["time", ["estimated_autonomy", "autonomy"], ["minimum_autonomy", "min_autonomy"], true],
+  ["mass", ["total_mass", "mass"], ["maximum_mass", "max_mass"], false],
+  ["power", ["total_power", "power"], ["maximum_power", "max_power"], false],
+  ["power", ["power_margin"], ["minimum_power_margin"], true, true],
+  ["energy", ["energy_margin"], ["minimum_energy_margin"], true, true]
+];
 const unique = (items) => [...new Set(items)];
 const tidy = (value) => Math.round(value * 1e9) / 1e9;
+const displayNumber = (value) => Number(value.toPrecision(12)).toString();
 const key = (value) => value.replace(/([a-z])([A-Z])/gu, "$1_$2").toLowerCase().replace(/[ -]+/gu, "_");
 export function normalizeQuantity(value, unit) {
   const definition = UNITS[unit];
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 && definition ? { value: tidy(value * definition[1]), dimension: definition[0], unit: definition[2] } : null;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && definition && (unit !== "%" || value <= 100) ? { value: value * definition[1], dimension: definition[0], unit: definition[2] } : null;
 }
 
 /** Causal directions follow relation meaning, never visual position or graph proximity. */
@@ -33,8 +42,12 @@ export function impactEdges(model) {
   return edges;
 }
 
-function reachable(model, targetId) {
-  const edges = impactEdges(model);
+function reachable(model, targetId, { powers = "both", stopAtCalculations = false } = {}) {
+  const relations = new Map(model.relations.map((item) => [item.id, item]));
+  const edges = impactEdges(model).filter((edge) => {
+    const relation = relations.get(edge.id);
+    return relation?.kind !== "powers" || (powers !== "none" && (powers !== "forward" || relation.from === edge.from));
+  });
   // A changed requirement starts at the objects that are explicitly traced to it.
   if (model.requirements.some((item) => item.id === targetId)) edges.push(...edges.filter((edge) => edge.to === targetId).map((edge) => ({ ...edge, from: edge.to, to: edge.from })));
   const paths = new Map([[targetId, { path: [targetId], edges: [] }]]);
@@ -43,6 +56,7 @@ function reachable(model, targetId) {
     const current = queue[index];
     for (const edge of edges.filter((item) => item.from === current)) {
       if (paths.has(edge.to)) continue;
+      if (stopAtCalculations && model.entities.some((item) => item.id === edge.to && ["calculation", "performance"].includes(item.kind))) continue;
       const previous = paths.get(current);
       paths.set(edge.to, { path: [...previous.path, edge.to], edges: [...previous.edges, edge] });
       queue.push(edge.to);
@@ -73,53 +87,98 @@ export function analyzeImpact(model, change, language = "en") {
   // Replacement characteristics are unknown unless the scenario supplies them.
   target.properties = change.kind === "replace_component" ? changedValues : [...target.properties.filter((property) => !changedValues.some((next) => next.key === property.key)), ...changedValues];
   if (changedValues.some((property) => /current|voltage/u.test(key(property.key)))) target.properties = target.properties.filter((property) => !["operating_power", "power", "required_power"].includes(key(property.key)) || changedValues.some((next) => next.key === property.key));
+  if (changedValues.some((property) => ["tx_duty_cycle", "tx_power", "rx_power"].includes(key(property.key)))) target.properties = target.properties.filter((property) => !["average_power", "operating_power", "power", "required_power"].includes(key(property.key)) || changedValues.some((next) => next.key === property.key));
+  if (changedValues.some((property) => key(property.key) === "duty_cycle")) target.properties = target.properties.filter((property) => key(property.key) !== "average_power" || changedValues.some((next) => next.key === property.key));
   if (change.replacementName) target.name = change.replacementName;
-  const paths = reachable(model, target.id);
+  const dutyOnly = change.kind === "parameter" && changedValues.length > 0 && changedValues.every((property) => ["tx_duty_cycle", "duty_cycle"].includes(key(property.key))) && model.entities.some((entity) => entity.properties.some((property) => key(property.key) === "formula" && ["duty_cycle_power", "duty_cycle_load"].includes(property.value)) && (entity.id === target.id || model.relations.some((relation) => (relation.from === entity.id && relation.to === target.id && ["derived_from", "depends_on"].includes(relation.kind)) || (relation.from === target.id && relation.to === entity.id && relation.kind === "contributes_to"))));
+  // Activity duration changes the average budget, not every sibling load or
+  // instantaneous supply limit. Follow the declared calculation/impact chain.
+  const paths = reachable(model, target.id, { powers: dutyOnly ? "none" : "both" });
   const changedDimensions = new Set(change.newValues.flatMap((property) => {
     const propertyKey = key(property.key);
-    return ["current", "voltage", "power", "mass", "autonomy", "energy"].filter((dimension) => propertyKey.includes(dimension));
+    return [...["current", "voltage", "power", "mass", "autonomy", "energy"].filter((dimension) => propertyKey.includes(dimension)), ...(["tx_duty_cycle", "duty_cycle"].includes(propertyKey) ? ["power"] : [])];
   }));
   const relevantElectrical = (dimension) => change.kind === "replace_component" || changedDimensions.has(dimension);
 
   const evidenceValid = (refs) => refs.length > 0 && refs.every((ref) => ["fact", "user", "calculation"].includes(evidenceById.get(ref)?.kind));
-  const find = (object, keys) => object?.properties.find((property) => keys.includes(key(property.key)));
-  function input(object, keys, dimension) {
+  // A recorded hypothesis may extend a review path after a proven deficit. It
+  // cannot supply a numerical premise or upgrade any compatibility verdict.
+  const reviewEdgeSupported = (edge) => evidenceValid(edge.evidenceRefs) || edge.source === "inferred" && edge.evidenceRefs.length > 0 && edge.evidenceRefs.every((ref) => evidenceById.has(ref));
+  const find = (object, keys) => keys.map((candidate) => object?.properties.find((property) => candidate === key(property.key))).find(Boolean);
+  function input(object, keys, dimension, signed = false) {
     const property = find(object, keys);
-    const quantity = property && normalizeQuantity(property.value, property.unit);
-    if (!quantity || quantity.dimension !== dimension || !["documented", "calculated", "user"].includes(property.source) || !evidenceValid(property.evidenceRefs)) return null;
-    return { entityId: object.id, propertyKey: property.key, value: quantity.value, unit: quantity.unit, evidenceRefs: property.evidenceRefs };
+    const quantity = property && normalizeQuantity(signed && typeof property.value === "number" ? Math.abs(property.value) : property.value, property.unit);
+    if (!quantity || (dimension === "multiplier" ? !["ratio", "multiplier"].includes(quantity.dimension) : quantity.dimension !== dimension) || (dimension === "ratio" && quantity.value > 1) || !["documented", "calculated", "user"].includes(property.source) || !evidenceValid(property.evidenceRefs)) return null;
+    return { entityId: object.id, propertyKey: property.key, value: signed && property.value < 0 ? -quantity.value : quantity.value, unit: quantity.unit, evidenceRefs: property.evidenceRefs };
   }
   const calculations = [];
   const results = new Map();
+  const deficitResults = new Map();
   function calculate(object, ruleId, inputs, value, unit, expression) {
     const calculation = { ruleId, inputs, expression, result: value, ...(unit ? { unit } : {}), evidenceRefs: unique(inputs.flatMap((item) => item.evidenceRefs)) };
     calculations.push(calculation);
     results.set(object.id, calculation);
     return calculation;
   }
+  // Resolve documented upstream formula inputs as well as the affected formulas.
+  // An unchanged heater's duty-weighted load can be needed by a changed total;
+  // calculating that input does not label the heater as affected by the change.
+  const formulaDependencies = (id) => model.relations.filter((relation) => (relation.to === id && relation.kind === "contributes_to") || (relation.from === id && ["derived_from", "depends_on"].includes(relation.kind)));
+  const neededFormulaIds = new Set(model.entities.filter((item) => paths.has(item.id) && find(item, ["formula"])).map((item) => item.id));
+  const prerequisiteQueue = [...neededFormulaIds];
+  for (let index = 0; index < prerequisiteQueue.length; index += 1) {
+    const id = prerequisiteQueue[index];
+    for (const relation of formulaDependencies(id)) {
+      const dependencyId = relation.from === id ? relation.to : relation.from;
+      if (!neededFormulaIds.has(dependencyId) && find(objects.get(dependencyId), ["formula"])) { neededFormulaIds.add(dependencyId); prerequisiteQueue.push(dependencyId); }
+    }
+  }
   // A formula is only evaluated when the baseline explicitly declares it and its inputs.
-  const formulaEntities = model.entities.filter((item) => paths.has(item.id) && find(item, ["formula"]));
+  const formulaEntities = model.entities.filter((item) => neededFormulaIds.has(item.id));
   for (let pass = 0; pass < formulaEntities.length; pass += 1) {
     for (const original of formulaEntities) {
       const object = objects.get(original.id);
       if (results.has(object.id)) continue;
       const formulaProperty = find(object, ["formula"]);
       if (!evidenceValid(formulaProperty.evidenceRefs) || formulaProperty.source === "inferred") continue;
-      const dependencies = model.relations.filter((relation) => (relation.to === object.id && relation.kind === "contributes_to") || (relation.from === object.id && ["derived_from", "depends_on"].includes(relation.kind)));
-      if (!dependencies.length || dependencies.some((relation) => relation.source === "inferred" || !evidenceValid(relation.evidenceRefs))) continue;
+      const formula = formulaProperty.value;
+      const dependencies = formulaDependencies(object.id);
+      if ((!dependencies.length && !["duty_cycle_power", "duty_cycle_load"].includes(formula)) || dependencies.some((relation) => relation.source === "inferred" || !evidenceValid(relation.evidenceRefs))) continue;
       const dependenciesReady = dependencies.every((relation) => { const id = relation.from === object.id ? relation.to : relation.from; return !formulaEntities.some((item) => item.id === id) || results.has(id); });
       if (!dependenciesReady) continue;
-      const sources = dependencies.map((relation) => objects.get(relation.from === object.id ? relation.to : relation.from));
-      const formula = formulaProperty.value;
+      const sources = dependencies.length ? unique(dependencies.map((relation) => relation.from === object.id ? relation.to : relation.from)).map((id) => objects.get(id)) : [object];
       let inputs;
       let result;
       let resultKey;
       let unit;
-      if (formula === "sum_power" || formula === "sum_mass") {
+      let expression;
+      if (formula === "duty_cycle_load") {
+        if (sources.length !== 1) continue;
+        const active = input(sources[0], ["operating_power", "active_power"], "power");
+        const duty = input(sources[0], ["duty_cycle"], "ratio");
+        if (!active || !duty) continue;
+        inputs = [active, duty];
+        result = active.value * duty.value;
+        resultKey = "average_power";
+        unit = "W";
+        expression = `${displayNumber(active.value)} W × ${displayNumber(duty.value * 100)}% = ${displayNumber(result)} W`;
+      } else if (formula === "duty_cycle_power") {
+        if (sources.length !== 1) continue;
+        const transmit = input(sources[0], ["tx_power"], "power");
+        const receive = input(sources[0], ["rx_power"], "power");
+        const duty = input(sources[0], ["tx_duty_cycle"], "ratio");
+        if (!transmit || !receive || !duty) continue;
+        inputs = [transmit, receive, duty];
+        result = transmit.value * duty.value + receive.value * (1 - duty.value);
+        resultKey = "average_power";
+        unit = "W";
+        expression = `${displayNumber(transmit.value)} W × ${displayNumber(duty.value * 100)}% + ${displayNumber(receive.value)} W × ${displayNumber((1 - duty.value) * 100)}% = ${displayNumber(result)} W`;
+      } else if (formula === "sum_power" || formula === "sum_mass") {
         const mass = formula === "sum_mass";
-        inputs = sources.map((source) => input(source, mass ? ["mass", "total_mass"] : ["operating_power", "required_power", "power", "total_power"], mass ? "mass" : "power"));
+        inputs = sources.map((source) => input(source, mass ? ["mass", "total_mass"] : ["average_power", "total_power", "operating_power", "required_power", "power"], mass ? "mass" : "power"));
         if (inputs.some((item) => !item)) continue;
-        result = tidy(inputs.reduce((total, item) => total + item.value, 0));
+        result = inputs.reduce((total, item) => total + item.value, 0);
+        if (mass) result = tidy(result);
         resultKey = mass ? "total_mass" : "total_power";
         unit = mass ? "g" : "W";
       } else if (formula === "energy_over_power") {
@@ -130,15 +189,62 @@ export function analyzeImpact(model, change, language = "en") {
         result = tidy(energies[0].value / powers[0].value * 60);
         resultKey = "estimated_autonomy";
         unit = "min";
+        expression = `${inputs[0].value} Wh / ${inputs[1].value} W × 60 = ${result} min`;
+      } else if (formula === "energy_balance") {
+        if (sources.length !== 2) continue;
+        const generation = sources.map((source) => input(source, ["generated_power", "available_power"], "power")).filter(Boolean);
+        const demand = sources.map((source) => input(source, ["total_power", "average_power", "operating_power", "required_power"], "power")).filter(Boolean);
+        const generatedEnergy = sources.map((source) => input(source, ["generated_energy"], "energy")).filter(Boolean);
+        const consumedEnergy = sources.map((source) => input(source, ["consumed_energy"], "energy")).filter(Boolean);
+        if (generation.length === 1 && demand.length === 1 && generation[0].entityId !== demand[0].entityId) {
+          inputs = [generation[0], demand[0]]; unit = "W"; resultKey = "power_margin";
+        } else if (generatedEnergy.length === 1 && consumedEnergy.length === 1 && generatedEnergy[0].entityId !== consumedEnergy[0].entityId) {
+          inputs = [generatedEnergy[0], consumedEnergy[0]]; unit = "Wh"; resultKey = "energy_margin";
+        } else continue;
+        result = inputs[0].value - inputs[1].value;
+        expression = `${displayNumber(inputs[0].value)} ${unit} − ${displayNumber(inputs[1].value)} ${unit} = ${displayNumber(result)} ${unit}`;
       } else continue;
-      const calc = calculate(object, formula, inputs, result, unit, formula === "energy_over_power" ? `${inputs[0].value} Wh / ${inputs[1].value} W × 60 = ${result} min` : `${inputs.map((item) => `${item.value} ${item.unit}`).join(" + ")} = ${result} ${unit}`);
+      const multiplierProperty = ["sum_power", "duty_cycle_power", "duty_cycle_load"].includes(formula) && find(object, ["power_margin_multiplier"]);
+      if (multiplierProperty) {
+        const multiplier = input(object, ["power_margin_multiplier"], "multiplier");
+        if (!multiplier || multiplier.value < 1) continue;
+        const base = result;
+        result *= multiplier.value;
+        expression = `(${expression || inputs.map((item) => `${displayNumber(item.value)} ${item.unit}`).join(" + ")}) × ${displayNumber(multiplier.value)} = ${displayNumber(result)} W`;
+        if (formula === "duty_cycle_power") expression = `${displayNumber(base)} W × ${displayNumber(multiplier.value)} = ${displayNumber(result)} W`;
+        inputs = [...inputs, multiplier];
+      }
+      const calc = calculate(object, formula, inputs, result, unit, expression || `${inputs.map((item) => `${displayNumber(item.value)} ${item.unit}`).join(" + ")} = ${displayNumber(result)} ${unit}`);
       calc.evidenceRefs = unique([...calc.evidenceRefs, ...formulaProperty.evidenceRefs, ...dependencies.flatMap((relation) => relation.evidenceRefs)]);
       object.properties = [...object.properties.filter((property) => key(property.key) !== resultKey), { key: resultKey, name: resultKey, value: result, unit, source: "calculated", evidenceRefs: calc.evidenceRefs }];
+      if (formula === "energy_balance") {
+        if (result < 0) deficitResults.set(object.id, calc);
+        const duration = input(object, ["analysis_duration"], "time");
+        if (unit === "W" && duration && duration.value > 0) {
+          const energy = result * duration.value / 60;
+          const period = { entityId: object.id, propertyKey: "power_margin", value: result, unit: "W", evidenceRefs: calc.evidenceRefs };
+          const interval = calculate(object, "energy_over_interval", [period, duration], energy, "Wh", `${displayNumber(result)} W × ${displayNumber(duration.value / 60)} h = ${displayNumber(energy)} Wh`);
+          object.properties = [...object.properties.filter((property) => key(property.key) !== "energy_margin"), { key: "energy_margin", name: "Energy margin", value: energy, unit: "Wh", source: "calculated", evidenceRefs: interval.evidenceRefs }];
+          results.set(object.id, calc);
+        }
+      }
+    }
+  }
+  if (dutyOnly) {
+    for (const balanceId of deficitResults.keys()) {
+      const beforeBalance = paths.get(balanceId);
+      if (!beforeBalance) continue;
+      for (const [entityId, downstream] of reachable(model, balanceId, { powers: "forward", stopAtCalculations: true })) {
+        const path = [...beforeBalance.path, ...downstream.path.slice(1)];
+        const edges = [...beforeBalance.edges, ...downstream.edges];
+        if (entityId === target.id || new Set(path).size !== path.length || edges.some((edge) => !reviewEdgeSupported(edge))) continue;
+        paths.set(entityId, { path, edges });
+      }
     }
   }
   function comparison(object, actual, limit, ruleId, minimum = false) {
     const failed = minimum ? actual.value < limit.value : actual.value > limit.value;
-    const calculation = calculate(object, ruleId, [actual, limit], failed, undefined, `${actual.value} ${actual.unit} ${failed ? (minimum ? "<" : ">") : (minimum ? "≥" : "≤")} ${limit.value} ${limit.unit}`);
+    const calculation = calculate(object, ruleId, [actual, limit], failed, undefined, `${displayNumber(actual.value)} ${actual.unit} ${failed ? (minimum ? "<" : ">") : (minimum ? "≥" : "≤")} ${displayNumber(limit.value)} ${limit.unit}`);
     return { status: failed ? "critical" : "valid", calculation, reasonCode: ruleId, shortExplanation: calculation.expression };
   }
   const impacts = originals.map((original) => {
@@ -170,20 +276,20 @@ export function analyzeImpact(model, change, language = "en") {
       if (model.requirements.some((item) => item.id === object.id)) {
         for (const entityId of unique([...object.relatedEntityIds, ...(object.relatedPropertyRefs || []).map((ref) => ref.entityId)])) {
           const related = objects.get(entityId);
-          for (const [dimension, measuredKeys, limitKeys, minimum] of [["time", ["estimated_autonomy", "autonomy"], ["minimum_autonomy", "min_autonomy"], true], ["mass", ["total_mass", "mass"], ["maximum_mass", "max_mass"], false], ["power", ["total_power", "power"], ["maximum_power", "max_power"], false]]) {
+          for (const [dimension, measuredKeys, limitKeys, minimum, signed] of REQUIREMENT_RULES) {
             // Changed dependencies invalidate a cached performance value without a formula.
             const stale = change.kind !== "requirement" && paths.has(related.id) && related.id !== target.id && ["calculation", "performance"].includes(related.kind) && !results.has(related.id);
-            const actual = !stale && input(related, measuredKeys, dimension);
-            const limit = input(object, limitKeys, dimension);
-            if (actual && limit && evidenceValid(object.sourceRefs)) checks.push(comparison(object, actual, limit, `${dimension}_requirement`, minimum));
+            const actual = !stale && input(related, measuredKeys, dimension, signed);
+            const limit = input(object, limitKeys, dimension, signed);
+            if (actual && limit && evidenceValid(object.sourceRefs)) checks.push(comparison(object, actual, limit, `${signed ? measuredKeys[0] : dimension}_requirement`, minimum));
           }
         }
       }
       if (change.kind === "requirement" && object.id !== target.id && unique([...target.relatedEntityIds, ...(target.relatedPropertyRefs || []).map((ref) => ref.entityId)]).includes(object.id)) {
-        for (const [dimension, measuredKeys, limitKeys, minimum] of [["time", ["estimated_autonomy", "autonomy"], ["minimum_autonomy", "min_autonomy"], true], ["mass", ["total_mass", "mass"], ["maximum_mass", "max_mass"], false], ["power", ["total_power", "power"], ["maximum_power", "max_power"], false]]) {
-          const actual = input(object, measuredKeys, dimension);
-          const limit = input(target, limitKeys, dimension);
-          if (actual && limit && evidenceValid(target.sourceRefs)) checks.push(comparison(object, actual, limit, `${dimension}_requirement`, minimum));
+        for (const [dimension, measuredKeys, limitKeys, minimum, signed] of REQUIREMENT_RULES) {
+          const actual = input(object, measuredKeys, dimension, signed);
+          const limit = input(target, limitKeys, dimension, signed);
+          if (actual && limit && evidenceValid(target.sourceRefs)) checks.push(comparison(object, actual, limit, `${signed ? measuredKeys[0] : dimension}_requirement`, minimum));
         }
       }
       const mass = input(object, ["mass", "total_mass"], "mass");
@@ -192,7 +298,24 @@ export function analyzeImpact(model, change, language = "en") {
       if (checks.length) outcome = checks.find((item) => item.status === "critical") || checks[0];
       else if (results.has(object.id)) {
         const calculation = results.get(object.id);
-        outcome = { status: "valid", reasonCode: calculation.ruleId, shortExplanation: calculation.expression, calculation };
+        outcome = { status: deficitResults.has(object.id) ? "review" : "valid", reasonCode: calculation.ruleId, shortExplanation: calculation.expression, calculation };
+      }
+      if (object.id !== target.id && !["critical", "changed"].includes(outcome.status) && !["calculation", "performance"].includes(object.kind) && !model.requirements.some((item) => item.id === object.id)) {
+        for (const [balanceId, calculation] of deficitResults) {
+          const downstream = reachable(model, balanceId, { powers: "forward", stopAtCalculations: true }).get(object.id);
+          const beforeBalance = paths.get(balanceId);
+          if (!downstream || !beforeBalance || balanceId === object.id) continue;
+          const deficitPath = [...beforeBalance.path, ...downstream.path.slice(1)];
+          if (new Set(deficitPath).size !== deficitPath.length) continue;
+          const deficitEdges = [...beforeBalance.edges, ...downstream.edges];
+          if (deficitEdges.some((edge) => !reviewEdgeSupported(edge))) continue;
+          // Preserve the actual balance path, even when a shorter power interface
+          // also reaches this object. No depletion time or reset is predicted.
+          route.path = deficitPath;
+          route.edges = deficitEdges;
+          outcome = { status: "review", reasonCode: "energy_deficit_dependency", shortExplanation: pt ? `Saldo negativo (${calculation.result} ${calculation.unit}) alcança esta dependência. Revisar energia armazenada e operação; tempo de falha desconhecido.` : `Negative balance (${calculation.result} ${calculation.unit}) reaches this dependency. Review stored energy and operation; failure timing is unknown.`, calculation };
+          break;
+        }
       }
       // Missing or inferred causal premises cannot produce a deterministic compatibility verdict.
       if (["critical", "valid"].includes(outcome.status) && route.edges.some((edge) => edge.source === "inferred" || !evidenceValid(edge.evidenceRefs))) outcome = { status: "review", reasonCode: "unverified_dependency", shortExplanation: pt ? "O caminho depende de uma relação ainda não comprovada." : "The impact path depends on an unverified relationship." };
@@ -202,8 +325,8 @@ export function analyzeImpact(model, change, language = "en") {
     const traversedRelationIds = route?.edges.map((edge) => edge.id) || [];
     const evidenceRefs = unique([...(outcome.calculation?.evidenceRefs || []), ...(route?.edges.flatMap((edge) => edge.evidenceRefs) || []), ...(object.evidenceRefs || object.sourceRefs || []), ...(object.id === target.id ? changedValues.flatMap((item) => item.evidenceRefs) : [])]);
     const inference = outcome.status === "review" && route?.edges.some((edge) => edge.source === "inferred") && evidenceRefs.length > 0;
-    const confidence = outcome.calculation ? 1 : inference ? Math.min(0.65, ...model.relations.filter((item) => traversedRelationIds.includes(item.id)).map((item) => item.confidence)) : outcome.status === "changed" ? 1 : 0;
-    const reasoning = { type: outcome.calculation ? "calculation" : inference ? "inference" : outcome.status === "changed" ? "fact" : "unknown", sourceRefs: evidenceRefs, inputFacts: outcome.calculation?.inputs || [], traversedRelationIds, ...(outcome.calculation ? { ruleId: outcome.calculation.ruleId, calculation: outcome.calculation } : {}), shortExplanation: outcome.shortExplanation, confidence, ...(inference && model.model ? { model: model.model } : {}), createdAt };
+    const confidence = inference ? Math.min(0.65, ...model.relations.filter((item) => traversedRelationIds.includes(item.id)).map((item) => item.confidence)) : outcome.calculation ? 1 : outcome.status === "changed" ? 1 : 0;
+    const reasoning = { type: inference ? "inference" : outcome.calculation ? "calculation" : outcome.status === "changed" ? "fact" : "unknown", sourceRefs: evidenceRefs, inputFacts: outcome.calculation?.inputs || [], traversedRelationIds, ...(outcome.calculation ? { ruleId: outcome.calculation.ruleId, calculation: outcome.calculation } : {}), shortExplanation: outcome.shortExplanation, confidence, ...(inference && model.model ? { model: model.model } : {}), createdAt };
     return { entityId: object.id, ...outcome, path: route?.path || [], traversedRelationIds, evidenceRefs, reasoning, confidence };
   });
   const relevant = impacts.filter((impact) => !["unaffected", "changed"].includes(impact.status));

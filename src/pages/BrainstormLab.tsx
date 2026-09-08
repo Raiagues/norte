@@ -7,7 +7,8 @@ import type { LabBoard, LabNode } from "../lib/brainstormLab";
 import type { MissionProject } from "../lib/projectStore";
 import type { Language } from "../lib/types";
 import type { EngineeringAnalysis } from "../lib/engineeringSystem";
-import { recognizeEngineeringHypothesis } from "../lib/discoveryEngineering";
+import { changeFromHypothesis, recognizeEngineeringHypothesis } from "../lib/discoveryEngineering";
+import { analyzeImpact } from "../lib/impactEngine";
 import type { DiscoveryHypothesis } from "../lib/discoveryEngineering";
 import { EngineeringScenario, EngineeringWhatIf } from "./SystemWorkspace";
 
@@ -61,6 +62,14 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
     update(next); updateHistory(); setSelected(null);
   }
   function remove(id: string) { commit({ ...boardRef.current, nodes: boardRef.current.nodes.filter((node) => node.id !== id), links: boardRef.current.links.filter((link) => link.from !== id && link.to !== id) }); setSelected(null); setComposer(null); }
+  function showImpact(suggestion: DiscoveryHypothesis, text: string) {
+    const model = project.engineeringSystem;
+    if (!model) return;
+    const change = changeFromHypothesis(suggestion, model, text);
+    if (!change) { setHypothesis(suggestion); return; }
+    try { setScenario(analyzeImpact(model, change, language)); setComposer(null); }
+    catch { setFeedback(language === "pt" ? "Revise o valor e a unidade desta hipótese." : "Review this hypothesis value and unit."); }
+  }
   function fit() {
     const rect = viewportRef.current?.getBoundingClientRect();
     if (!rect || !boardRef.current.nodes.length) return;
@@ -195,7 +204,7 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
           return <article className={`lab-node${selected === node.id ? " selected" : ""}`} style={{ left: node.x, top: node.y, width: LAB_NODE_WIDTH, minHeight: LAB_NODE_HEIGHT }} key={node.id} data-node-id={node.id} onPointerDown={(event) => pointerDown(event, node)} onDoubleClick={() => openComposer(undefined, node)}>
             <div className="lab-node-head"><span>{copy.idea}</span><button type="button" title={copy.edit} aria-label={`${copy.edit}: ${node.text}`} onClick={() => openComposer(undefined, node)}><Pencil aria-hidden="true" /></button></div>
             <button className="discovery-node-text" type="button" onClick={() => selectNode(node)} onDoubleClick={() => openComposer(undefined, node)}>{node.text}</button>
-            {suggestion && <button className="discovery-impact-action" type="button" onClick={() => setHypothesis(suggestion)}><ArrowRight aria-hidden="true" />{copy.impact}</button>}
+            {suggestion && <button className="discovery-impact-action" type="button" onClick={() => showImpact(suggestion, node.text)}><ArrowRight aria-hidden="true" />{copy.impact}</button>}
             {selected === node.id && <div className="discovery-node-actions" data-control><button type="button" aria-label={copy.connect} title={copy.connect} aria-pressed={connecting === node.id} onClick={() => setConnecting(connecting === node.id ? null : node.id)}><Link2 aria-hidden="true" /></button><button type="button" aria-label={copy.remove} title={copy.remove} onClick={() => remove(node.id)}><Trash2 aria-hidden="true" /></button></div>}
           </article>;
         })}

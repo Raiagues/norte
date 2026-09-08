@@ -1,24 +1,25 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
+import { createQuetzalArtifacts, QUETZAL_PROJECT_ID, QUETZAL_PROJECT_NAME, contextDocuments } from "../benchmark/quetzal1/context/design-context.mjs";
 
 export const VALIDATION_TEAM_ID = "team-norte-validation";
-export const VALIDATION_PROJECT_ID = "engineering-validation-project";
+export const VALIDATION_PROJECT_ID = QUETZAL_PROJECT_ID;
 
 export function createValidationProject(timestamp = new Date().toISOString()) {
   return {
     schemaVersion: 2,
     id: VALIDATION_PROJECT_ID,
-    name: "Engineering Validation Project",
+    name: QUETZAL_PROJECT_NAME,
     createdAt: timestamp,
     updatedAt: timestamp,
     navigation: { lastRoute: "setup" },
     phaseProgress: { highestUnlockedStep: 0 },
-    memoryRevision: 0,
+    memoryRevision: 1,
     context: {
       configured: false, programId: null, modalityId: null, categoryId: null,
       teamId: VALIDATION_TEAM_ID, teamName: "Norte Validation Team",
-      teamArtifactIds: [], projectArtifactIds: [],
+      teamArtifactIds: [], projectArtifactIds: contextDocuments.map((document) => document.id),
       roles: [{ id: "captain", name: "Lead" }, { id: "manager", name: "Manager" }, { id: "member", name: "Member" }, { id: "advisor", name: "Advisor" }],
       sectors: [], assignments: []
     },
@@ -37,7 +38,7 @@ export function createInitialData() {
     schemaVersion: 8,
     createdAt: timestamp,
     updatedAt: timestamp,
-    users: [], members: [], artifacts: [], sessions: [],
+    users: [], members: [], artifacts: createQuetzalArtifacts(VALIDATION_PROJECT_ID, timestamp), sessions: [],
     teams: [{
       id: VALIDATION_TEAM_ID, name: "Norte Validation Team", description: "",
       memberIds: [], artifactIds: [], joinRequests: [], createdBy: null,

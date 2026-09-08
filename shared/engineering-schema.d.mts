@@ -1,0 +1,15 @@
+import type { EngineeringSystemModel } from "../src/lib/engineeringSystem";
+export type JsonSchema = Record<string, unknown>;
+export const propertySchema: JsonSchema;
+export const evidenceSchema: JsonSchema;
+export const entitySchema: JsonSchema;
+export const relationSchema: JsonSchema;
+export const requirementSchema: JsonSchema;
+export const changeSchema: JsonSchema;
+export const analysisSchema: JsonSchema;
+export const correctionSchema: JsonSchema;
+export const engineeringSystemSchema: JsonSchema;
+export const generationRequestSchema: JsonSchema;
+export const analysisRequestSchema: JsonSchema;
+export function matchesSchema(value: unknown, schema: JsonSchema): boolean;
+export function validateEngineeringSystem(value: unknown): value is EngineeringSystemModel;

@@ -37,8 +37,9 @@ export function resetValidationData(value) {
   next.users = previous.users;
   next.sessions = previous.sessions;
   next.members = previous.members.filter((member) => member.accountId || !LEGACY_MEMBER_PATTERN.test(member.id));
-  next.artifacts = previous.artifacts.filter((artifact) => !ownedArtifactIds.has(artifact.id)
-    && !(removedOwnerIds.has(artifact.ownerId) && ["team", "project"].includes(artifact.scope)));
+  next.artifacts = [...next.artifacts, ...previous.artifacts.filter((artifact) => !ownedArtifactIds.has(artifact.id)
+    && !next.artifacts.some((seed) => seed.id === artifact.id)
+    && !(removedOwnerIds.has(artifact.ownerId) && ["team", "project"].includes(artifact.scope)))];
   const owner = next.users.find((user) => user.accessRole === "owner_admin");
   const ownerMember = next.members.find((member) => member.accountId === owner?.id);
   next.teams[0].createdBy = owner?.id ?? null;

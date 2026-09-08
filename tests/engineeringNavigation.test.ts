@@ -6,7 +6,7 @@ import { MissionSidebar } from "../src/components/MissionSidebar";
 import { HomePage } from "../src/pages/HomePage";
 import { completeConception, createEmptyProject, normalizeProject, recordMemoryRevision, saveProject } from "../src/lib/projectStore";
 import type { EngineeringSystemModel } from "../src/lib/engineeringSystem";
-import { recognizeEngineeringHypothesis } from "../src/lib/discoveryEngineering";
+import { changeFromHypothesis, recognizeEngineeringHypothesis } from "../src/lib/discoveryEngineering";
 
 vi.mock("../src/components/UserBadge", () => ({ UserBadge: () => null }));
 
@@ -66,6 +66,20 @@ describe("project-owned conception progression", () => {
 });
 
 describe("quiet engineering hypothesis recognition", () => {
+  it("resolves absolute TX duty and continuous transmission without a setup form", () => {
+    const dutyModel: EngineeringSystemModel = { ...model, entities: [{ ...model.entities[1], name: "Transmitter Q7", properties: [{ key: "tx_duty_cycle", name: "TX duty cycle", value: 3.6, unit: "%", source: "documented", evidenceRefs: ["design-duty"] }] }] };
+    const suggestion = recognizeEngineeringHypothesis("Q7 TX de 3,6% para 10%", dutyModel)!;
+    expect(suggestion).toEqual({ targetEntityId: "radio", propertyKey: "tx_duty_cycle", value: 10, unit: "%" });
+    const change = changeFromHypothesis(suggestion, dutyModel, "Q7 TX para 10%");
+    expect(change?.oldValues[0].value).toBe(3.6);
+    expect(change?.newValues[0]).toMatchObject({ value: 10, source: "user", evidenceRefs: [] });
+    expect(recognizeEngineeringHypothesis("communications transmitter remains continuously active", dutyModel)?.value).toBe(100);
+    expect(recognizeEngineeringHypothesis("transmissor continuamente ativo", dutyModel)?.value).toBe(100);
+    expect(recognizeEngineeringHypothesis("transmitter not continuously active", dutyModel)).toBeUndefined();
+    expect(recognizeEngineeringHypothesis("Increase Q7 TX by 10%", dutyModel)).toBeUndefined();
+    const ambiguous = { ...dutyModel, entities: [...dutyModel.entities, { ...dutyModel.entities[0], id: "second-radio", name: "Second transmitter" }] };
+    expect(recognizeEngineeringHypothesis("transmitter continuously active", ambiguous)).toBeUndefined();
+  });
   it("recognizes the proposed final mass in Portuguese and English", () => {
     expect(recognizeEngineeringHypothesis("Payload de 120 g para 280 g", model)).toEqual({ targetEntityId: "payload", propertyKey: "mass", value: 280, unit: "g" });
     expect(recognizeEngineeringHypothesis("Increase Payload to 0.28 kg", model)?.value).toBe(.28);

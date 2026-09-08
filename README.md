@@ -18,19 +18,19 @@ Project Memory connects a project's documents, files, links and team context. Sy
 
 The core interaction is a proposed change followed by its consequences: an altered component, the dependencies that need review, a compatible interface, or a concrete limit violation. Sources and calculation inputs stay accessible beside the engineering model.
 
-![A synthetic radio change reveals a regulator current conflict and the dependencies that require review.](docs/images/engineering-impact.png)
+![Quetzal-1 communications activity propagates through the power budget and energy balance.](docs/images/engineering-impact.png)
 
-*Explicit validation example: a 1.2 A radio scenario exceeds a documented 0.8 A regulator limit; the baseline remains unchanged.*
+*Design-context scenario: communications activity changes average demand. Source facts, calculations and unresolved mission requirements remain distinct; the baseline is preserved.*
 
 ## Current product state
 
 | State | Scope |
 | --- | --- |
 | Implemented | Project Memory, account and team context, project persistence, timeline and freeform canvas navigation. |
-| Beta | Automatic engineering-model extraction, System navigation, requirement traceability, contextual what-if scenarios and a small deterministic impact engine. Extraction quality depends on the linked evidence. |
-| Planned | Broader document ingestion, more validated engineering rules, controlled promotion of scenarios to the baseline and measured validation metrics. |
+| Beta | Automatic engineering-model extraction, System navigation, requirement traceability, auditable expert corrections, contextual what-if scenarios and a bounded deterministic impact engine. Extraction quality depends on the linked evidence. |
+| Planned | Raw-artifact extraction benchmark, broader engineering rules, controlled promotion of scenarios to the baseline and independent engineering/student validation. |
 
-New project and team creation are temporarily disabled in the interface. Fresh validation data contains one neutral team and one minimal project. Engineering examples are separate fixtures and must be selected deliberately; generation failures never substitute an example architecture.
+New project and team creation are temporarily disabled in the interface. Fresh validation data contains one neutral team and **Quetzal-1 EPS + COMMS**, with curated design documents already attached and no reference competition. Its architecture is generated when conception starts. Generation failures never substitute a prebuilt model.
 
 Norte is not a general physics simulator. An inferred dependency is a hypothesis for review. A deterministic result is limited to its inputs, units and explicit rule.
 
@@ -39,8 +39,8 @@ Norte is not a general physics simulator. An inferred dependency is a hypothesis
 1. Open the validation project and attach relevant sources in **Project Memory**.
 2. Select **Start conception**. Norte reads the linked memory, builds and persists the initial engineering model, then opens **System**. Failed extraction can be retried after correcting the memory.
 3. Inspect the macro architecture, focus a subsystem and open object information intentionally. Requirements are a separate layer linked to the architecture.
-4. Propose a component, parameter or requirement change. Inspect the affected path, source facts and calculations. Scenarios remain separate from the baseline.
-5. Use **Discovery BETA** to write hypotheses and explore recognized engineering changes. Return to the existing baseline without regenerating it.
+4. Propose a component, parameter or requirement change. Inspect the affected path, source facts and calculations. Corrections preserve the original suggestion, revised object, supporting evidence and context in exportable records.
+5. Use **Discovery BETA** to write hypotheses. A recognized value change opens its impact with one contextual action; unresolved replacements retain a compact editor. Scenarios remain separate from the baseline.
 
 ## Architecture
 
@@ -106,6 +106,9 @@ npm run lint
 npm test                 # Vitest and Node API/engine tests
 npm run test:api
 npm run test:visual      # Isolated browser/API acceptance test (Chromium required)
+npm run test:visual:quetzal # Seeded memory and hypothesis-to-impact interaction check
+npm run benchmark:quetzal # Deterministic cases; extraction is evaluated separately
+npm run benchmark:structural # Masked synthetic C2, with perturbed engineering values
 npm run build
 npm start                # API; also serves dist/ in production
 ```
@@ -124,11 +127,32 @@ The quality gate runs TypeScript, ESLint, tests and the production build. CI add
 
 ## Deployment
 
-Render builds `dist/` and serves it alongside `/api` from one HTTPS origin. Configure its server-side `DATABASE_URL` and `GEMINI_API_KEY`; `render.yaml` uses `/api/health` and deploys after checks pass. GitHub Pages builds a distinct frontend demonstration and receives no API credentials. See [deployment instructions](docs/deployment.md).
+Render builds `dist/` and serves it alongside `/api` from one HTTPS origin. Configure its server-side `DATABASE_URL` and `GEMINI_API_KEY`. The blueprint declares deployment after checks and uses `/api/health`; the current service is deployed manually from the Render dashboard. GitHub Pages builds a distinct frontend demonstration and receives no API credentials. See [deployment instructions](docs/deployment.md).
 
 ## Validation
 
-Fresh state is intentionally small: **Norte Validation Team** and **Engineering Validation Project**, with no invented system facts. Existing stored data is preserved during normal startup.
+Fresh state contains **Norte Validation Team** and **Quetzal-1 EPS + COMMS**, with two curated context documents and no pre-generated system. The V0 scope uses design evidence from UVG's real spacecraft: EPS, communications and the electrical consumers needed for one power-budget operating point. It has no OBSAT association. Existing stored data is preserved during normal startup.
+
+`benchmark/quetzal1/context/` is the model input. `evaluation_reference/` contains evaluator-only expectations and historical observations; it is never imported by the extraction service or client. Default evaluation runs deterministic cases using clean structured input, including the 25%/26% power-balance boundary. **A0** measures curated context → engineering model; raw-artifact extraction (**A1**) remains future work. To assess a separately generated extraction:
+
+```bash
+npm run benchmark:quetzal -- --prediction path/to/prediction.json
+```
+
+Reports under `var/benchmarks/` keep run manifests, per-case calculations, expected and predicted impacts, evidence and unsupported claims. A0 is reported as **not run** unless a prediction is supplied. A failed provider output remains a failed run; the curated model never substitutes for it.
+
+Live checks use the server's configured provider and send only the allowed design context (extraction) or neutral questions without Project Memory (contamination probe):
+
+```bash
+node --env-file=.env.local scripts/extract-quetzal.mjs --runs 3 --evaluation-revision v0.1-development.1
+node --env-file=.env.local scripts/probe-quetzal-contamination.mjs
+```
+
+Use the environment file where your server credentials are configured. The fixed contamination probe is metadata, not a benchmark score. C2 uses a separately authored neutral architecture and perturbed values; its deterministic result does not measure foundation-model generalization.
+
+The user-approved [V0.1 validation specification](docs/VALIDATED.md) retains a separate requirement for independent engineering review, which remains pending. No public preflight snapshot was established, and model pretraining contamination cannot be ruled out. C1 is **historical causal reconstruction**, not an unseen-failure prediction. These are development results until review. See [sources, licenses, cases, metrics and reproduction](docs/VALIDATION_QUETZAL1.md).
+
+The latest development checks passed nine deterministic cases. The six recorded live extraction attempts yielded no model approved under the final validation contract: evidence/hierarchy defects and provider HTTP 503/timeouts remain documented. Live extraction quality and availability still require validation; passing the browser fixture does not establish either.
 
 To deliberately replace development/test projects, teams and associated workspaces, stop the API first and run:
 
@@ -148,9 +172,9 @@ NODE_ENV=test NORTE_ALLOW_DESTRUCTIVE_RESET=1 \
 
 This requires a loopback host and a database name containing a separate `dev`, `development` or `test` segment. Remote databases, production mode and Render environments are refused. The PostgreSQL reset takes a backup and updates the state in a transaction.
 
-The browser demo exposes `resetDemoValidationData('RESET_VALIDATION_DATA')` from `src/lib/demoApi.ts` for an explicit validation reset. It backs up the prior demo state in browser storage and preserves the account profile. It is never called automatically during ordinary startup. To deliberately load the synthetic engineering model and its source without Gemini, follow the [local frontend validation guide](examples/README.md).
+The browser demo exposes `resetDemoValidationData('RESET_VALIDATION_DATA')` from `src/lib/demoApi.ts` for an explicit validation reset. It backs up prior browser state and preserves the account profile. It is never called automatically. The [frontend validation guide](examples/README.md) also describes an explicit curated design preview for this browser-only environment; that preview is not an AI extraction result.
 
-**Planned validation metrics:** dependency recall, critical-impact precision, unsupported-claim rate, time to identify affected elements, task completion time and traceability coverage. These are evaluation targets, not measured results.
+**Current technical measurements:** per-case dependency recall, critical-impact precision, calculation accuracy, unsupported-claim rate, traceability coverage and requirement-impact recall. Browser checks also record interaction count and local fixture timings. **Planned human evaluation:** task completion time, missed/false impacts, source lookups and decision confidence with documents versus Norte. Browser timings are not student study results.
 
 ## Security
 
@@ -168,6 +192,7 @@ server/          Fastify API, AI services and data stores
 scripts/         Development, security, validation and visual checks
 tests/           Client/model tests
 examples/        Explicit engineering examples and fixtures
+benchmark/       Quetzal design context and separate evaluator-only expectations
 docs/            Architecture, research and deployment notes
 .github/         Quality, security and deployment workflows
 ```

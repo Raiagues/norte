@@ -19,11 +19,11 @@ export function SystemGraph({ language, model, entities, selectedId, highlightId
   const [navigation, setNavigation] = useState({ scale: 1, x: 0, y: 0, fitted: false });
   const panRef = useRef<{ pointer: number; x: number; y: number; originX: number; originY: number } | null>(null);
   const markerId = useId().replaceAll(":", "");
-  const fitScale = engineeringInitialScale(viewport, graph, navigation.fitted);
+  const fitScale = engineeringInitialScale(viewport, graph, navigation.fitted, Boolean(analysis));
   const scale = fitScale * navigation.scale;
-  const mobileFocus = viewport.width < 600 && !navigation.fitted ? graph.nodes.find((node) => node.entity.id === analysis?.changedEntityId) ?? [...graph.nodes].sort((first, second) => first.y - second.y)[0] : undefined;
-  const x = (mobileFocus ? viewport.width / 2 - (mobileFocus.x + ENGINEERING_NODE_WIDTH / 2) * scale : (viewport.width - graph.width * scale) / 2) + navigation.x;
-  const y = (mobileFocus ? 80 - mobileFocus.y * scale : (viewport.height - graph.height * scale) / 2) + navigation.y;
+  const initialFocus = (viewport.width < 600 || analysis) && !navigation.fitted ? graph.nodes.find((node) => node.entity.id === analysis?.changedEntityId) ?? [...graph.nodes].sort((first, second) => first.y - second.y)[0] : undefined;
+  const x = (initialFocus ? viewport.width / 2 - (initialFocus.x + ENGINEERING_NODE_WIDTH / 2) * scale : (viewport.width - graph.width * scale) / 2) + navigation.x;
+  const y = (initialFocus ? 80 - initialFocus.y * scale : (viewport.height - graph.height * scale) / 2) + navigation.y;
   const statuses = new Map(analysis?.impacts.map((impact) => [impact.entityId, impact]));
   const pt = language === "pt";
 
@@ -83,7 +83,7 @@ export function SystemGraph({ language, model, entities, selectedId, highlightId
       {graph.nodes.map(({ entity, x: nodeX, y: nodeY }) => {
         const impact = statuses.get(entity.id);
         const changed = entity.id === analysis?.changedEntityId;
-        const properties = entity.properties.filter((property) => property.key !== "formula").sort((first, second) => changed ? Number(analysis.change.newValues.some((property) => property.key === second.key)) - Number(analysis.change.newValues.some((property) => property.key === first.key)) : 0);
+        const properties = entity.properties.filter((property) => property.key !== "formula").sort((first, second) => changed ? Number(analysis.change.newValues.some((property) => property.key === second.key)) - Number(analysis.change.newValues.some((property) => property.key === first.key)) : Number(second.source === "calculated") - Number(first.source === "calculated"));
         const childCount = new Set([...model.entities.filter((child) => child.parentId === entity.id).map((child) => child.id), ...model.relations.filter((relation) => relation.kind === "contains" && relation.from === entity.id).map((relation) => relation.to)]).size;
         const hasChildren = childCount > 0;
         const name = changed && analysis.change.replacementName ? analysis.change.replacementName : entity.name;
@@ -91,7 +91,7 @@ export function SystemGraph({ language, model, entities, selectedId, highlightId
           <button className="engineering-node-main" type="button" aria-pressed={selectedId === entity.id} onClick={() => { onSelect(entity); if (entity.kind === "subsystem" && hasChildren) onDrillDown?.(entity); }}>
             <span className="engineering-node-kind">{engineeringLabel(entity.kind, language)}{impact && <em>{engineeringLabel(impact.status, language)}</em>}</span>
             <strong>{name}</strong>
-            <span className="engineering-node-values">{properties.slice(0, impact?.calculation ? 1 : 2).map((property) => <span key={property.key} title={property.name}>{formatEngineeringValue(property)}</span>)}{!properties.length && hasChildren && <span>{childCount} {pt ? childCount === 1 ? "elemento" : "elementos" : childCount === 1 ? "element" : "elements"}<ChevronRight aria-hidden="true" /></span>}{!properties.length && !hasChildren && <span>{entity.properties.some((property) => property.key === "formula") ? pt ? "Cálculo a avaliar" : "Calculation to evaluate" : pt ? "Dados a confirmar" : "Data to confirm"}</span>}</span>
+            <span className="engineering-node-values">{properties.slice(0, impact?.calculation ? 1 : 2).map((property) => <span key={property.key} title={`${property.name}: ${formatEngineeringValue(property)}`}>{!property.unit && typeof property.value === "number" ? `${property.name}: ` : ""}{formatEngineeringValue({ ...property, value: typeof property.value === "number" ? Number(property.value.toPrecision(5)) : property.value })}</span>)}{!properties.length && hasChildren && <span>{childCount} {pt ? childCount === 1 ? "elemento" : "elementos" : childCount === 1 ? "element" : "elements"}<ChevronRight aria-hidden="true" /></span>}{!properties.length && !hasChildren && <span>{entity.properties.some((property) => property.key === "formula") ? pt ? "Cálculo a avaliar" : "Calculation to evaluate" : pt ? "Dados a confirmar" : "Data to confirm"}</span>}</span>
             {impact?.calculation && <span className="engineering-node-equation" title={impact.calculation.expression}>{impact.calculation.expression}</span>}
           </button>
           <button type="button" className="engineering-node-info" aria-label={`${pt ? "Informações de" : "Information about"} ${entity.name}`} onClick={() => onInfo(entity)}><Info aria-hidden="true" /></button>

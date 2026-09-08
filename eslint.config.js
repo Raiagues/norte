@@ -20,7 +20,7 @@ export default tseslint.config(
     }
   },
   {
-    files: ["server/**/*.mjs", "scripts/**/*.mjs", "shared/**/*.mjs"],
+    files: ["server/**/*.mjs", "scripts/**/*.mjs", "shared/**/*.mjs", "benchmark/**/*.mjs"],
     languageOptions: {
       globals: {
         Buffer: "readonly",
@@ -32,7 +32,11 @@ export default tseslint.config(
         Response: "readonly",
         process: "readonly",
         setTimeout: "readonly",
-        structuredClone: "readonly"
+        clearTimeout: "readonly",
+        performance: "readonly",
+        structuredClone: "readonly",
+        btoa: "readonly",
+        TextEncoder: "readonly"
       }
     }
   }

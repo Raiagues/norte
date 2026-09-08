@@ -90,7 +90,8 @@ export function EngineeringScenario({ language, model, analysis, onClear, onSave
   const scenarioModel = useMemo(() => projectEngineeringScenario(model, analysis), [model, analysis]);
   const relevantIds = useMemo(() => new Set(analysis.impacts.filter((impact) => impact.status !== "unaffected").flatMap((impact) => [impact.entityId, ...impact.path])), [analysis]);
   const entities = useMemo(() => systemVisibleEntities(scenarioModel, null, relevantIds), [scenarioModel, relevantIds]);
-  const affectedRequirements = model.requirements.filter((requirement) => analysis.impacts.some((impact) => impact.entityId === requirement.id && impact.status !== "unaffected"));
+  const requirementPriority = (id: string) => ({ critical: 0, review: 1, changed: 2, valid: 3, unaffected: 4 })[analysis.impacts.find((impact) => impact.entityId === id)?.status ?? "unaffected"];
+  const affectedRequirements = model.requirements.filter((requirement) => analysis.impacts.some((impact) => impact.entityId === requirement.id && impact.status !== "unaffected")).sort((first, second) => requirementPriority(first.id) - requirementPriority(second.id));
   const highlighted = trace ? requirementTrace(scenarioModel, trace) : null;
   const entity = inspection?.kind === "entity" ? scenarioModel.entities.find((item) => item.id === inspection.id) : undefined;
   const requirement = inspection?.kind === "requirement" ? scenarioModel.requirements.find((item) => item.id === inspection.id) : undefined;
@@ -120,6 +121,7 @@ export function SystemWorkspace({ language, project, onProjectChange, onBackSetu
   const [historyOpen, setHistoryOpen] = useState(false);
   const model = project.engineeringSystem;
   const pt = language === "pt";
+  const correctionContext = { projectId: project.id, projectName: project.name };
   const highlighted = model && trace ? requirementTrace(model, trace) : null;
   const entities = useMemo(() => model ? systemVisibleEntities(model, parentId, highlighted?.entities.size ? highlighted.entities : undefined) : [], [model, parentId, highlighted]);
   const entity = inspection?.kind === "entity" ? model?.entities.find((item) => item.id === inspection.id) : undefined;
@@ -141,10 +143,10 @@ export function SystemWorkspace({ language, project, onProjectChange, onBackSetu
         {(model.scenarios?.length ?? 0) > 0 && <div className="engineering-history"><button type="button" onClick={() => setHistoryOpen(true)}><Bookmark aria-hidden="true" />{model.scenarios?.length} {pt ? model.scenarios?.length === 1 ? "cenário salvo" : "cenários salvos" : model.scenarios?.length === 1 ? "saved scenario" : "saved scenarios"}</button></div>}
       </div>
     </section>}
-    {entity && <EngineeringEntityInfo language={language} model={model} entity={entity} onClose={() => setInspection(null)} onModelChange={updateModel} onWhatIf={() => explore(entity.id)} onRelation={(relation) => setInspection({ kind: "relation", relation })} />}
-    {inspection?.kind === "relation" && <EngineeringRelationInfo language={language} model={model} relation={inspection.relation} onClose={() => setInspection(null)} onModelChange={updateModel} />}
+    {entity && <EngineeringEntityInfo language={language} model={model} entity={entity} onClose={() => setInspection(null)} onModelChange={updateModel} onWhatIf={() => explore(entity.id)} onRelation={(relation) => setInspection({ kind: "relation", relation })} correctionContext={correctionContext} />}
+    {inspection?.kind === "relation" && <EngineeringRelationInfo language={language} model={model} relation={inspection.relation} onClose={() => setInspection(null)} onModelChange={updateModel} correctionContext={correctionContext} />}
     {inspection?.kind === "requirements" && <EngineeringRequirements language={language} model={model} onClose={() => setInspection(null)} onTrace={traceRequirement} onEdit={(item) => setInspection({ kind: "requirement", id: item.id })} />}
-    {requirement && <EngineeringRequirementInfo language={language} model={model} requirement={requirement} onClose={() => setInspection(null)} onModelChange={updateModel} onTrace={() => traceRequirement(requirement)} onWhatIf={() => explore(requirement.id)} />}
+    {requirement && <EngineeringRequirementInfo language={language} model={model} requirement={requirement} onClose={() => setInspection(null)} onModelChange={updateModel} onTrace={() => traceRequirement(requirement)} onWhatIf={() => explore(requirement.id)} correctionContext={correctionContext} />}
     {whatIf && <EngineeringWhatIf key={whatIf.targetEntityId ?? "picker"} language={language} project={project} targetEntityId={whatIf.targetEntityId} onClose={() => setWhatIf(null)} onAnalyzed={(next) => { setAnalysis(next); setWhatIf(null); }} />}
     {historyOpen && <EngineeringDialog language={language} title={pt ? "Cenários salvos" : "Saved scenarios"} onClose={() => setHistoryOpen(false)}><div className="engineering-scenario-history">{model.scenarios?.map((scenario) => <button type="button" key={scenario.id} onClick={() => { setAnalysis(scenario); setHistoryOpen(false); }}><strong>{scenario.change.description}</strong><span>{scenario.metrics.impacted} {pt ? "impactos" : "impacts"} · {new Date(scenario.createdAt).toLocaleDateString(language === "pt" ? "pt-BR" : "en-GB")}</span></button>)}</div></EngineeringDialog>}
   </>;

@@ -24,7 +24,7 @@ function legacyState() {
   return state;
 }
 
-test("fresh data has one neutral team and minimal project without engineering fixtures", () => {
+test("fresh data has one neutral team and project with design context but no generated baseline", () => {
   const state = createInitialData();
   assert.equal(state.teams.length, 1);
   assert.equal(state.teams[0].id, VALIDATION_TEAM_ID);
@@ -35,7 +35,10 @@ test("fresh data has one neutral team and minimal project without engineering fi
   assert.equal(project.engineeringSystem, undefined);
   assert.equal(state.users.length, 0);
   assert.equal(state.members.length, 0);
-  assert.equal(state.artifacts.length, 0);
+  assert.equal(state.artifacts.length, 2);
+  assert.equal(project.name, "Quetzal-1 EPS + COMMS");
+  assert.equal(project.context.programId, null);
+  assert.deepEqual(project.context.projectArtifactIds, ["quetzal-design-memory", "quetzal-analysis-method"]);
   assert.doesNotMatch(JSON.stringify(state), /Aurora|Payload Sentinel|OBSAT/iu);
 });
 
@@ -79,7 +82,7 @@ test("explicit reset preserves accounts and sessions, removes old workspace data
   assert.deepEqual(state.teams[0].memberIds, ["real-member"]);
   assert.deepEqual(Object.keys(state.workspace.projects), [VALIDATION_PROJECT_ID]);
   assert.deepEqual(state.workspace.labs, {});
-  assert.deepEqual(state.artifacts.map((artifact) => artifact.id), ["personal-source"]);
+  assert.deepEqual(state.artifacts.map((artifact) => artifact.id), ["quetzal-design-memory", "quetzal-analysis-method", "personal-source"]);
   assert.equal(typeof state.workspace.validationResetId, "string");
   assert.equal(original.teams[0].id, "team-aurora");
 });

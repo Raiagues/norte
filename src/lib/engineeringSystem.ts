@@ -23,7 +23,17 @@ export type EngineeringImpactStatus = "changed" | "valid" | "review" | "critical
 export type EngineeringImpact = { entityId: string; status: EngineeringImpactStatus; reasonCode: string; shortExplanation: string; path: string[]; traversedRelationIds: string[]; evidenceRefs: string[]; calculation?: EngineeringCalculation; reasoning: ReasoningEvidence; confidence: number };
 export type EngineeringAnalysis = { id: string; changeId: string; changedEntityId: string; change: EngineeringChange; impacts: EngineeringImpact[]; calculations: EngineeringCalculation[]; evidence?: EngineeringEvidence[]; unresolvedQuestions: string[]; createdAt: string; model?: string; metrics: { impacted: number; critical: number; review: number; evidenced: number; inferred: number } };
 export type EngineeringScenario = EngineeringAnalysis;
-export type EngineeringSystemModel = { schemaVersion: 1; id: string; name: string; entities: EngineeringEntity[]; relations: EngineeringRelation[]; requirements: EngineeringRequirement[]; evidence: EngineeringEvidence[]; artifactSources: EngineeringArtifactSource[]; generatedAt: string; generatedFromRevision: number; model?: string; scenarios?: EngineeringAnalysis[] };
+export type EngineeringCorrectionSnapshot = { entity: EngineeringEntity } | { relation: EngineeringRelation } | { requirement: EngineeringRequirement };
+export type EngineeringCorrectionProjectContext = { projectId?: string; projectName?: string; projectType?: string };
+export type EngineeringCorrection = {
+  id: string; transactionId: string; objectKind: "entity" | "relation" | "requirement";
+  operation: "create" | "update" | "delete"; targetId: string;
+  suggested: EngineeringCorrectionSnapshot | null; previous: EngineeringCorrectionSnapshot | null; corrected: EngineeringCorrectionSnapshot | null;
+  context: EngineeringCorrectionProjectContext & { baselineId: string; baselineRevision: number; generatedFromRevision: number; entities: EngineeringEntity[]; entitiesTruncated: boolean };
+  suggestedEvidence: EngineeringEvidence[]; previousEvidence: EngineeringEvidence[]; correctedEvidence: EngineeringEvidence[];
+  createdAt: string;
+};
+export type EngineeringSystemModel = { schemaVersion: 1; id: string; name: string; entities: EngineeringEntity[]; relations: EngineeringRelation[]; requirements: EngineeringRequirement[]; evidence: EngineeringEvidence[]; artifactSources: EngineeringArtifactSource[]; generatedAt: string; generatedFromRevision: number; model?: string; revision?: number; scenarios?: EngineeringAnalysis[]; corrections?: EngineeringCorrection[] };
 
 export function formatEngineeringProperty(property: EngineeringProperty): string {
   return `${property.value}${property.unit ? ` ${property.unit}` : ""}`;

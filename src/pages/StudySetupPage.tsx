@@ -486,8 +486,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
 
   const missing = [
     !project.name.trim() ? c.missingName : "",
-    !selectedTeam ? c.missingTeam : "",
-    project.context.assignments.length === 0 ? c.missingMembers : ""
+    !selectedTeam ? c.missingTeam : ""
   ].filter(Boolean);
 
   async function continueToConception() {

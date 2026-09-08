@@ -28,7 +28,12 @@
     "security:secrets": "node scripts/scan-secrets.mjs",
     "security:audit": "npm audit --audit-level=high",
     "quality": "npm run typecheck && npm run lint && npm run test && npm run build",
-    "test:visual": "node scripts/visual-check.mjs"
+    "test:visual": "node scripts/visual-check.mjs",
+    "test:visual:quetzal": "node scripts/visual-quetzal.mjs",
+    "benchmark:quetzal": "node scripts/benchmark-quetzal.mjs",
+    "benchmark:structural": "node scripts/benchmark-structural.mjs",
+    "benchmark:probe": "node scripts/probe-quetzal-contamination.mjs",
+    "benchmark:extract": "node scripts/extract-quetzal.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

@@ -1,13 +1,15 @@
 import { graphlib, layout } from "@dagrejs/dagre";
-import type { EngineeringAnalysis, EngineeringEntity, EngineeringRequirement, EngineeringSystemModel, EngineeringProperty } from "./engineeringSystem";
+import type { EngineeringAnalysis, EngineeringEntity, EngineeringRelation, EngineeringRequirement, EngineeringSystemModel, EngineeringProperty } from "./engineeringSystem";
+import { recordEngineeringCorrections } from "./engineeringCorrections";
+import type { EngineeringCorrectionOptions } from "./engineeringCorrections";
 import type { Language } from "./types";
 
 export const ENGINEERING_NODE_WIDTH = 206;
 export const ENGINEERING_NODE_HEIGHT = 126;
 
-export function engineeringInitialScale(viewport: { width: number; height: number }, graph: { width: number; height: number }, fitRequested = false): number {
+export function engineeringInitialScale(viewport: { width: number; height: number }, graph: { width: number; height: number }, fitRequested = false, readableScenario = false): number {
   const overview = Math.min(1, Math.max(0.2, Math.min((viewport.width - 70) / graph.width, (viewport.height - 70) / graph.height)));
-  return viewport.width < 600 && !fitRequested ? Math.max(0.72, overview) : overview;
+  return (viewport.width < 600 || readableScenario) && !fitRequested ? Math.max(0.72, overview) : overview;
 }
 
 function reviewId(prefix = "review"): string { return `${prefix}-${crypto.randomUUID()}`; }
@@ -39,7 +41,8 @@ export function systemVisibleEntities(model: EngineeringSystemModel, parentId: s
 
 export function layoutEngineeringGraph(model: EngineeringSystemModel, entities: EngineeringEntity[], analysis?: EngineeringAnalysis | null) {
   const visible = new Set(entities.map((entity) => entity.id));
-  const relations = model.relations.filter((relation) => visible.has(relation.from) && visible.has(relation.to));
+  const traversed = analysis ? new Set(analysis.impacts.filter((impact) => impact.status !== "unaffected").flatMap((impact) => impact.traversedRelationIds)) : null;
+  const relations = model.relations.filter((relation) => visible.has(relation.from) && visible.has(relation.to) && (!traversed || traversed.has(relation.id)));
   const graph = new graphlib.Graph({ directed: true, multigraph: true }).setGraph({ rankdir: "TB", nodesep: 42, ranksep: 90, marginx: 40, marginy: 40 }).setDefaultEdgeLabel(() => ({}));
   entities.forEach((entity) => graph.setNode(entity.id, { width: ENGINEERING_NODE_WIDTH, height: ENGINEERING_NODE_HEIGHT }));
   const reversedIds = new Set(relations.filter((relation) => analysis?.impacts.some((impact) => impact.path.some((id, index) => id === relation.to && impact.path[index + 1] === relation.from))).map((relation) => relation.id));
@@ -102,9 +105,10 @@ export function projectEngineeringScenario(model: EngineeringSystemModel, analys
     }
     const impact = analysis.impacts.find((item) => item.entityId === id);
     const calculation = impact?.calculation;
-    const resultKey = calculation && ({ sum_power: "total_power", sum_mass: "total_mass", energy_over_power: "estimated_autonomy" } as Record<string, string>)[calculation.ruleId];
-    if (resultKey && calculation && typeof calculation.result === "number") projected = [...projected.filter((property) => property.key !== resultKey), { key: resultKey, name: resultKey.replaceAll("_", " "), value: calculation.result, unit: calculation.unit, source: "calculated", evidenceRefs: calculation.evidenceRefs }];
-    if (impact?.status === "review" && projected.some((property) => property.key === "formula")) projected = projected.filter((property) => property.key === "formula" || property.source !== "calculated");
+    const resultKey = calculation && ({ sum_power: "total_power", sum_mass: "total_mass", energy_over_power: "estimated_autonomy", duty_cycle_power: "average_power", duty_cycle_load: "average_power", energy_balance: calculation.unit === "Wh" ? "energy_margin" : "power_margin", energy_over_interval: "energy_margin" } as Record<string, string>)[calculation.ruleId];
+    const hasOwnResult = Boolean(resultKey && calculation && typeof calculation.result === "number" && projected.some((property) => property.key === "formula" && property.value === calculation.ruleId));
+    if (hasOwnResult && resultKey && calculation && typeof calculation.result === "number") projected = [...projected.filter((property) => property.key !== resultKey), { key: resultKey, name: resultKey.replaceAll("_", " "), value: calculation.result, unit: calculation.unit, source: "calculated", evidenceRefs: calculation.evidenceRefs }];
+    if (impact?.status === "review" && !hasOwnResult && projected.some((property) => property.key === "formula")) projected = projected.filter((property) => property.key === "formula" || property.source !== "calculated");
     return projected;
   };
   return {
@@ -124,7 +128,7 @@ export function engineeringRelationDirectionLabel(kind: string, reversed: boolea
 }
 
 /** Corrections are explicit team inputs. The original document remains inspectable. */
-export function correctEngineeringEntity(model: EngineeringSystemModel, original: EngineeringEntity, draft: EngineeringEntity, timestamp = new Date().toISOString()): EngineeringSystemModel {
+export function correctEngineeringEntity(model: EngineeringSystemModel, original: EngineeringEntity, draft: EngineeringEntity, timestamp = new Date().toISOString(), options: EngineeringCorrectionOptions = {}): EngineeringSystemModel {
   const evidence = [...model.evidence];
   const originalRefs = new Set(original.evidenceRefs);
   const properties = draft.properties.map((property) => {
@@ -133,7 +137,7 @@ export function correctEngineeringEntity(model: EngineeringSystemModel, original
     previous?.evidenceRefs.forEach((ref) => originalRefs.add(ref));
     const id = reviewId();
     evidence.push({ id, artifactId: "team-review", artifactLabel: "Team review", kind: "user", excerpt: `${original.name} · ${property.name}: ${previous ? formatEngineeringValue(previous) : "?"} → ${formatEngineeringValue(property)} · ${timestamp}`.slice(0, 600) });
-    return { ...property, source: "user" as const, evidenceRefs: [id] };
+    return { ...property, source: "user" as const, evidenceRefs: [id, ...(options.evidenceRefs ?? []).filter((ref) => model.evidence.some((item) => item.id === ref))] };
   });
   let relations = model.relations;
   if (original.parentId !== draft.parentId) {
@@ -143,15 +147,42 @@ export function correctEngineeringEntity(model: EngineeringSystemModel, original
   const corrected: EngineeringEntity = { ...draft, name: draft.name.trim(), properties, evidenceRefs: [...originalRefs], source: original.name !== draft.name || original.description !== draft.description ? "user" : original.source };
   if (!corrected.parentId) delete corrected.parentId;
   const relationIds = new Set(relations.map((relation) => relation.id));
-  return { ...model, evidence, relations, requirements: model.requirements.map((requirement) => ({ ...requirement, relatedRelationIds: requirement.relatedRelationIds.filter((id) => relationIds.has(id)) })), entities: model.entities.map((entity) => entity.id === original.id ? corrected : entity) };
+  return recordEngineeringCorrections(model, { ...model, evidence, relations, requirements: model.requirements.map((requirement) => ({ ...requirement, relatedRelationIds: requirement.relatedRelationIds.filter((id) => relationIds.has(id)) })), entities: model.entities.map((entity) => entity.id === original.id ? corrected : entity) }, options, timestamp);
 }
 
-export function removeEngineeringRelation(model: EngineeringSystemModel, id: string): EngineeringSystemModel {
+export function removeEngineeringRelation(model: EngineeringSystemModel, id: string, options: EngineeringCorrectionOptions = {}, timestamp = new Date().toISOString()): EngineeringSystemModel {
   const removed = model.relations.find((relation) => relation.id === id);
-  return { ...model, entities: model.entities.map((entity) => {
+  return recordEngineeringCorrections(model, { ...model, entities: model.entities.map((entity) => {
     if (removed?.kind !== "contains" || entity.id !== removed.to || entity.parentId !== removed.from) return entity;
     const corrected = { ...entity }; delete corrected.parentId; return corrected;
-  }), relations: model.relations.filter((relation) => relation.id !== id), requirements: model.requirements.map((requirement) => ({ ...requirement, relatedRelationIds: requirement.relatedRelationIds.filter((relationId) => relationId !== id) })) };
+  }), relations: model.relations.filter((relation) => relation.id !== id), requirements: model.requirements.map((requirement) => ({ ...requirement, relatedRelationIds: requirement.relatedRelationIds.filter((relationId) => relationId !== id) })) }, options, timestamp);
+}
+
+export function correctEngineeringRelation(model: EngineeringSystemModel, original: EngineeringRelation | null, draft: EngineeringRelation, timestamp = new Date().toISOString(), options: EngineeringCorrectionOptions = {}): EngineeringSystemModel {
+  const objects = [...model.entities.map((entity) => ({ id: entity.id, name: entity.name })), ...model.requirements.map((requirement) => ({ id: requirement.id, name: requirement.title }))];
+  if (draft.from === draft.to || !objects.some((object) => object.id === draft.from) || !objects.some((object) => object.id === draft.to)) throw new Error("Choose two different existing engineering objects.");
+  if (draft.kind === "contains") {
+    if (!model.entities.some((entity) => entity.id === draft.from) || !model.entities.some((entity) => entity.id === draft.to)) throw new Error("Containment connects engineering entities.");
+    const visited = new Set<string>();
+    let parent: string | undefined = draft.from;
+    while (parent && !visited.has(parent)) { if (parent === draft.to) throw new Error("This containment would create a cycle."); visited.add(parent); parent = model.entities.find((entity) => entity.id === parent)?.parentId; }
+  }
+  const id = original?.id ?? reviewId("relation");
+  const evidenceId = reviewId();
+  const selectedRefs = [...new Set([...draft.evidenceRefs, ...(options.evidenceRefs ?? [])])].filter((ref) => model.evidence.some((item) => item.id === ref));
+  const corrected: EngineeringRelation = { ...draft, id, source: "user", confidence: 1, evidenceRefs: [evidenceId, ...selectedRefs] };
+  const evidence = [...model.evidence, { id: evidenceId, artifactId: "team-review", artifactLabel: "Team review", excerpt: `${objects.find((object) => object.id === draft.from)?.name} · ${draft.kind} · ${objects.find((object) => object.id === draft.to)?.name} · ${timestamp}`, kind: "user" as const }];
+  let relations = [...model.relations.filter((relation) => relation.id !== id), corrected];
+  const entities = model.entities.map((entity) => {
+    const next = { ...entity };
+    if (original?.kind === "contains" && entity.id === original.to && next.parentId === original.from) delete next.parentId;
+    if (draft.kind === "contains" && entity.id === draft.to) next.parentId = draft.from;
+    return next;
+  });
+  if (draft.kind === "contains") relations = relations.filter((relation) => relation.id === id || relation.kind !== "contains" || relation.to !== draft.to);
+  const relationIds = new Set(relations.map((relation) => relation.id));
+  const requirements = model.requirements.map((requirement) => ({ ...requirement, relatedRelationIds: requirement.relatedRelationIds.filter((relationId) => relationIds.has(relationId)) }));
+  return recordEngineeringCorrections(model, { ...model, entities, evidence, relations, requirements }, { ...options, evidenceRefs: selectedRefs }, timestamp);
 }
 
 export function engineeringParentCandidates(model: EngineeringSystemModel, entityId: string): EngineeringEntity[] {
@@ -166,15 +197,15 @@ export function engineeringParentCandidates(model: EngineeringSystemModel, entit
   return model.entities.filter((entity) => !descendants.has(entity.id) && (entity.kind === "system" || entity.kind === "subsystem"));
 }
 
-export function correctEngineeringRequirement(model: EngineeringSystemModel, original: EngineeringRequirement, draft: EngineeringRequirement, timestamp = new Date().toISOString()): EngineeringSystemModel {
+export function correctEngineeringRequirement(model: EngineeringSystemModel, original: EngineeringRequirement, draft: EngineeringRequirement, timestamp = new Date().toISOString(), options: EngineeringCorrectionOptions = {}): EngineeringSystemModel {
   const evidence = [...model.evidence];
   const properties = draft.properties.map((property) => {
     const previous = original.properties.find((item) => item.key === property.key);
     if (previous?.value === property.value && previous.unit === property.unit) return previous;
     const id = reviewId();
     evidence.push({ id, artifactId: "team-review", artifactLabel: "Team review", kind: "user", excerpt: `${original.title} · ${property.name}: ${previous ? formatEngineeringValue(previous) : "?"} → ${formatEngineeringValue(property)} · ${timestamp}`.slice(0, 600) });
-    return { ...property, source: "user" as const, evidenceRefs: [id] };
+    return { ...property, source: "user" as const, evidenceRefs: [id, ...draft.sourceRefs] };
   });
   const corrected = editEngineeringRequirement(original, { ...draft, properties, classificationSource: "user" });
-  return { ...model, evidence, requirements: model.requirements.map((requirement) => requirement.id === original.id ? corrected : requirement) };
+  return recordEngineeringCorrections(model, { ...model, evidence, requirements: model.requirements.map((requirement) => requirement.id === original.id ? corrected : requirement) }, { ...options, evidenceRefs: draft.sourceRefs }, timestamp);
 }
