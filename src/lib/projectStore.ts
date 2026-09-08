@@ -51,6 +51,8 @@ export type ProjectMemberAssignment = {
 
 export type ProjectContext = {
   configured: boolean;
+  /** "independent" records a deliberate choice to have no reference program. */
+  referenceProgram?: "independent" | null;
   programId: string | null;
   modalityId: string | null;
   categoryId: string | null;

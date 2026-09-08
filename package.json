@@ -30,10 +30,13 @@
     "quality": "npm run typecheck && npm run lint && npm run test && npm run build",
     "test:visual": "node scripts/visual-check.mjs",
     "test:visual:live": "node --env-file-if-exists=.env.local scripts/visual-live-extraction.mjs",
+    "test:acceptance:quetzal": "node --env-file-if-exists=.env.local scripts/acceptance-quetzal-memory.mjs",
     "test:visual:quetzal": "node scripts/visual-quetzal.mjs",
     "benchmark:quetzal": "node scripts/benchmark-quetzal.mjs",
     "benchmark:structural": "node scripts/benchmark-structural.mjs",
     "benchmark:probe": "node scripts/probe-quetzal-contamination.mjs",
+    "diagnose:project-memory": "node scripts/diagnose-project-memory.mjs",
+    "seed:quetzal": "node scripts/seed-quetzal-validation.mjs",
     "diagnose:extraction": "node --env-file-if-exists=.env.local scripts/diagnose-extraction.mjs",
     "benchmark:extract": "node scripts/extract-quetzal.mjs"
   },

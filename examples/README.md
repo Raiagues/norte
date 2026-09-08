@@ -4,9 +4,15 @@ The primary application context is **Quetzal-1 EPS + COMMS**. Its source invento
 
 ## Full application
 
-Start the API and client with `npm run dev` after configuring the server-side Gemini key. Fresh or explicitly reset development data already contains the two curated design documents. Open Quetzal-1, select **Start conception**, inspect System, then use the normal Discovery interaction to express a TX duty change.
+Start the API and client with `npm run dev` after configuring the server-side Gemini key. A fresh database contains the team and the project with an **empty memory**; import the real documents first:
 
-The application receives only design context. It does not receive the benchmark answers, flight observations or a pre-generated architecture. A source URL is attribution; the full on-orbit paper is deliberately not attached because it contains holdout outcomes.
+```bash
+NORTE_ALLOW_QUETZAL_SEED=1 node scripts/seed-quetzal-validation.mjs --file var/mission-dev-data.json
+```
+
+Then open Quetzal-1, select **Start conception**, inspect System, and use the normal Discovery interaction to express a TX duty change.
+
+The application receives only the imported design documents. It does not receive the benchmark answers, flight observations or a pre-generated architecture. The full on-orbit paper is deliberately not attached because it contains holdout outcomes; `quetzal1/source-manifest.mjs` lists it as `evaluation_reference` so the importer refuses it.
 
 ## Browser-only preview
 
@@ -36,7 +42,7 @@ Open the Quetzal project. The preview backs up the previous browser state, attac
 
 ## Regression fixtures
 
-`engineering-validation.mjs`, `.json` and `.txt` describe the older, deliberately synthetic 15-entity rig used by engine/API regression tests. They test electrical compatibility, mass and autonomy rules independently of Quetzal. They are not seeded into the application and are not flight ground truth.
+`quetzal1/source-manifest.mjs` is the real-source inventory; see [the sources and seed guide](../docs/QUETZAL_VALIDATION_SOURCES.md). `engineering-validation.mjs`, `.json` and `.txt` describe the older, deliberately synthetic 15-entity rig used by engine/API regression tests. They test electrical compatibility, mass and autonomy rules independently of Quetzal. They are not seeded into the application and are not flight ground truth.
 
 ## Evaluation
 

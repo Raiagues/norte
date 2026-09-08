@@ -700,6 +700,30 @@
   font-size: 10px;
 }
 
+/* Whether Norte can actually read this source, visible before Start conception. */
+.pm-artifact-status {
+  display: inline-flex;
+  overflow: hidden;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-style: normal;
+  letter-spacing: .02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-artifact-status::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentcolor;
+  content: "";
+}
+
+.pm-artifact-status.usable { color: #55c9a6; }
+.pm-artifact-status.blocked { color: #e8a55f; }
+
 .pm-artifact-card > a > svg {
   width: 14px;
   height: 14px;

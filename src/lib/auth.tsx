@@ -3,7 +3,7 @@ import { DEMO_USER, demoApi } from "./demoApi";
 import type { SessionUser } from "./team";
 
 const STATIC_DEMO = import.meta.env.VITE_DEMO_MODE === "true";
-const API_ORIGIN = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/u, "");
+export const API_ORIGIN = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/u, "");
 
 export type RegisterAccountInput = {
   name: string;

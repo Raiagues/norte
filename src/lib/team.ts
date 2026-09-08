@@ -56,11 +56,22 @@ export type TeamRecord = {
   projectCount?: number;
 };
 
+export type ArtifactStatus = "parsed" | "pdf" | "not_parsed" | "metadata_only" | "unknown";
+
+/** The server's verdict on whether this source can reach engineering extraction. */
+export type ArtifactReadability = {
+  status: ArtifactStatus;
+  reason: string;
+};
+
 export type ConnectedArtifact = {
   id: string;
   kind: ArtifactKind;
   label: string;
   url: string;
+  /** API path to the stored bytes, when Norte holds the file itself. */
+  contentPath?: string;
+  readability?: ArtifactReadability;
   description: string;
   tags: string[];
   official: boolean;

@@ -3,12 +3,10 @@ import { extractionEnums, EXTRACTED_SOURCE_KINDS, EXTRACTED_EVIDENCE_KINDS } fro
 import { randomUUID } from "node:crypto";
 import { analyzeImpact, normalizeQuantity } from "../shared/impact-engine.mjs";
 import { engineeringSystemSchema, validateEngineeringSystem } from "../shared/engineering-schema.mjs";
+import { classifyArtifactSource, MAX_TOTAL_BYTES } from "./artifact-content.mjs";
+import { linkedProjectArtifacts, projectMemoryReadiness } from "../shared/project-memory.mjs";
 
 export { analysisRequestSchema, generationRequestSchema, validateEngineeringSystem } from "../shared/engineering-schema.mjs";
-const MAX_FILE_BYTES = 4 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 12 * 1024 * 1024;
-const MAX_TEXT_CHARACTERS = 120_000;
-const TEXT_MIMES = new Set(["text/plain", "text/markdown", "text/csv", "application/json", "text/javascript", "application/javascript", "text/x-python", "text/x-c", "text/typescript"]);
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const KNOWN_PROPERTY_DIMENSIONS = new Map([
   ["current", ["required_current", "peak_current", "available_current", "maximum_current", "max_current", "current"]],
@@ -99,41 +97,28 @@ export function geminiResponseSchema(schema) {
 
 /** Only attached artifacts owned by this project or its associated team are eligible. */
 export function projectArtifacts(project, artifacts) {
-  const teamIds = new Set(project.context?.teamArtifactIds || []);
-  const projectIds = new Set(project.context?.projectArtifactIds || []);
-  return artifacts.filter((artifact) => (teamIds.has(artifact.id) && artifact.scope === "team" && artifact.ownerId === project.context?.teamId) || (projectIds.has(artifact.id) && artifact.scope === "project" && artifact.ownerId === project.id));
+  return linkedProjectArtifacts(project, artifacts);
 }
 
 export function prepareProjectArtifacts(project, artifacts) {
-  let totalBytes = 0;
+  let remainingBytes = MAX_TOTAL_BYTES;
   const parsed = [];
   for (const artifact of projectArtifacts(project, artifacts)) {
-    const source = { artifactId: artifact.id, artifactLabel: artifact.label, status: "metadata_only", reason: "External links are metadata only; their contents have not been fetched." };
-    const record = { source, description: artifact.description || "", fileName: artifact.fileName || "", text: "" };
-    const match = /^data:([^;,]+);base64,([A-Za-z0-9+/]+={0,2})$/u.exec(artifact.url || "");
-    if (!match) { parsed.push(record); continue; }
-    const bytes = Buffer.from(match[2], "base64");
-    if (bytes.toString("base64") !== match[2] || bytes.length === 0 || bytes.length > MAX_FILE_BYTES || totalBytes + bytes.length > MAX_TOTAL_BYTES) {
-      source.status = "not_parsed"; source.reason = "File content is invalid or exceeds the document processing limit."; parsed.push(record); continue;
-    }
-    totalBytes += bytes.length;
-    if (match[1] === "application/pdf" && bytes.subarray(0, 5).toString("ascii") === "%PDF-") {
-      source.status = "pdf";
-      source.reason = "PDF supplied to Gemini; excerpts need human source verification.";
-      record.inlineData = { mimeType: "application/pdf", data: match[2] };
-    } else if (TEXT_MIMES.has(match[1]) && !/\.(docx?|xlsx?|od[st]|rtf)$/iu.test(record.fileName)) {
-      try {
-        record.text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-        if (record.text.includes("\0") || record.text.length > MAX_TEXT_CHARACTERS) throw new Error("Unsupported text.");
-        source.status = "parsed";
-        delete source.reason;
-      } catch {
-        record.text = ""; source.status = "not_parsed"; source.reason = "Text encoding or size is unsupported. Use a smaller UTF-8 file.";
-      }
-    } else { source.status = "not_parsed"; source.reason = "Not parsed yet. Export this document or spreadsheet as PDF, CSV, or UTF-8 text."; }
+    const classified = classifyArtifactSource(artifact, { remainingBytes });
+    remainingBytes -= classified.byteLength;
+    const source = { artifactId: artifact.id, artifactLabel: artifact.label, status: classified.status };
+    if (classified.reason) source.reason = classified.reason;
+    const record = { source, description: artifact.description || "", fileName: artifact.fileName || "", text: classified.text || "" };
+    if (classified.inlineData) record.inlineData = classified.inlineData;
     parsed.push(record);
   }
   return parsed;
+}
+
+/** The readiness the interface shows, computed from the same stored bytes. */
+export function projectMemoryStatus(project, artifacts) {
+  const graded = projectArtifacts(project, artifacts).map((artifact) => ({ ...artifact, readability: classifyArtifactSource(artifact) }));
+  return projectMemoryReadiness(project, graded);
 }
 
 export function buildSystemPrompt(project, parsed, language = "en") {

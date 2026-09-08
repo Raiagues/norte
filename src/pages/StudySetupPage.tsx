@@ -26,6 +26,8 @@ import { ArtifactSourceFields } from "../components/ArtifactSourceFields";
 import { UserBadge } from "../components/UserBadge";
 import { ProjectTeamConfigurator } from "../components/ProjectTeamConfigurator";
 import { ApiError, useAuth } from "../lib/auth";
+import { artifactHref, artifactIsStoredFile, artifactStatusLabel, formatArtifactSize } from "../lib/artifacts";
+import { projectMemoryReadiness } from "../../shared/project-memory.mjs";
 import { programCategory, programModality, referenceProgram, REFERENCE_PROGRAMS } from "../lib/programs";
 import type { MissionProject, ProjectMemberAssignment } from "../lib/projectStore";
 import { memberInitials } from "../lib/team";
@@ -173,6 +175,11 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     missingProgram: "programa, modalidade e categoria",
     missingTeam: "equipe do projeto",
     missingMembers: "ao menos uma pessoa",
+    missingReadable: "um documento de texto ou PDF que o Norte consiga ler",
+    independentProgram: "Projeto de engenharia independente",
+    independentHint: "Este projeto não participa de uma competição.",
+    markIndependent: "Sem programa de referência",
+    chooseProgramInstead: "Escolher um programa",
     loading: "Carregando memória",
     loadError: "Não foi possível carregar a memória do projeto.",
     saved: "Alteração salva.",
@@ -268,6 +275,11 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     missingProgram: "program, modality, and category",
     missingTeam: "project team",
     missingMembers: "at least one person",
+    missingReadable: "a text or PDF document Norte can read",
+    independentProgram: "Independent engineering project",
+    independentHint: "This project is not part of a competition.",
+    markIndependent: "No reference program",
+    chooseProgramInstead: "Choose a program",
     loading: "Loading memory",
     loadError: "Project memory could not be loaded.",
     saved: "Change saved.",
@@ -316,6 +328,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
   useEffect(() => { void loadMemory(); }, [loadMemory]);
 
   const program = referenceProgram(project.context.programId);
+  const independent = !program && project.context.referenceProgram === "independent";
   const modality = programModality(program, project.context.modalityId);
   const category = programCategory(modality, project.context.categoryId);
   const associatedTeams = teams.filter((team) => team.membership === "member" || team.memberIds.includes(auth.user?.memberId || ""));
@@ -342,10 +355,15 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     const nextCategory = nextModality?.categories.find((item) => item.id === "n3") ?? nextModality?.categories[0] ?? null;
     updateProject({}, {
       configured: false,
+      referenceProgram: null,
       programId: nextProgram?.id ?? null,
       modalityId: nextModality?.id ?? null,
       categoryId: nextCategory?.id ?? null
     });
+  }
+
+  function selectIndependent() {
+    updateProject({}, { configured: false, referenceProgram: "independent", programId: null, modalityId: null, categoryId: null });
   }
 
   function selectModality(modalityId: string) {
@@ -427,7 +445,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     const current = dialog.artifact;
     const ownerId = dialog.scope === "team" ? selectedTeam?.id : project.id;
     if (!ownerId) return;
-    const payload = {
+    const payload: Record<string, unknown> = {
       kind: String(data.get("kind") || "document") as ArtifactKind,
       label: String(data.get("label") || ""),
       url: String(data.get("url") || ""),
@@ -439,7 +457,11 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
       scope: dialog.scope,
       ownerId
     };
-    if (!payload.url) {
+    // Editing a stored file without replacing it submits no url: the server
+    // keeps the bytes it already holds. A new artifact always needs a source.
+    const keepsStoredContent = Boolean(current && !payload.url && current.contentPath);
+    if (keepsStoredContent) Reflect.deleteProperty(payload, "url");
+    else if (!payload.url) {
       setFeedback(language === "pt" ? "Adicione um link ou escolha um arquivo." : "Add a link or choose a file.");
       return;
     }
@@ -484,13 +506,15 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     }
   }
 
-  const missing = [
-    !project.name.trim() ? c.missingName : "",
-    !selectedTeam ? c.missingTeam : ""
-  ].filter(Boolean);
+  // One readiness rule, shared with the server, so the page can never promise
+  // memory that /system-ai/generate will immediately reject.
+  const readiness = projectMemoryReadiness(project, artifacts);
+  const missingLabels: Record<string, string> = { name: c.missingName, team: c.missingTeam, "readable-artifact": c.missingReadable };
+  const missing = (loading ? [] : readiness.missing).map((code) => missingLabels[code]).filter(Boolean);
+  const canContinue = !loading && readiness.ready;
 
   async function continueToConception() {
-    if (missing.length > 0) return;
+    if (!canContinue) return;
     updateProject({}, { configured: true });
     setBusy(true);
     setFeedback("");
@@ -505,13 +529,18 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
 
   function ArtifactCard({ artifact, scope }: { artifact: ConnectedArtifact; scope: ArtifactScope }) {
     const canEdit = scope === "project" || Boolean(selectedTeam?.canManage);
+    const stored = artifactIsStoredFile(artifact);
+    const href = artifactHref(artifact);
+    const status = artifactStatusLabel(artifact, language);
+    const size = formatArtifactSize(artifact.size);
     return <article className="pm-artifact-card">
-      <a href={artifact.url} target={artifact.url.startsWith("data:") ? undefined : "_blank"} rel={artifact.url.startsWith("data:") ? undefined : "noreferrer"} download={artifact.url.startsWith("data:") ? artifact.fileName || artifact.label : undefined} aria-label={`${c.open}: ${artifact.label}`}>
+      <a href={href} target={stored ? undefined : "_blank"} rel={stored ? undefined : "noreferrer"} download={stored ? artifact.fileName || artifact.label : undefined} aria-label={`${c.open}: ${artifact.label}`}>
         <ArtifactIcon artifact={artifact} />
         <div>
           <small>{scope === "team" ? c.teamReference : c.projectReference}</small>
           <strong>{artifact.label}</strong>
           <span>{artifact.description || artifact.url}</span>
+          <em className={status.usable ? "pm-artifact-status usable" : "pm-artifact-status blocked"}>{size && `${size} · `}{status.text}</em>
         </div>
         <ExternalLink aria-hidden="true" />
       </a>
@@ -539,9 +568,14 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
 
         <section className={program ? "pm-program-card" : "pm-program-card empty"}>
           <span className="pm-card-label">{c.referenceProgram}</span>
+          {/* A real mission need not belong to a competition: "independent" is a
+              legitimate, deliberate state, not an unfinished one. */}
           {!program && <button className="pm-empty-program" type="button" onClick={() => setDialog({ type: "program" })}>
             <span><BookOpenCheck aria-hidden="true" /></span>
-            <div><strong>{c.programEmptyTitle}</strong><small>{c.programEmptyHint}</small></div>
+            <div>
+              <strong>{independent ? c.independentProgram : c.programEmptyTitle}</strong>
+              <small>{independent ? c.independentHint : c.programEmptyHint}</small>
+            </div>
             <ChevronRight aria-hidden="true" />
           </button>}
           {program && <>
@@ -587,7 +621,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
 
         <footer className="pm-footer">
           <div className={missing.length ? "pm-readiness missing" : "pm-readiness"}>{missing.length ? <><span>{c.missing}</span><strong>{missing.join(" · ")}</strong></> : <><Check aria-hidden="true" /><strong>{c.ready}</strong></>}</div>
-          <button type="button" onClick={() => void continueToConception()} disabled={missing.length > 0 || loading || busy}>{loading || busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : null}{isDraft ? c.createAndContinue : c.continue}<ArrowRight aria-hidden="true" /></button>
+          <button type="button" onClick={() => void continueToConception()} disabled={!canContinue || busy}>{loading || busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : null}{isDraft ? c.createAndContinue : c.continue}<ArrowRight aria-hidden="true" /></button>
         </footer>
       </div>
     </main>
@@ -595,6 +629,12 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     {dialog?.type === "program" && <MemoryDialog eyebrow={c.referenceProgram} title={program ? c.programDetails : c.chooseReference} onClose={() => setDialog(null)}>
       <div className="pm-dialog-copy">{c.programDetailsHint}</div>
       <div className="pm-program-picker" role="radiogroup" aria-label={c.referenceProgram}>
+        <button className={independent ? "selected" : ""} type="button" role="radio" aria-checked={independent} onClick={() => selectIndependent()}>
+          <span className="pm-program-option-logo"><BookOpenCheck aria-hidden="true" /></span>
+          <span><strong>{c.markIndependent}</strong><small>{c.independentHint}</small></span>
+          <em>{c.available}</em>
+          {independent && <Check aria-hidden="true" />}
+        </button>
         {REFERENCE_PROGRAMS.map((item) => <button className={item.id === program?.id ? "selected" : ""} type="button" role="radio" aria-checked={item.id === program?.id} disabled={!item.available} onClick={() => selectProgram(item.id)} key={item.id}>
           <span className="pm-program-option-logo">{item.logoSrc ? <img src={item.logoSrc} alt="" /> : <BookOpenCheck aria-hidden="true" />}</span>
           <span><strong>{item.shortName}</strong><small>{item.name[language]}</small></span>

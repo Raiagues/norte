@@ -38,6 +38,22 @@ function timestamp() {
   return new Date().toISOString();
 }
 
+const DEMO_READABLE_MIMES = new Set(["application/pdf", "text/plain", "text/markdown", "text/csv", "application/json", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]);
+
+/**
+ * The browser preview has no server to decode files, so it classifies sources
+ * structurally. It uses the same statuses as the API, so readiness in demo mode
+ * follows the one shared rule rather than a second, looser definition.
+ */
+function demoArtifact(artifact: ConnectedArtifact): ConnectedArtifact {
+  const mime = /^data:([^;,]+);base64,/u.exec(artifact.url || "")?.[1] ?? "";
+  if (!mime) return { ...artifact, readability: { status: "metadata_only", reason: "External links are metadata only; their contents have not been fetched." } };
+  const readable = DEMO_READABLE_MIMES.has(mime);
+  return { ...artifact, readability: readable
+    ? { status: mime === "application/pdf" ? "pdf" : "parsed", reason: "" }
+    : { status: "not_parsed", reason: "Not parsed yet. Export this document or spreadsheet as PDF, CSV, or UTF-8 text." } };
+}
+
 function id(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
@@ -342,7 +358,7 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
   }
 
   if (path === "/team/members" && method === "GET") return { members: state.members } as T;
-  if (path === "/artifacts" && method === "GET") return { artifacts: state.artifacts } as T;
+  if (path === "/artifacts" && method === "GET") return { artifacts: state.artifacts.map(demoArtifact) } as T;
   if (path === "/workspace/project" && method === "GET") return { validationResetId: state.validationResetId, project: state.project, revision: state.project ? 1 : 0 } as T;
   if (path === "/workspace/project" && method === "PUT") {
     const project = body as unknown as MissionProject;

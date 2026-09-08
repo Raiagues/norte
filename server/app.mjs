@@ -13,6 +13,7 @@ import { JsonDataStore } from "./data-store.mjs";
 import { PostgresDataStore } from "./postgres-store.mjs";
 import { brainstormRequestSchema, createBrainstormAiService } from "./brainstorm-ai.mjs";
 import { analysisRequestSchema, createSystemAiService, generationRequestSchema, projectArtifacts, validateEngineeringSystem } from "./system-ai.mjs";
+import { artifactReadabilityRecord } from "./artifact-content.mjs";
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const PASSWORD_MIN_LENGTH = 15;
@@ -281,6 +282,19 @@ function cleanArtifactInput(body) {
   };
 }
 
+// Stored file bytes are large; the list only carries a pointer to them plus the
+// server's own readability verdict, so pages never download the whole library.
+const INLINE_ARTIFACT_URL_LIMIT = 8 * 1024;
+
+function publicArtifact(artifact) {
+  const stored = typeof artifact.url === "string" ? artifact.url : "";
+  const next = { ...artifact, readability: artifactReadabilityRecord(artifact) };
+  if (!stored.startsWith("data:")) return next;
+  next.contentPath = `/artifacts/${artifact.id}/content`;
+  if (stored.length > INLINE_ARTIFACT_URL_LIMIT) next.url = "";
+  return next;
+}
+
 function validProjectDocument(value) {
   return value && typeof value === "object" && !Array.isArray(value)
     && value.schemaVersion === 2
@@ -472,6 +486,17 @@ export async function buildApp(options = {}) {
     const teamId = record?.document?.context?.teamId;
     const team = data.teams.find((item) => item.id === teamId);
     return Boolean(team?.memberIds.includes(user.memberId));
+  }
+
+  /** One visibility rule for both the artifact list and its file downloads. */
+  function visibleArtifacts(data, user) {
+    if (user.accessRole === "owner_admin") return data.artifacts;
+    const teamIds = new Set(data.teams.filter((team) => team.memberIds.includes(user.memberId)).map((team) => team.id));
+    const projectIds = new Set(Object.entries(data.workspace.projects || {}).filter(([, record]) => canAccessProject(data, user, record)).map(([projectId]) => projectId));
+    return data.artifacts.filter((artifact) => artifact.official
+      || artifact.createdBy === user.id
+      || (artifact.scope === "team" && teamIds.has(artifact.ownerId))
+      || (artifact.scope === "project" && projectIds.has(artifact.ownerId)));
   }
 
   function projectSummary(record) {
@@ -1066,15 +1091,31 @@ export async function buildApp(options = {}) {
     schema: { tags: ["Artifacts"], summary: "List connected mission sources", security: [{ sessionCookie: [] }] }
   }, async (request) => {
     const data = store.read();
-    if (request.auth.user.accessRole === "owner_admin") return { artifacts: data.artifacts };
-    const teamIds = new Set(data.teams.filter((team) => team.memberIds.includes(request.auth.user.memberId)).map((team) => team.id));
-    const projectIds = new Set(Object.entries(data.workspace.projects || {}).filter(([, record]) => canAccessProject(data, request.auth.user, record)).map(([projectId]) => projectId));
-    return {
-      artifacts: data.artifacts.filter((artifact) => artifact.official
-        || artifact.createdBy === request.auth.user.id
-        || (artifact.scope === "team" && teamIds.has(artifact.ownerId))
-        || (artifact.scope === "project" && projectIds.has(artifact.ownerId)))
-    };
+    return { artifacts: visibleArtifacts(data, request.auth.user).map(publicArtifact) };
+  });
+
+  app.get("/api/artifacts/:id/content", {
+    preHandler: [requireAuth],
+    schema: {
+      tags: ["Artifacts"],
+      summary: "Download the stored bytes of a connected file",
+      security: [{ sessionCookie: [] }],
+      params: { type: "object", additionalProperties: false, required: ["id"], properties: { id: string(80, 1) } }
+    }
+  }, async (request, reply) => {
+    const data = store.read();
+    const artifact = visibleArtifacts(data, request.auth.user).find((item) => item.id === request.params.id);
+    if (!artifact) throw httpError(404, "ARTIFACT_NOT_FOUND", "Connected source was not found.");
+    const match = /^data:([^;,]+);base64,([A-Za-z0-9+/]+={0,2})$/u.exec(artifact.url || "");
+    if (!match || !SAFE_ARTIFACT_MIME_TYPES.has(match[1])) throw httpError(404, "ARTIFACT_NO_CONTENT", "This source is a link; Norte has not stored its file.");
+    const fileName = (artifact.fileName || `${artifact.id}`).replace(/[^\w.-]/gu, "_");
+    return reply
+      .header("Content-Type", match[1])
+      .header("Content-Disposition", `attachment; filename="${fileName}"`)
+      .header("Content-Security-Policy", "default-src 'none'; sandbox")
+      .header("X-Content-Type-Options", "nosniff")
+      .header("Cache-Control", "private, no-store")
+      .send(Buffer.from(match[2], "base64"));
   });
 
   app.post("/api/artifacts", {
@@ -1103,7 +1144,7 @@ export async function buildApp(options = {}) {
       return next;
     });
     reply.code(201);
-    return { artifact };
+    return { artifact: publicArtifact(artifact) };
   });
 
   app.patch("/api/artifacts/:id", {
@@ -1128,7 +1169,7 @@ export async function buildApp(options = {}) {
       markArtifactMemoryChanged(data, existing.id);
       return existing;
     });
-    return { artifact };
+    return { artifact: publicArtifact(artifact) };
   });
 
   app.delete("/api/artifacts/:id", {

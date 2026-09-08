@@ -169,3 +169,77 @@ The live failure revealed generic English error feedback for formula/hierarchy e
 Private evidence index: `var/benchmarks/extraction-comparison-final-20260908.md` provides the full cross-run table and per-attempt missing facts, relationship errors, requirement errors, evidence errors, sizes and timings; its JSON companion retains structured data. All original run directories, including failed exploratory, final and browser attempts, remain ignored by Git. Regenerate a comparison into a **new** filename with `scripts/summarize-extraction.mjs`; it performs no provider calls and does not rewrite past results.
 
 The final delivery preserves disabled creation controls, free Discovery, System-first macro architecture, auditable sources and corrections. Remaining limits are extraction accuracy/availability, supported document ingestion, bounded engineering rules and correction history, unmeasured human time-to-value, retrospective benchmark contamination and pending independent review. Final push/CI identifiers are reported with the delivery commit; Render deployment remains with the owner.
+
+## Real Project Memory documents — 8 September 2026
+
+The validation project now holds the actual Quetzal-1 engineering documents
+(`docs/QUETZAL_VALIDATION_SOURCES.md`). The earlier blocker — the server rejecting
+conception with *"Connect a readable text or PDF artifact to project memory"* —
+is resolved: it was caused by memory that contained curated text or link-only
+artifacts, and `metadata_only` artifacts can no longer be mistaken for readable
+sources because the interface now shows the server's own verdict on every card.
+
+### Request size against `gemini-3.5-flash-lite`
+
+Three runs per set, one physical request each, sources measured after parsing:
+
+| sources | request | latency | provider outcome |
+| --- | --- | --- | --- |
+| 3.42 MB — hardware README, schematic, flight-software README, AX100 | 4.57 MB | 15 s / 33 s / 18 s | 3/3 HTTP 200 |
+| 3.43 MB — the above plus the reference BOM (**default core set**) | 4.58 MB | 6 s / 7 s / 4 s | 3/3 HTTP 200 |
+| 6.26 MB — plus INA260 and TPS2551 datasheets | 8.35 MB | 83 s / 122 s / 57 s | 3/3 HTTP 200, two above the 90 s attempt timeout |
+
+The 8.35 MB request is answerable but not within the extraction timeout, and one
+earlier attempt at that size returned HTTP 503. The provider limits were **not**
+raised; the two TI datasheets were moved to `--tier extended` instead. PDFs are
+billed as image tokens: the 4.58 MB core request is only ~31.8 k prompt tokens.
+
+Transient HTTP 503s were observed at 4.58 MB during one browser run (two
+consecutive attempts) and cleared on retry, so provider availability — not
+payload size — dominates that failure mode at the default set.
+
+### Contract validity on real documents: 1/6
+
+Six consecutive live extractions over the seeded core set, contract validation
+applied to each completed output:
+
+| runs | outcome |
+| --- | --- |
+| 1/6 | accepted |
+| 5/6 | `SYSTEM_RESPONSE_INVALID` |
+
+**Every one of the five rejections has the same single defect**: the model places
+an **artifactId** in `requirement.sourceRefs` where an evidence id is required —
+`sourceRefs: ["quetzal-src-quetzal-eps-hardware-readme"]`. Entity and property
+`evidenceRefs`, relation endpoints and evidence records were valid in all six
+runs (`badEntityRefs` and `badRelationEnds` were empty every time). Entity counts
+ranged 4–9, relations 1, requirements 1–3, evidence 2–8.
+
+This is a single, precisely located contract defect, and it is the first thing
+the resumed extraction-contract work should address. It is not a Project Memory
+or ingestion problem: the same requests carry correct document content and
+produce correct entity-level citations.
+
+### Accepted browser run
+
+`var/benchmarks/acceptance-quetzal-*` (run of 8 September 2026) records the full
+passing flow over the seeded database: five real documents all readable, Project
+Memory rendering them as usable, Start conception → live provider → validated,
+persisted system, System workspace rendering the graph, and Memory → Conception
+re-entry reopening the saved model with **zero** regeneration requests. It needed
+two attempts because the first was lost to provider 503s. The accepted model held
+5 entities, 1 relation, 1 requirement and 6 evidence records, every record citing
+a seeded artifact:
+
+- `EPS → powers → COMMS` cites the Quetzal-1 EPS hardware README.
+- `NanoCom AX100 · tx_power = 30 dBm` cites the GomSpace AX100 datasheet.
+- `ATMEGA328P · nominal_voltage = 3.3 V` cites the hardware README at L57.
+
+Extracted breadth is thin. A what-if on `tx_power` (30 → 33 dBm) therefore marks
+AX100 changed and everything else unaffected: the documents produced no power
+budget, duty cycle or energy balance, so the engine has nothing to propagate. No
+benchmark value was injected to make the scenario look richer. Extraction breadth
+and the contract defect above are the open items.
+
+Run `npm run test:acceptance:quetzal` to reproduce; it uses the live provider and
+a copy of the seeded store, and never writes to local data.

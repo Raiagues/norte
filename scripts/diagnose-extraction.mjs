@@ -8,7 +8,8 @@ import { geminiGenerate, classifyExtractionError } from "../server/gemini-transp
 import { runExtractionPipeline } from "../server/extraction-pipeline.mjs";
 import { matchesSchema } from "../shared/engineering-schema.mjs";
 import { createValidationProject } from "../server/data-store.mjs";
-import { createQuetzalArtifacts, contextDocuments } from "../benchmark/quetzal1/context/design-context.mjs";
+import { contextDocuments } from "../benchmark/quetzal1/context/design-context.mjs";
+import { benchmarkProjectWithContext } from "./attach-benchmark-context.mjs";
 import { evaluateExtraction } from "./quetzal-evaluator.mjs";
 
 const hash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -17,8 +18,7 @@ export async function diagnoseExtraction({ models = ["gemini-3.5-flash-lite", "g
   const directory = resolve(outputDirectory || `var/benchmarks/diagnose-${Date.now()}-${randomUUID().slice(0, 8)}`);
   await mkdir(resolve(directory, ".."), { recursive: true });
   await mkdir(directory, { mode: 0o700 });
-  const project = createValidationProject();
-  const artifacts = createQuetzalArtifacts(project.id);
+  const { project, artifacts } = benchmarkProjectWithContext(createValidationProject());
   const parsed = prepareProjectArtifacts(project, artifacts);
   let template;
   // Capture the actual production request without sending it or modifying its prompt/schema.

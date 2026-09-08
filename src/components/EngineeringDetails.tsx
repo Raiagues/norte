@@ -9,6 +9,7 @@ import { correctEngineeringEntity, correctEngineeringRelation, correctEngineerin
 import { downloadEngineeringCorrections } from "../lib/engineeringCorrections";
 import type { RequirementFilters } from "../lib/engineeringUi";
 import type { ConnectedArtifact } from "../lib/team";
+import { artifactHref, artifactIsStoredFile } from "../lib/artifacts";
 import type { Language } from "../lib/types";
 
 export function EngineeringDialog({ title, eyebrow, language, onClose, children, wide = false }: { title: string; eyebrow?: string; language: Language; onClose: () => void; children: ReactNode; wide?: boolean }) {
@@ -60,9 +61,10 @@ export function EngineeringEvidenceList({ language, model, refs }: { language: L
     <summary><FileText aria-hidden="true" />{language === "pt" ? "Fontes e evidências" : "Sources and evidence"}<span>{evidence.length}</span></summary>
     {opened && <div>{error && <p className="engineering-muted">{error}</p>}{evidence.map((item) => {
       const artifact = artifacts.find((source) => source.id === item.artifactId);
-      const url = artifact?.url ?? "";
-      const safeUrl = /^(https?:\/\/|data:(?:application\/(?:pdf|json|msword|vnd\.[a-z0-9.+-]+)|text\/(?:plain|csv|markdown))[;,])/iu.test(url);
-      return <article key={item.id} className="engineering-source"><small>{engineeringLabel(item.kind, language)}</small><strong>{item.artifactLabel}</strong>{item.locator && <span>{item.locator}</span>}{item.excerpt && <blockquote><mark>{item.excerpt}</mark></blockquote>}{safeUrl && <a href={url} target="_blank" rel="noopener noreferrer" download={url.startsWith("data:") ? artifact?.fileName || artifact?.label : undefined}>{language === "pt" ? "Abrir fonte" : "Open source"}<ExternalLink aria-hidden="true" /></a>}</article>;
+      const stored = artifact ? artifactIsStoredFile(artifact) : false;
+      const url = artifact ? artifactHref(artifact) : "";
+      const safeUrl = stored || /^https?:\/\//iu.test(url);
+      return <article key={item.id} className="engineering-source"><small>{engineeringLabel(item.kind, language)}</small><strong>{item.artifactLabel}</strong>{item.locator && <span>{item.locator}</span>}{item.excerpt && <blockquote><mark>{item.excerpt}</mark></blockquote>}{safeUrl && <a href={url} target="_blank" rel="noopener noreferrer" download={stored ? artifact?.fileName || artifact?.label : undefined}>{language === "pt" ? "Abrir fonte" : "Open source"}<ExternalLink aria-hidden="true" /></a>}</article>;
     })}{unique.some((id) => !evidence.some((item) => item.id === id)) && <p className="engineering-muted">{language === "pt" ? "Há referências ainda não disponíveis neste modelo." : "Some references are not available in this model yet."}</p>}</div>}
   </details>;
 }

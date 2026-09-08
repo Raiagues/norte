@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright-core";
 import { buildApp } from "../server/app.mjs";
+import { attachBenchmarkContext } from "./attach-benchmark-context.mjs";
 import { createQuetzalDesignModel } from "../benchmark/quetzal1/context/design-context.mjs";
 
 // Browser friction measurement with real project/API persistence and explicit provider fixture.
@@ -28,6 +29,7 @@ try {
   const projectId = (await app.inject({ method: "GET", url: "/api/projects", headers })).json().projects[0].id;
   const saved = async () => (await app.inject({ method: "GET", url: `/api/projects/${projectId}`, headers })).json().project;
   assert.equal((await saved()).context.programId, null);
+  await attachBenchmarkContext(app, headers, projectId);
   assert.equal((await saved()).context.projectArtifactIds.length, 2);
   assert.equal((await saved()).engineeringSystem, undefined);
   vite = spawn(process.execPath, ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { env: { ...process.env, VITE_DEMO_MODE: "false" }, stdio: ["ignore", "pipe", "pipe"] });

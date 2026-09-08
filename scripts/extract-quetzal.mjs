@@ -6,7 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createSystemAiService } from "../server/system-ai.mjs";
 import { analyzeImpact } from "../shared/impact-engine.mjs";
 import { createValidationProject } from "../server/data-store.mjs";
-import { createQuetzalArtifacts, contextDocuments } from "../benchmark/quetzal1/context/design-context.mjs";
+import { contextDocuments } from "../benchmark/quetzal1/context/design-context.mjs";
+import { benchmarkProjectWithContext } from "./attach-benchmark-context.mjs";
 import { benchmarkHash, buildBenchmarkManifest } from "./benchmark-manifest.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -45,8 +46,8 @@ export async function extractQuetzalRuns({ runs = 3, language = "pt", outputDire
       return response;
     } });
     try {
-      const project = createValidationProject();
-      const prediction = await service.generate(project, createQuetzalArtifacts(project.id), language);
+      const { project, artifacts } = benchmarkProjectWithContext(createValidationProject());
+      const prediction = await service.generate(project, artifacts, language);
       record.validation = { status: "passed", checks: "schema, references, declared formula inputs, exact quotations, numeric evidence, dimensions and explicit hypothesis provenance" };
       record.counts = { entities: prediction.entities.length, relations: prediction.relations.length, requirements: prediction.requirements.length, evidence: prediction.evidence.length };
       await save(join(runDirectory, "prediction.json"), prediction);

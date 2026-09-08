@@ -1,10 +1,12 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
-import { createQuetzalArtifacts, QUETZAL_PROJECT_ID, QUETZAL_PROJECT_NAME, contextDocuments } from "../benchmark/quetzal1/context/design-context.mjs";
+import { QUETZAL_PROJECT_ID, QUETZAL_PROJECT_NAME, QUETZAL_TEAM_ID, QUETZAL_TEAM_NAME } from "../examples/quetzal1/source-manifest.mjs";
 
-export const VALIDATION_TEAM_ID = "team-norte-validation";
+export const VALIDATION_TEAM_ID = QUETZAL_TEAM_ID;
 export const VALIDATION_PROJECT_ID = QUETZAL_PROJECT_ID;
+export const VALIDATION_TEAM_NAME = QUETZAL_TEAM_NAME;
+export const VALIDATION_PROJECT_NAME = QUETZAL_PROJECT_NAME;
 
 export function createValidationProject(timestamp = new Date().toISOString()) {
   return {
@@ -17,9 +19,12 @@ export function createValidationProject(timestamp = new Date().toISOString()) {
     phaseProgress: { highestUnlockedStep: 0 },
     memoryRevision: 1,
     context: {
-      configured: false, programId: null, modalityId: null, categoryId: null,
-      teamId: VALIDATION_TEAM_ID, teamName: "Norte Validation Team",
-      teamArtifactIds: [], projectArtifactIds: contextDocuments.map((document) => document.id),
+      // Quetzal-1 is an independent engineering project: it has no competition
+      // program, modality or category. Real documents are attached by the
+      // explicit importer, never invented by application startup.
+      configured: false, programId: null, modalityId: null, categoryId: null, referenceProgram: "independent",
+      teamId: VALIDATION_TEAM_ID, teamName: VALIDATION_TEAM_NAME,
+      teamArtifactIds: [], projectArtifactIds: [],
       roles: [{ id: "captain", name: "Lead" }, { id: "manager", name: "Manager" }, { id: "member", name: "Member" }, { id: "advisor", name: "Advisor" }],
       sectors: [], assignments: []
     },
@@ -38,9 +43,9 @@ export function createInitialData() {
     schemaVersion: 8,
     createdAt: timestamp,
     updatedAt: timestamp,
-    users: [], members: [], artifacts: createQuetzalArtifacts(VALIDATION_PROJECT_ID, timestamp), sessions: [],
+    users: [], members: [], artifacts: [], sessions: [],
     teams: [{
-      id: VALIDATION_TEAM_ID, name: "Norte Validation Team", description: "",
+      id: VALIDATION_TEAM_ID, name: VALIDATION_TEAM_NAME, description: "",
       memberIds: [], artifactIds: [], joinRequests: [], createdBy: null,
       createdAt: timestamp, updatedAt: timestamp
     }],

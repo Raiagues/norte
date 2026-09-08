@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { FileUp, Link2, Upload, X } from "lucide-react";
 import type { ConnectedArtifact } from "../lib/team";
+import { artifactIsStoredFile } from "../lib/artifacts";
 import type { Language } from "../lib/types";
 import "../artifact-source.css";
 
@@ -34,8 +35,10 @@ function readFile(file: File): Promise<string> {
 }
 
 export function ArtifactSourceFields({ language, artifact = null, onError }: Props) {
-  const initialIsFile = Boolean(artifact?.url.startsWith("data:"));
+  const initialIsFile = Boolean(artifact && artifactIsStoredFile(artifact));
   const [mode, setMode] = useState<"link" | "file">(initialIsFile ? "file" : "link");
+  // A stored file arrives without its bytes. Keeping the existing name means the
+  // form submits no url and the server preserves the content it already holds.
   const [url, setUrl] = useState(artifact?.url || "");
   const [fileName, setFileName] = useState(artifact?.fileName || "");
   const [mimeType, setMimeType] = useState(artifact?.mimeType || "");
@@ -102,7 +105,7 @@ export function ArtifactSourceFields({ language, artifact = null, onError }: Pro
   function switchMode(nextMode: "link" | "file") {
     report("");
     setMode(nextMode);
-    if (nextMode === "link" && url.startsWith("data:")) {
+    if (nextMode === "link") {
       setUrl("");
       setFileName("");
       setMimeType("");
