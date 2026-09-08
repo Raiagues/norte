@@ -33,6 +33,7 @@
     "benchmark:quetzal": "node scripts/benchmark-quetzal.mjs",
     "benchmark:structural": "node scripts/benchmark-structural.mjs",
     "benchmark:probe": "node scripts/probe-quetzal-contamination.mjs",
+    "diagnose:extraction": "node --env-file-if-exists=.env.local scripts/diagnose-extraction.mjs",
     "benchmark:extract": "node scripts/extract-quetzal.mjs"
   },
   "dependencies": {
