@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -100,6 +100,8 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [artifacts, setArtifacts] = useState<ConnectedArtifact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [memoryLoadError, setMemoryLoadError] = useState("");
+  const memoryLoadId = useRef(0);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [dialog, setDialog] = useState<DialogState>(null);
@@ -182,6 +184,8 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     chooseProgramInstead: "Escolher um programa",
     loading: "Carregando memória",
     loadError: "Não foi possível carregar a memória do projeto.",
+    retryMemory: "Tentar carregar novamente",
+    memoryUnavailable: "Aguardando carregar a memória",
     saved: "Alteração salva.",
     unlinked: "O artefato saiu desta memória, mas continua guardado na equipe.",
     chooseProjectMembers: "Membros deste projeto",
@@ -282,6 +286,8 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     chooseProgramInstead: "Choose a program",
     loading: "Loading memory",
     loadError: "Project memory could not be loaded.",
+    retryMemory: "Retry loading memory",
+    memoryUnavailable: "Waiting for project memory",
     saved: "Change saved.",
     unlinked: "The artifact was removed from this memory but remains in the team library.",
     chooseProjectMembers: "Project members",
@@ -308,24 +314,27 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
   }, [language]);
 
   const loadMemory = useCallback(async () => {
+    const loadId = ++memoryLoadId.current;
     setLoading(true);
+    setMemoryLoadError("");
     try {
       const [teamResponse, memberResponse, artifactResponse] = await Promise.all([
         auth.api<{ teams: TeamRecord[] }>("/teams"),
         auth.api<{ members: TeamMember[] }>("/team/members"),
         auth.api<{ artifacts: ConnectedArtifact[] }>("/artifacts")
       ]);
+      if (loadId !== memoryLoadId.current) return;
       setTeams(teamResponse.teams);
       setMembers(memberResponse.members);
       setArtifacts(artifactResponse.artifacts.filter((artifact) => !artifact.official));
     } catch (reason) {
-      setFeedback(reason instanceof ApiError ? reason.message : c.loadError);
+      if (loadId === memoryLoadId.current) setMemoryLoadError(reason instanceof ApiError ? reason.message : c.loadError);
     } finally {
-      setLoading(false);
+      if (loadId === memoryLoadId.current) setLoading(false);
     }
   }, [auth.api, c.loadError]);
 
-  useEffect(() => { void loadMemory(); }, [loadMemory]);
+  useEffect(() => { void loadMemory(); return () => { memoryLoadId.current++; }; }, [loadMemory]);
 
   const program = referenceProgram(project.context.programId);
   const independent = !program && project.context.referenceProgram === "independent";
@@ -511,7 +520,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
   const readiness = projectMemoryReadiness(project, artifacts);
   const missingLabels: Record<string, string> = { name: c.missingName, team: c.missingTeam, "readable-artifact": c.missingReadable };
   const missing = (loading ? [] : readiness.missing).map((code) => missingLabels[code]).filter(Boolean);
-  const canContinue = !loading && readiness.ready;
+  const canContinue = !loading && !memoryLoadError && readiness.ready;
 
   async function continueToConception() {
     if (!canContinue) return;
@@ -559,6 +568,10 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
       </header>
 
       <div className="pm-workspace">
+        {memoryLoadError && <div className="pm-memory-error" role="alert">
+          <span>{memoryLoadError}</span>
+          <button type="button" onClick={() => void loadMemory()} disabled={loading}>{c.retryMemory}</button>
+        </div>}
         <header className="pm-heading">
           <div><span>{c.eyebrow}</span><h1>{c.title}</h1><p>{c.subtitle}</p></div>
           <label className="pm-project-name"><span>{c.projectName}</span><div><Pencil aria-hidden="true" /><input value={project.name} onChange={(event) => updateProject({ name: event.target.value })} placeholder={c.projectPlaceholder} maxLength={120} /></div></label>
@@ -620,7 +633,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
         </section>
 
         <footer className="pm-footer">
-          <div className={missing.length ? "pm-readiness missing" : "pm-readiness"}>{missing.length ? <><span>{c.missing}</span><strong>{missing.join(" · ")}</strong></> : <><Check aria-hidden="true" /><strong>{c.ready}</strong></>}</div>
+          <div className={missing.length || memoryLoadError ? "pm-readiness missing" : "pm-readiness"} aria-live="polite">{loading ? <strong>{c.loading}</strong> : memoryLoadError ? <strong>{c.memoryUnavailable}</strong> : missing.length ? <><span>{c.missing}</span><strong>{missing.join(" · ")}</strong></> : <><Check aria-hidden="true" /><strong>{c.ready}</strong></>}</div>
           <button type="button" onClick={() => void continueToConception()} disabled={!canContinue || busy}>{loading || busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : null}{isDraft ? c.createAndContinue : c.continue}<ArrowRight aria-hidden="true" /></button>
         </footer>
       </div>

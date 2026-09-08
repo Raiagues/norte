@@ -50,10 +50,19 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 960 
 const split = cookie.indexOf("=");
 await context.addCookies([{ name: cookie.slice(0, split), value: cookie.slice(split + 1), url: new URL(baseUrl).origin }]);
 const errors = [];
+let failedMemoryReads = 0, memoryReads = 0;
 const page = await context.newPage();
 page.on("pageerror", (error) => errors.push(error.message));
 await context.route("**/api/**", async (route) => {
   const incoming = route.request();
+  if (incoming.method() === "GET" && new URL(incoming.url()).pathname === "/api/artifacts") {
+    memoryReads++;
+    if (failedMemoryReads > 0) {
+      failedMemoryReads--;
+      await route.fulfill({ status: 503, contentType: "text/html", body: "<html>Service temporarily unavailable</html>" });
+      return;
+    }
+  }
   const response = await app.inject({ method: incoming.method(), url: new URL(incoming.url()).pathname + new URL(incoming.url()).search, headers: { ...await incoming.allHeaders(), host: `127.0.0.1:${port}` }, ...(incoming.postData() ? { payload: incoming.postData() } : {}) });
   const outputHeaders = Object.fromEntries(Object.entries(response.headers).filter(([name]) => !["content-length", "transfer-encoding", "connection", "set-cookie"].includes(name)).map(([name, value]) => [name, String(value)]));
   await route.fulfill({ status: response.statusCode, headers: outputHeaders, body: response.body });
@@ -83,7 +92,19 @@ try {
   assert.equal(await page.getByRole("dialog").count(), 0);
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   await page.locator(".home-action-card.accent-open").click();
+  failedMemoryReads = Number.POSITIVE_INFINITY;
   await page.locator(".home-project-open").click();
+  await page.locator(".pm-memory-error").waitFor();
+  assert.ok(await page.locator(".pm-footer > button").isDisabled());
+  assert.equal(await page.locator(".pm-readiness").innerText(), "Aguardando carregar a memória");
+  assert.ok((await page.locator(".pm-memory-error").innerText()).includes("HTTP 503"));
+  const beforeRetry = memoryReads;
+  failedMemoryReads = 1;
+  await page.locator(".pm-memory-error button").click();
+  await page.waitForFunction(() => document.querySelector(".pm-footer > button")?.disabled === false);
+  assert.equal(memoryReads - beforeRetry, 2);
+  assert.equal(await page.locator(".pm-memory-error").count(), 0);
+  assert.ok((await page.locator(".pm-readiness").innerText()).includes("pronta"));
   await page.locator(".pm-footer > button").click();
   await page.locator(".pm-feedback").waitFor();
   assert.ok((await page.locator(".pm-feedback").innerText()).includes("temporariamente indisponível"));
@@ -98,7 +119,9 @@ try {
   failContract = false;
   await page.locator(".pm-footer > button").click();
   await page.locator(".engineering-graph").waitFor();
-  assert.equal(generations, 4);
+  // Two transient attempts, two contract attempts (existing service policy),
+  // then one successful generation. The API client never retries this POST.
+  assert.equal(generations, 5);
   assert.equal(await page.getByRole("tab", { selected: true }).innerText(), "Sistema");
   assert.equal(await page.getByRole("button", { name: /Gerar arquitetura|Generate initial/u }).count(), 0);
   const baseline = (await request("GET", `/api/projects/${projectId}`)).project;
@@ -113,7 +136,7 @@ try {
   assert.equal(await page.locator(".mission-phase").nth(1).isDisabled(), false);
   await page.locator(".mission-phase").nth(1).click();
   await page.locator(".engineering-graph").waitFor();
-  assert.equal(generations, 4);
+  assert.equal(generations, 5);
   await page.locator(".mission-sidebar-toggle").click();
   await page.waitForTimeout(220);
   await page.screenshot({ path: "/tmp/norte-system-macro.png", fullPage: true });
@@ -204,7 +227,7 @@ try {
   await waitSaved();
   await page.reload({ waitUntil: "networkidle" });
   await page.locator(".lab-node").waitFor();
-  assert.equal(generations, 4);
+  assert.equal(generations, 5);
   // Each selected project brings its own progress, team and workspace.
   const secondTeam = (await request("POST", "/api/teams", { name: "Independent test team", description: "Temporary acceptance fixture" })).team;
   const secondProject = { ...project, id: "independent-browser-project", name: "Independent project", phaseProgress: { highestUnlockedStep: 0 }, navigation: { lastRoute: "setup" }, context: { ...project.context, teamId: secondTeam.id, teamName: secondTeam.name, projectArtifactIds: [] } };

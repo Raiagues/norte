@@ -275,6 +275,26 @@ test("API generation rejects cross-project access and forged client artifact con
   const denied = await app.inject({ method: "POST", url: "/api/system-ai/generate", headers: outsiderHeaders, payload: { projectId: project.id } });
   assert.equal(denied.statusCode, 403);
 });
+test("API persists generation when storage only changes JSON object key order", async (t) => {
+  const reorder = (value) => Array.isArray(value) ? value.map(reorder)
+    : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reorder(item)])) : value;
+  let reorderStoredMemory;
+  const { app, store, headers } = await setupApi(t, async () => {
+    await reorderStoredMemory();
+    return geminiResponse(createEngineeringValidationModel());
+  });
+  reorderStoredMemory = () => store.update((data) => {
+    // JSONB does not preserve the insertion order of object keys. No value,
+    // array order, document content or memory revision changes in this round trip.
+    const saved = data.workspace.projects[project.id];
+    saved.document = reorder(saved.document);
+    data.artifacts = reorder(data.artifacts);
+    return null;
+  });
+  const response = await app.inject({ method: "POST", url: "/api/system-ai/generate", headers, payload: { projectId: project.id } });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.deepEqual(store.read().workspace.projects[project.id].document.engineeringSystem, response.json().engineeringSystem);
+});
 test("API discards generation when linked memory changes during extraction", async (t) => {
   let mutate;
   const { app, store, headers } = await setupApi(t, async () => { await mutate(); return geminiResponse(createEngineeringValidationModel()); });

@@ -95,6 +95,10 @@ try {
   console.log("\nProject Memory in the browser");
   await page.goto(`${base}#/study-setup`, { waitUntil: "networkidle" });
   await page.locator(".pm-artifacts-board").waitFor({ timeout: 20000 });
+  // The board mounts before its authenticated requests finish. Wait for the
+  // actual memory load, not only the surrounding layout or network idle.
+  await page.locator(".pm-loading").waitFor({ state: "hidden", timeout: 20000 });
+  await check("Project Memory loaded without an API error", await page.locator(".pm-memory-error").count() === 0);
   const shown = await page.locator(".pm-artifact-card strong").allInnerTexts();
   const statuses = await page.locator(".pm-artifact-status").allInnerTexts();
   report.memory.visibleCards = shown;
@@ -104,7 +108,7 @@ try {
   await check("Project Memory lists the seeded documents", linked.every((artifact) => shown.includes(artifact.label)));
   await check("every card is marked usable", statuses.length === shown.length && statuses.every((text) => /Source connected|Fonte conectada/u.test(text)));
   await check("the page shows an independent project, not OBSAT", !/OBSAT|Olimpíada|Brazilian Satellite/iu.test(await page.locator(".pm-program-card").innerText()));
-  await check("the readiness line agrees the memory is ready", !(await page.locator(".pm-readiness").getAttribute("class")).includes("missing"));
+  await check("the readiness line agrees the memory is ready", !(await page.locator(".pm-readiness").getAttribute("class")).includes("missing") && await page.locator(".pm-footer > button").isEnabled());
   await page.screenshot({ path: join(reportDirectory, "project-memory.png"), fullPage: true });
 
   console.log("\nStart conception");

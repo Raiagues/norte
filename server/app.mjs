@@ -330,6 +330,10 @@ function markArtifactMemoryChanged(data, artifactId) {
   }
 }
 
+function projectMemorySnapshot(project, artifacts) {
+  return { name: project.name, revision: project.memoryRevision || 0, context: project.context, setup: project.setup, artifacts: projectArtifacts(project, artifacts) };
+}
+
 function validLabBoard(value) {
   return value && typeof value === "object" && !Array.isArray(value)
     && value.schemaVersion === 1
@@ -1236,7 +1240,7 @@ export async function buildApp(options = {}) {
     const project = record.document;
     if (project.engineeringSystem) return { engineeringSystem: project.engineeringSystem, memoryRevision: project.memoryRevision || 0 };
     if (initializingSystems.has(project.id)) return initializingSystems.get(project.id);
-    const memoryFingerprint = JSON.stringify({ revision: project.memoryRevision || 0, context: project.context, setup: project.setup, artifacts: projectArtifacts(project, data.artifacts) });
+    const memorySnapshot = projectMemorySnapshot(project, data.artifacts);
     const operation = (async () => {
       const engineeringSystem = await systemAi.generate(project, data.artifacts, request.body.language);
       return store.update((current) => {
@@ -1244,8 +1248,9 @@ export async function buildApp(options = {}) {
         if (!latest) throw httpError(409, "PROJECT_CHANGED", "This project changed during initialization.");
         if (!canAccessProject(current, request.auth.user, latest)) throw httpError(403, "FORBIDDEN", "Project access changed during initialization.");
         if (latest.document.engineeringSystem) return { engineeringSystem: latest.document.engineeringSystem, memoryRevision: latest.document.memoryRevision || 0 };
-        const latestFingerprint = JSON.stringify({ revision: latest.document.memoryRevision || 0, context: latest.document.context, setup: latest.document.setup, artifacts: projectArtifacts(latest.document, current.artifacts) });
-        if (memoryFingerprint !== latestFingerprint) throw httpError(409, "PROJECT_MEMORY_CHANGED", "Project memory changed during initialization. Retry with the current memory.");
+        // PostgreSQL JSONB may reorder object keys on its transaction round trip.
+        // Compare values, preserving array order and every actual memory change.
+        if (!isDeepStrictEqual(memorySnapshot, projectMemorySnapshot(latest.document, current.artifacts))) throw httpError(409, "PROJECT_MEMORY_CHANGED", "Project memory changed during initialization. Retry with the current memory.");
         latest.document = { ...latest.document, engineeringSystem, phaseProgress: { highestUnlockedStep: 1 }, systemGeneratedFromRevision: engineeringSystem.generatedFromRevision, updatedAt: new Date().toISOString() };
         latest.revision = (latest.revision || 0) + 1;
         latest.updatedAt = latest.document.updatedAt;

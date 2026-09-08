@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { DEMO_USER, demoApi } from "./demoApi";
 import type { SessionUser } from "./team";
+import { requestJson } from "./apiClient";
+export { ApiError } from "./apiClient";
 
 const STATIC_DEMO = import.meta.env.VITE_DEMO_MODE === "true";
 export const API_ORIGIN = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/u, "");
@@ -32,28 +34,7 @@ type SessionResponse = {
   csrfToken?: string;
 };
 
-export class ApiError extends Error {
-  status: number;
-  code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.code = code;
-  }
-}
-
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-async function parseResponse<T>(response: Response): Promise<T> {
-  if (response.status === 204) return undefined as T;
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) throw new ApiError(response.status, "API_UNAVAILABLE", "A API do Norte não respondeu corretamente.");
-  const payload = await response.json() as { error?: string; message?: string } & T;
-  if (!response.ok) throw new ApiError(response.status, payload.error || "REQUEST_FAILED", payload.message || "Não foi possível concluir a solicitação.");
-  return payload;
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
@@ -67,9 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const headers = new Headers(init.headers);
     if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     if (!["GET", "HEAD", "OPTIONS"].includes(method) && csrfRef.current) headers.set("x-csrf-token", csrfRef.current);
-    const response = await fetch(`${API_ORIGIN}/api${path}`, { ...init, headers, credentials: "include" });
-    const payload = await parseResponse<T>(response);
-    return payload;
+    return requestJson<T>(`${API_ORIGIN}/api${path}`, { ...init, headers, credentials: "include" });
   }, []);
 
   const refresh = useCallback(async () => {

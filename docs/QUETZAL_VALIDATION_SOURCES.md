@@ -193,6 +193,46 @@ prints every artifact's size and parse status.
 
 ## Diagnosing a blocked conception
 
+### False memory conflict on PostgreSQL (8 September 2026)
+
+A reported Render failure returned HTTP 409, `PROJECT_MEMORY_CHANGED`, after
+`POST /api/system-ai/generate`. The concurrency guard compared `JSON.stringify`
+results before extraction and inside the persistence transaction. PostgreSQL
+[`jsonb` does not preserve object key order](https://www.postgresql.org/docs/current/datatype-json.html),
+so identical saved values could appear changed after the transaction read.
+The guard now compares values deeply, including the revision, project name,
+context, setup and linked artifacts. It still rejects actual content changes.
+A regression reproduced the 409 with reordered keys and unchanged values before
+the fix; it now persists successfully, while a real document-edit test still
+returns 409 and stores no generated baseline. This reproduction models JSONB's
+key-order change; it does not inspect the production database.
+
+Project Memory also distinguishes loading, failed loading and ready states.
+Failed loading offers an explicit retry and never enables conception using an
+incomplete refresh. Older overlapping requests cannot overwrite a newer load.
+The client retries a GET/HEAD once for transient 502/503/504 responses (including
+HTML gateway pages), honors short `Retry-After` delays, and never automatically
+replays writes or generation. Server error `code` takes precedence over generic
+Fastify `error` labels, preserving the specific conflict message.
+
+Verification: quality, secret scan, dependency audit, the five deterministic and
+four structural cases passed. Browser regression exercised persistent HTML 503
+responses, a manual reload followed by automatic recovery, disabled readiness
+while loading/failed, and re-entry without generation. A fresh real-Gemini browser
+run on a copy of the five imported sources also passed after the server fix:
+three parsed text/spreadsheet sources, two PDFs, no metadata-only sources;
+one physical HTTP 200 response in 8.369 seconds, a persisted model with four
+entities, one relation, one requirement and three source-backed evidence records.
+The model is sparse; successful loading/persistence is not complete extraction
+or A0 validation. The full private record is retained in
+`var/benchmarks/acceptance-quetzal-1788878973965/`. Earlier runs remain preserved,
+including a test that inspected the empty board before its loading completed;
+the acceptance runner now waits for the actual memory load. The production
+database was not changed during this repair, and Render deployment remains a
+separate owner-controlled step.
+
+### Inspecting stored documents
+
 ```bash
 npm run diagnose:project-memory
 npm run diagnose:project-memory -- --project <id> --json
