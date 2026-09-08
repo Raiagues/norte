@@ -12,7 +12,7 @@
  */
 
 export const QUETZAL_PROJECT_ID = "quetzal1-eps-comms";
-export const QUETZAL_PROJECT_NAME = "Quetzal-1 EPS + COMMS";
+export const QUETZAL_PROJECT_NAME = "Quetzal-1";
 export const QUETZAL_TEAM_ID = "team-norte-validation";
 export const QUETZAL_TEAM_NAME = "Norte Validation Team";
 

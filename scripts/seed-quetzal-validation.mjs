@@ -99,7 +99,7 @@ function artifactFromRetrieval(source, retrieval, previous, timestamp) {
  * Rewrite the validation project from the manifest.
  * Users, members, sessions and every unrelated project are left untouched.
  */
-export async function seedQuetzalValidation(value, { tier = "core", manifest = QUETZAL_SOURCES, fetchImpl, resolveHost, now = () => new Date().toISOString() } = {}) {
+export async function seedQuetzalValidation(value, { tier = "core", manifest = QUETZAL_SOURCES, removeOtherProjects = false, fetchImpl, resolveHost, now = () => new Date().toISOString() } = {}) {
   const data = normalizeStoredData(value);
   const before = describeProject(data);
   const timestamp = now();
@@ -161,6 +161,24 @@ export async function seedQuetzalValidation(value, { tier = "core", manifest = Q
     context.projectArtifactIds = (context.projectArtifactIds || []).filter((id) => !removedIds.has(id));
   }
 
+  // Leftover demonstration projects are removed only when explicitly requested,
+  // with their project-scoped artifacts and Discovery state, and always audited.
+  const discarded = [];
+  if (removeOtherProjects) {
+    for (const [id, other] of Object.entries(data.workspace.projects)) {
+      if (id === VALIDATION_PROJECT_ID) continue;
+      const ownedIds = new Set([...(other?.document?.context?.projectArtifactIds || [])]);
+      const ownedArtifacts = data.artifacts.filter((artifact) => ownedIds.has(artifact.id) || (artifact.scope === "project" && artifact.ownerId === id));
+      discarded.push({ id, name: other?.document?.name || "", artifacts: ownedArtifacts.map((artifact) => artifact.id) });
+      const removeIds = new Set(ownedArtifacts.map((artifact) => artifact.id));
+      data.artifacts = data.artifacts.filter((artifact) => !removeIds.has(artifact.id));
+      for (const team of data.teams) team.artifactIds = team.artifactIds.filter((artifactId) => !removeIds.has(artifactId));
+      delete data.workspace.projects[id];
+      delete data.workspace.labs?.[id];
+    }
+    if (data.workspace.project?.document?.id && !data.workspace.projects[data.workspace.project.document.id]) data.workspace.project = null;
+  }
+
   const context = {
     ...project.context,
     configured: true,
@@ -202,6 +220,7 @@ export async function seedQuetzalValidation(value, { tier = "core", manifest = Q
       after,
       imported,
       removed,
+      discardedProjects: discarded,
       readiness,
       totalImportedBytes: imported.reduce((total, artifact) => total + artifact.size, 0),
       overComfortableSize: imported.reduce((total, artifact) => total + artifact.size, 0) > COMFORTABLE_SOURCE_BYTES,
@@ -281,6 +300,11 @@ function printAudit(audit) {
     console.log(`    parse=${artifact.status} sentToModel=${["parsed", "pdf"].includes(artifact.status) ? "yes" : "no"}${artifact.reused ? " (unchanged)" : ""}${artifact.hashChanged ? " [publisher hash changed since the manifest was written]" : ""}`);
   }
 
+  if (audit.discardedProjects.length) {
+    console.log("\n=== Other projects removed ===");
+    for (const project of audit.discardedProjects) console.log(`  - ${project.name || "(untitled)"} (${project.id}) with ${project.artifacts.length} artifact(s)`);
+  }
+
   console.log("\n=== Removed from this project's memory ===");
   if (!audit.removed.length) console.log("  (nothing to remove)");
   for (const artifact of audit.removed) console.log(`  - ${artifact.id} · ${artifact.label} · was ${artifact.status}`);
@@ -306,19 +330,19 @@ async function main() {
   const args = process.argv.slice(2);
   const flag = (name) => args.includes(name);
   const option = (name, fallback) => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : fallback; };
-  const known = new Set(["--file", "--database", "--tier", "--dry-run", "--json", "--help"]);
+  const known = new Set(["--file", "--database", "--tier", "--dry-run", "--json", "--remove-other-projects", "--help"]);
   for (let index = 0; index < args.length; index += 1) {
     if (known.has(args[index])) { if (["--file", "--tier"].includes(args[index])) index += 1; continue; }
-    throw new Error(`Unknown argument ${args[index]}. Usage: node scripts/seed-quetzal-validation.mjs [--file path | --database] [--tier core|extended] [--dry-run] [--json]`);
+    throw new Error(`Unknown argument ${args[index]}. Usage: node scripts/seed-quetzal-validation.mjs [--file path | --database] [--tier core|extended] [--dry-run] [--json] [--remove-other-projects]`);
   }
   if (flag("--help")) {
-    console.log("Usage: NORTE_ALLOW_QUETZAL_SEED=1 node scripts/seed-quetzal-validation.mjs [--file path | --database] [--tier core|extended] [--dry-run] [--json]\nImports the official Quetzal-1 engineering documents listed in examples/quetzal1/source-manifest.mjs into the validation project and requires conception to run again. Never imports evaluator references.");
+    console.log("Usage: NORTE_ALLOW_QUETZAL_SEED=1 node scripts/seed-quetzal-validation.mjs [--file path | --database] [--tier core|extended] [--dry-run] [--json] [--remove-other-projects]\nImports the official Quetzal-1 engineering documents listed in examples/quetzal1/source-manifest.mjs into the validation project and requires conception to run again. Never imports evaluator references.\n--remove-other-projects also deletes every other project, with its project-scoped artifacts and Discovery state. Accounts, members and sessions are always preserved. Run --dry-run first to see exactly what it would remove.");
     return;
   }
   const database = flag("--database");
   const tier = option("--tier", "core");
   if (!["core", "extended"].includes(tier)) throw new Error("--tier must be core or extended.");
-  const options = { tier, dryRun: flag("--dry-run") };
+  const options = { tier, dryRun: flag("--dry-run"), removeOtherProjects: flag("--remove-other-projects") };
   const result = database
     ? await seedPostgres(process.env.DATABASE_URL, options)
     : await seedJsonFile(option("--file", "var/mission-dev-data.json"), options);

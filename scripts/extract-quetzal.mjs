@@ -29,7 +29,7 @@ export async function extractQuetzalRuns({ runs = 3, language = "pt", outputDire
     const record = { run: index, startedAt: new Date().toISOString(), validation: { status: "not_run" }, requestCount: 0 };
     let publicRequest = null;
     let modelVersion = null;
-    const service = createSystemAiService({ apiKey, model, transportPolicy: { timeoutMs: 90_000, totalDeadlineMs: 91_000, maxAttempts: 1 }, fetch: async (url, options) => {
+    const service = createSystemAiService({ apiKey, model, transportPolicy: { timeoutMs: 90_000, totalDeadlineMs: 91_000, maxAttempts: 1 }, maxContractAttempts: 1, fetch: async (url, options) => {
       record.requestCount += 1;
       const body = JSON.parse(options.body);
       const destination = new URL(url);

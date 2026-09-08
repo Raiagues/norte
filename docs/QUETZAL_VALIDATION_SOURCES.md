@@ -1,6 +1,6 @@
 # Quetzal-1 validation sources and the seed importer
 
-The validation project **Quetzal-1 EPS + COMMS** is built from real engineering
+The validation project **Quetzal-1** is built from real engineering
 documents published by the Quetzal-1 CubeSat Team (Universidad del Valle de
 Guatemala) and by the manufacturers of parts the mission actually flew. Its
 engineering system is produced by extracting those documents. Nothing in this
@@ -101,13 +101,19 @@ NODE_ENV=production NORTE_ALLOW_QUETZAL_SEED=1 \
 NORTE_ALLOW_QUETZAL_SEED=1 node scripts/seed-quetzal-validation.mjs --dry-run
 ```
 
-Flags: `--tier core|extended`, `--dry-run`, `--json`.
+Flags: `--tier core|extended`, `--dry-run`, `--json`, `--remove-other-projects`.
+
+`--remove-other-projects` also deletes every other project, with its
+project-scoped artifacts and Discovery state — the way to clear a leftover
+demonstration project such as `Projeto Teste` from a deployed database. Accounts,
+members and sessions are always preserved, and every removal is listed in the
+audit. Run `--dry-run` first.
 
 The command refuses to run without `NORTE_ALLOW_QUETZAL_SEED=1`. It is never
 invoked by application startup. It writes a private backup of the previous state
 first, then, in one transaction:
 
-1. finds or creates `Quetzal-1 EPS + COMMS` and attaches the validation team;
+1. finds or creates `Quetzal-1` and attaches the validation team;
 2. clears `programId`, `modalityId` and `categoryId`, marking the project an
    independent engineering project — Quetzal-1 has no OBSAT association;
 3. removes every artifact this project previously carried that the manifest does

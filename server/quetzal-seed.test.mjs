@@ -120,7 +120,7 @@ test("seeding replaces old memory with real sources, requires conception again a
   const { data, audit } = await seedQuetzalValidation(original, { manifest: sources, fetchImpl, resolveHost });
   const after = describeProject(data);
 
-  assert.equal(after.name, "Quetzal-1 EPS + COMMS");
+  assert.equal(after.name, "Quetzal-1");
   assert.equal(after.teamId, "team-norte-validation");
   assert.equal(after.programId, null);
   assert.equal(after.modalityId, null);
@@ -172,4 +172,33 @@ test("seeding twice creates no duplicates and does not churn the memory revision
   const third = await seedQuetzalValidation(second.data, { manifest: changed.sources, fetchImpl: changed.fetchImpl, resolveHost });
   assert.equal(third.data.artifacts.length, first.data.artifacts.length);
   assert.equal(third.audit.after.memoryRevision, first.audit.after.memoryRevision + 1);
+});
+
+test("stray demonstration projects are removed only when explicitly asked, and audited", async () => {
+  const { fetchImpl, sources, resolveHost } = stubTransport();
+  const original = createInitialData();
+  original.users = [{ id: "owner", accessRole: "owner_admin" }];
+  original.members = [{ id: "member-1", accountId: "owner" }];
+  original.sessions = [{ id: "session-1", userId: "owner" }];
+  original.workspace.projects["projeto-teste"] = {
+    document: { schemaVersion: 2, id: "projeto-teste", name: "Projeto Teste", context: { teamId: "team-norte-validation", projectArtifactIds: ["teste-doc"], teamArtifactIds: [] }, board: { nodes: [], links: [] } },
+    revision: 1
+  };
+  original.workspace.labs = { "projeto-teste": { board: { nodes: [{ id: 1 }] } } };
+  original.artifacts = [{ id: "teste-doc", label: "Arquivo de teste", scope: "project", ownerId: "projeto-teste", url: "https://example.test/x" }];
+
+  const kept = await seedQuetzalValidation(original, { manifest: sources, fetchImpl, resolveHost });
+  assert.ok(kept.data.workspace.projects["projeto-teste"], "another project is never removed by default");
+  assert.deepEqual(kept.audit.discardedProjects, []);
+
+  const cleaned = await seedQuetzalValidation(original, { manifest: sources, fetchImpl, resolveHost, removeOtherProjects: true });
+  assert.deepEqual(Object.keys(cleaned.data.workspace.projects), ["quetzal1-eps-comms"]);
+  assert.deepEqual(cleaned.data.workspace.labs["projeto-teste"], undefined);
+  assert.equal(cleaned.data.artifacts.some((artifact) => artifact.id === "teste-doc"), false);
+  assert.deepEqual(cleaned.audit.discardedProjects, [{ id: "projeto-teste", name: "Projeto Teste", artifacts: ["teste-doc"] }]);
+  assert.equal(cleaned.audit.after.name, "Quetzal-1");
+  // Accounts survive a project removal.
+  assert.deepEqual(cleaned.data.users, original.users);
+  assert.deepEqual(cleaned.data.sessions, original.sessions);
+  assert.deepEqual(cleaned.data.members, original.members);
 });

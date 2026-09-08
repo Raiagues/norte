@@ -39,38 +39,102 @@ export function matchesSchema(value, schema) {
   return false;
 }
 
-export function validateEngineeringSystem(model) {
-  if (!matchesSchema(model, engineeringSystemSchema)) return false;
+/**
+ * Name the first violated rule, or null when the model is valid.
+ *
+ * "Invalid fields or references" is useless to whoever has to fix it. Every
+ * check below returns the object and field that actually failed, so a rejected
+ * extraction can be diagnosed from the error alone.
+ */
+export function describeEngineeringSystemViolation(model) {
+  if (!matchesSchema(model, engineeringSystemSchema)) return "the response does not match the engineering schema";
   const entities = new Map(model.entities.map((item) => [item.id, item]));
   const requirements = new Set(model.requirements.map((item) => item.id));
   const relations = new Set(model.relations.map((item) => item.id));
   const evidence = new Set(model.evidence.map((item) => item.id));
-  if (entities.size !== model.entities.length || requirements.size !== model.requirements.length || relations.size !== model.relations.length || evidence.size !== model.evidence.length || [...requirements].some((id) => entities.has(id))) return false;
-  const known = (refs) => refs.every((ref) => evidence.has(ref));
-  const propertiesValid = (properties) => new Set(properties.map((item) => item.key)).size === properties.length && properties.every((item) => known(item.evidenceRefs));
+  if (entities.size !== model.entities.length) return "duplicate entity id";
+  if (requirements.size !== model.requirements.length) return "duplicate requirement id";
+  if (relations.size !== model.relations.length) return "duplicate relation id";
+  if (evidence.size !== model.evidence.length) return "duplicate evidence id";
+  const collision = [...requirements].find((id) => entities.has(id));
+  if (collision) return `id ${collision} is used by both an entity and a requirement`;
+
+  const unknownRef = (refs) => refs.find((ref) => !evidence.has(ref));
+  const propertyViolation = (owner, properties) => {
+    const keys = properties.map((item) => item.key);
+    const duplicate = keys.find((key, index) => keys.indexOf(key) !== index);
+    if (duplicate) return `${owner} repeats property ${duplicate}`;
+    for (const property of properties) {
+      const missing = unknownRef(property.evidenceRefs);
+      if (missing) return `${owner} property ${property.key} cites ${missing}, which is not an evidence id`;
+    }
+    return null;
+  };
+
   for (const entity of model.entities) {
-    if (!known(entity.evidenceRefs) || !propertiesValid(entity.properties)) return false;
+    const missing = unknownRef(entity.evidenceRefs);
+    if (missing) return `entity ${entity.id} cites ${missing}, which is not an evidence id`;
+    const property = propertyViolation(`entity ${entity.id}`, entity.properties);
+    if (property) return property;
     const visited = new Set([entity.id]);
     let parent = entity.parentId;
-    while (parent) { if (!entities.has(parent) || visited.has(parent)) return false; visited.add(parent); parent = entities.get(parent).parentId; }
+    while (parent) {
+      if (!entities.has(parent)) return `entity ${entity.id} has parentId ${parent}, which does not exist`;
+      if (visited.has(parent)) return `entity ${entity.id} sits in a parentId cycle`;
+      visited.add(parent);
+      parent = entities.get(parent).parentId;
+    }
   }
-  if (model.relations.some((item) => (!entities.has(item.from) && !requirements.has(item.from)) || (!entities.has(item.to) && !requirements.has(item.to)) || item.from === item.to || !known(item.evidenceRefs))) return false;
+
+  for (const relation of model.relations) {
+    const known = (id) => entities.has(id) || requirements.has(id);
+    if (!known(relation.from)) return `relation ${relation.id} starts at ${relation.from}, which does not exist`;
+    if (!known(relation.to)) return `relation ${relation.id} ends at ${relation.to}, which does not exist`;
+    if (relation.from === relation.to) return `relation ${relation.id} connects ${relation.from} to itself`;
+    const missing = unknownRef(relation.evidenceRefs);
+    if (missing) return `relation ${relation.id} cites ${missing}, which is not an evidence id`;
+  }
+
   // Historical correction snapshots are self-contained. Their objects may have since been removed.
   const corrections = model.corrections || [];
-  if (new Set(corrections.map((item) => item.id)).size !== corrections.length) return false;
+  if (new Set(corrections.map((item) => item.id)).size !== corrections.length) return "duplicate correction id";
   for (const correction of corrections) {
-    if (correction.context.baselineId !== model.id || correction.context.baselineRevision > (model.revision || 0)) return false;
-    if (correction.operation === "create" && (correction.previous !== null || correction.corrected === null) || correction.operation === "update" && (correction.previous === null || correction.corrected === null) || correction.operation === "delete" && (correction.previous === null || correction.corrected !== null)) return false;
+    if (correction.context.baselineId !== model.id) return `correction ${correction.id} belongs to another baseline`;
+    if (correction.context.baselineRevision > (model.revision || 0)) return `correction ${correction.id} claims a future baseline revision`;
+    const shape = correction.operation === "create" ? correction.previous === null && correction.corrected !== null
+      : correction.operation === "update" ? correction.previous !== null && correction.corrected !== null
+        : correction.previous !== null && correction.corrected === null;
+    if (!shape) return `correction ${correction.id} does not match its ${correction.operation} operation`;
     for (const [snapshot, sources] of [[correction.suggested, correction.suggestedEvidence], [correction.previous, correction.previousEvidence], [correction.corrected, correction.correctedEvidence]]) {
       if (!snapshot) continue;
       const object = snapshot[correction.objectKind];
-      if (!object || object.id !== correction.targetId) return false;
+      if (!object || object.id !== correction.targetId) return `correction ${correction.id} snapshots a different object`;
       const sourceIds = new Set(sources.map((item) => item.id));
-      const sourceRefs = [...(object.evidenceRefs || object.sourceRefs || []), ...(object.originalSourceRefs || []), ...(object.properties || []).flatMap((property) => property.evidenceRefs)];
-      if (sourceRefs.some((id) => !sourceIds.has(id))) return false;
+      const refs = [...(object.evidenceRefs || object.sourceRefs || []), ...(object.originalSourceRefs || []), ...(object.properties || []).flatMap((property) => property.evidenceRefs)];
+      if (refs.some((id) => !sourceIds.has(id))) return `correction ${correction.id} cites evidence missing from its snapshot`;
     }
     const contextSources = new Set([...correction.suggestedEvidence, ...correction.previousEvidence, ...correction.correctedEvidence].map((item) => item.id));
-    if (correction.context.entities.some((entity) => [...entity.evidenceRefs, ...entity.properties.flatMap((property) => property.evidenceRefs)].some((id) => !contextSources.has(id)))) return false;
+    if (correction.context.entities.some((entity) => [...entity.evidenceRefs, ...entity.properties.flatMap((property) => property.evidenceRefs)].some((id) => !contextSources.has(id)))) return `correction ${correction.id} context cites evidence it does not carry`;
   }
-  return model.requirements.every((item) => known(item.sourceRefs) && known(item.originalSourceRefs || []) && propertiesValid(item.properties) && item.relatedEntityIds.every((id) => entities.has(id)) && item.relatedRelationIds.every((id) => relations.has(id)) && (item.relatedPropertyRefs || []).every((ref) => entities.get(ref.entityId)?.properties.some((property) => property.key === ref.propertyKey)));
+
+  for (const requirement of model.requirements) {
+    // The most common provider defect: an artifactId where an evidence id belongs.
+    const missing = unknownRef(requirement.sourceRefs);
+    if (missing) return `requirement ${requirement.id} cites ${missing} in sourceRefs, which is not an evidence id`;
+    const original = unknownRef(requirement.originalSourceRefs || []);
+    if (original) return `requirement ${requirement.id} cites ${original} in originalSourceRefs, which is not an evidence id`;
+    const property = propertyViolation(`requirement ${requirement.id}`, requirement.properties);
+    if (property) return property;
+    const entity = requirement.relatedEntityIds.find((id) => !entities.has(id));
+    if (entity) return `requirement ${requirement.id} links to entity ${entity}, which does not exist`;
+    const relation = requirement.relatedRelationIds.find((id) => !relations.has(id));
+    if (relation) return `requirement ${requirement.id} links to relation ${relation}, which does not exist`;
+    const reference = (requirement.relatedPropertyRefs || []).find((ref) => !entities.get(ref.entityId)?.properties.some((property) => property.key === ref.propertyKey));
+    if (reference) return `requirement ${requirement.id} links to property ${reference.propertyKey} on ${reference.entityId}, which does not exist`;
+  }
+  return null;
+}
+
+export function validateEngineeringSystem(model) {
+  return describeEngineeringSystemViolation(model) === null;
 }

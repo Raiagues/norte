@@ -1,13 +1,15 @@
 import { geminiGenerate } from "./gemini-transport.mjs";
-import { extractionEnums, EXTRACTED_SOURCE_KINDS, EXTRACTED_EVIDENCE_KINDS } from "./extraction-contract.mjs";
+import { extractionEnums, requirementEvidenceField, restoreRequirementSourceRefs, EXTRACTED_SOURCE_KINDS, EXTRACTED_EVIDENCE_KINDS } from "./extraction-contract.mjs";
 import { randomUUID } from "node:crypto";
 import { analyzeImpact, normalizeQuantity } from "../shared/impact-engine.mjs";
-import { engineeringSystemSchema, validateEngineeringSystem } from "../shared/engineering-schema.mjs";
+import { describeEngineeringSystemViolation, engineeringSystemSchema } from "../shared/engineering-schema.mjs";
 import { classifyArtifactSource, MAX_TOTAL_BYTES } from "./artifact-content.mjs";
 import { linkedProjectArtifacts, projectMemoryReadiness } from "../shared/project-memory.mjs";
 
 export { analysisRequestSchema, generationRequestSchema, validateEngineeringSystem } from "../shared/engineering-schema.mjs";
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
+/** Violations of the extraction contract itself, which a retry can plausibly fix. */
+const CONTRACT_ERROR_CODES = new Set(["SYSTEM_RESPONSE_INVALID", "SYSTEM_EVIDENCE_INVALID", "SYSTEM_HIERARCHY_INVALID", "SYSTEM_FORMULA_INVALID"]);
 const KNOWN_PROPERTY_DIMENSIONS = new Map([
   ["current", ["required_current", "peak_current", "available_current", "maximum_current", "max_current", "current"]],
   ["voltage", ["output_voltage", "nominal_voltage", "minimum_voltage", "min_voltage", "maximum_voltage", "max_voltage", "voltage"]],
@@ -133,11 +135,13 @@ export function buildSystemPrompt(project, parsed, language = "en") {
     'Use only parentId for direct hierarchy. Never output contains relations. Every parent must exist, and parentId must have no cycles. Containment is already represented by parentId and is not an engineering impact path.',
     "Preserve distinct documented power interfaces and intermediate suppliers that connect included loads: a bus, a regulated rail and their parent subsystem are different objects. Never collapse two endpoints into one subsystem or replace a missing object with its parent. Every relationship must have two DIFFERENT existing IDs. If an endpoint is not supported, omit that relationship.",
     "Each entity, relationship, requirement and property must cite evidence IDs. Evidence must cite an artifactId listed below and include a short exact excerpt. Do not use document metadata as evidence for unread document content.",
+    'Every evidenceRefs entry is the id of a record you return in the evidence array, such as "ev-1". It is NEVER an artifactId. An artifactId belongs only inside an evidence record\'s artifactId field. This applies identically to requirements: a requirement cites evidence ids, not the document it came from. Create the evidence record first, then reference its id.',
     "For plain text each evidence excerpt MUST be a single contiguous substring copied verbatim from one artifact, under 600 characters. Do not translate, paraphrase, splice sentences or remove words from the middle of a quote. If you need nonadjacent sentences, use separate evidence records. Preserve punctuation and whitespace exactly. The server rejects any quote that is not found literally, and determines actual line locators. For PDFs never invent pages or sections: omit locator, and mark uncertain PDF extraction inferred (including numeric properties) pending verification.",
     "source=documented means explicitly present in a quoted text source. source=inferred means a hypothesis supported by specific cited facts; confidence must reflect that uncertainty. Do not output source=user or calculated: this extraction service does not make user decisions or execute calculations.",
     "A quoted hypothesis is still a hypothesis. Relationships described under a hypothesis/hypotheses heading, conditional risks, or proposed dependencies must use source=inferred and confidence below 1 even when their wording is copied literally. Evidence.kind=fact records the literal source text; it does not make the proposed relationship a verified fact. Preserve source uncertainty instead of promoting it to documented.",
     "Do not invent inferred links merely because components sound related. Use unknown relationships only when the sources explicitly mention an unresolved interface. Each inference needs supporting evidence.",
     "Use numerical values with separate units. Preserve units exactly (A, mA, V, W, g, kg, min, h, Wh, J, %). Duty cycles may use % or the dimensionless unit 1 for fractions. If a value is unknown omit it; never substitute zero.",
+    "A documented numeric property must cite at least one evidence record whose excerpt literally contains that number with that unit. Before returning a number, re-read your own excerpt and confirm the digits are in it. If no quoted excerpt states the number, quote the sentence that does, or omit the property. Never attach a value to a nearby heading, a general description or an unrelated sentence: the server rejects the whole extraction when a number is missing from its cited quote.",
     "Property keys must match the documented physical quantity, never merely a similarly named operating mode. Current (A/mA) uses required_current, peak_current or available_current; power (W/mW) uses operating_power, tx_power, rx_power, generated_power or available_power; voltage (V/mV) uses output_voltage, nominal_voltage, minimum_voltage or maximum_voltage. Preserve all documented quantitative constraints, including capacity, count, voltage, current, power, mass, temperature and duty cycle. Distinguish per-item capacity from aggregate capacity and nominal values from bounds; use physical qualifiers in property keys. A transmit input power in mW is tx_power, NEVER peak_current. A receive input power is rx_power, NEVER required_current. Preserve explicit tx_duty_cycle and duty_cycle percentages as separate numeric properties on their input components. Other supported keys include mass, total_mass, maximum_mass, available_energy, estimated_autonomy and minimum_autonomy.",
     "A formula property can be sum_power, sum_mass, energy_over_power, duty_cycle_power, duty_cycle_load or energy_balance ONLY if the source explicitly defines that calculation, its operating assumptions, and ALL inputs. Connect inputs with contributes_to or derived_from. Never assume peak current equals average power.",
     'Formula declarations must have this exact property shape: {"key":"formula","name":"Calculation","value":"sum_power","source":"documented","evidenceRefs":["source-evidence-id"]}. Substitute the supported formula name as the string value. Do not put a number in a formula property. For each declared formula preserve every explicitly documented input property on its source component, including duty cycles; missing input properties prevent calculation. Do not compute or output a derived result: the deterministic engine executes formulas later. Even obvious arithmetic such as 1 W + 5 W = 6 W must NOT become a documented numeric property unless the source itself explicitly states 6 W.',
@@ -155,13 +159,90 @@ export function buildSystemPrompt(project, parsed, language = "en") {
   ].join("\n");
 }
 
+const HTML_ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", mu: "\u03bc", deg: "\u00b0", times: "\u00d7", plusmn: "\u00b1" };
+
+/**
+ * Project text onto what a reader actually sees, keeping a map back to the source.
+ *
+ * Sources are Markdown, and a model quoting them quotes the rendered document:
+ * it writes "(Vendor, Cat. No. PART)" where the file holds a link,
+ * "([Vendor, Cat. No. PART](https://vendor.example/part))". That is a faithful
+ * quotation, and rejecting it was the single largest cause of rejected
+ * extractions once reference integrity was fixed.
+ *
+ * Only markup is removed - link targets, HTML tags, entities, emphasis markers,
+ * backticks, brackets - and whitespace runs collapse to one space. No word,
+ * number or punctuation mark is ever dropped, and the same projection is applied
+ * to both sides of the comparison, so a paraphrase still fails. `offsets` maps
+ * each projected character back to its index in the original text, so the line
+ * locator keeps pointing at the real source line.
+ */
+export function readableProjection(value) {
+  const characters = [];
+  const offsets = [];
+  const patterns = {
+    // Order matters: the longest, most specific markup is consumed first.
+    image: /!\[/y,
+    linkTarget: /\]\((?:[^()\s]|\([^()]*\))*\)/y,
+    htmlTag: /<\/?[a-zA-Z][^>\n]*>/y,
+    entity: /&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);/y,
+    emphasis: /\*\*|__|`/y,
+    bracket: /[[\]]/y,
+    whitespace: /\s+/y
+  };
+  const emit = (text, at) => { for (const character of text) { characters.push(character); offsets.push(at); } };
+  let index = 0;
+  while (index < value.length) {
+    let consumed = false;
+    for (const [name, pattern] of Object.entries(patterns)) {
+      pattern.lastIndex = index;
+      const match = pattern.exec(value);
+      if (!match) continue;
+      if (name === "whitespace") { if (characters.at(-1) !== " ") emit(" ", index); }
+      else if (name === "entity") {
+        const body = match[1];
+        const decoded = body.startsWith("#x") ? String.fromCodePoint(Number.parseInt(body.slice(2), 16))
+          : body.startsWith("#") ? String.fromCodePoint(Number.parseInt(body.slice(1), 10))
+            : HTML_ENTITIES[body];
+        if (decoded === undefined) break; // Unknown entity stays literal text.
+        emit(decoded, index);
+      }
+      index += match[0].length;
+      consumed = true;
+      break;
+    }
+    if (consumed) continue;
+    emit(value[index], index);
+    index += 1;
+  }
+  return { text: characters.join(""), offsets };
+}
+
+/**
+ * Find a quotation in its source and return its offset there, or -1.
+ *
+ * An exact byte match wins immediately; otherwise both sides are projected onto
+ * the readable text described above. Words, their order and their punctuation
+ * must still match exactly.
+ */
+export function locateExcerpt(text, excerpt) {
+  const exact = text.indexOf(excerpt);
+  if (exact >= 0) return exact;
+  const needle = readableProjection(excerpt).text.trim();
+  if (!needle) return -1;
+  const source = readableProjection(text);
+  const found = source.text.indexOf(needle);
+  return found < 0 ? -1 : source.offsets[found];
+}
+
 /** Structural validation plus reference and literal text quotation checks. */
 export function validateExtractedSystem(value, project, parsed, model) {
   const result = structuredClone(value);
   if (!result || typeof result !== "object" || Array.isArray(result)) throw serviceError(502, "SYSTEM_RESPONSE_INVALID", "The generated architecture is not a structured engineering model.");
   delete result.corrections;
   delete result.revision;
-  if (!validateEngineeringSystem(result)) throw serviceError(502, "SYSTEM_RESPONSE_INVALID", "The generated architecture has invalid fields or references. Retry or review project memory.");
+  const violation = describeEngineeringSystemViolation(result);
+  if (violation) throw serviceError(502, "SYSTEM_RESPONSE_INVALID", `The generated architecture has invalid fields or references. Retry or review project memory. (${violation})`);
   validateExtractionHierarchy(result);
   validateFormulaInputs(result);
   const sources = new Map(parsed.map((item) => [item.source.artifactId, item]));
@@ -172,8 +253,8 @@ export function validateExtractedSystem(value, project, parsed, model) {
     evidence.artifactLabel = artifact.source.artifactLabel;
     delete evidence.locator;
     if (artifact.text) {
-      const start = artifact.text.indexOf(evidence.excerpt);
-      if (start < 0) throw serviceError(502, "SYSTEM_EVIDENCE_INVALID", "An extracted quote could not be verified in its source.");
+      const start = locateExcerpt(artifact.text, evidence.excerpt);
+      if (start < 0) throw serviceError(502, "SYSTEM_EVIDENCE_INVALID", `An extracted quote could not be verified in ${artifact.source.artifactLabel}.`);
       const line = artifact.text.slice(0, start).split("\n").length;
       evidence.locator = `L${line}`;
     } else {
@@ -203,7 +284,7 @@ export function validateExtractedSystem(value, project, parsed, model) {
       const unit = ["1", "×"].includes(item.unit) ? "" : String(item.unit || "").replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
       const boundary = unit ? "[^\\p{L}\\d]" : "[^\\p{L}\\d.,]";
       const literal = new RegExp(`(?:^|[^\\d.,-])${spelling}\\s*${unit}(?=$|${boundary})`, "u");
-      if (!item.evidenceRefs.some((id) => literal.test(evidenceMap.get(id).excerpt))) throw serviceError(502, "SYSTEM_EVIDENCE_INVALID", "An extracted numerical value could not be verified in its quoted source.");
+      if (!item.evidenceRefs.some((id) => literal.test(evidenceMap.get(id).excerpt))) throw serviceError(502, "SYSTEM_EVIDENCE_INVALID", `An extracted numerical value (${item.key}=${item.value}${item.unit ? ` ${item.unit}` : ""}) could not be verified in its quoted source.`);
     }
   }
   for (const item of [...result.entities, ...result.relations]) {
@@ -243,7 +324,7 @@ export function validateExtractedSystem(value, project, parsed, model) {
 export function hydrateExtraction(value, project) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw serviceError(502, "SYSTEM_RESPONSE_INVALID", "Invalid engineering response.");
   if (Array.isArray(value.relations) && value.relations.some((relation) => relation.kind === "contains")) throw serviceError(502, "SYSTEM_HIERARCHY_INVALID", "Extraction must express hierarchy only with parentId.");
-  return { ...value, schemaVersion: 1, id: `system-${project.id}`, name: project.name, generatedAt: new Date().toISOString(), generatedFromRevision: project.memoryRevision || 0, artifactSources: [], requirements: Array.isArray(value.requirements) ? value.requirements.map((item) => ({ ...item, status: "unreviewed", originalStatement: item.statement, originalSourceRefs: item.sourceRefs })) : value.requirements };
+  return { ...value, schemaVersion: 1, id: `system-${project.id}`, name: project.name, generatedAt: new Date().toISOString(), generatedFromRevision: project.memoryRevision || 0, artifactSources: [], requirements: Array.isArray(value.requirements) ? value.requirements.map(restoreRequirementSourceRefs).map((item) => ({ ...item, status: "unreviewed", originalStatement: item.statement, originalSourceRefs: item.sourceRefs })) : value.requirements };
 }
 
 export function createSystemAiService(options = {}) {
@@ -268,11 +349,28 @@ export function createSystemAiService(options = {}) {
       const requirements = extractionProperties.requirements.items;
       for (const key of ["status", "originalStatement", "originalSourceRefs"]) delete requirements.properties[key];
       requirements.required = requirements.required.filter((key) => Object.hasOwn(requirements.properties, key));
+      extractionProperties.requirements.items = requirementEvidenceField(requirements);
       // The extraction contract quotes sources; calculations and user decisions
       // are produced by other application flows, never by the provider here.
       const extractionSchema = extractionEnums({ type: "object", additionalProperties: false, required: Object.keys(extractionProperties), properties: extractionProperties });
-      const extracted = await request(parts, extractionSchema);
-      return validateExtractedSystem(hydrateExtraction(extracted, project), project, parsed, model);
+      // A contract violation is the model breaking its own output rules, not a
+      // provider fault, so asking again is worth one bounded attempt. The
+      // follow-up states only what the previous answer violated; it never
+      // supplies engineering content or a desired answer. Every physical
+      // request still reaches onAttempt, so nothing is hidden from diagnostics.
+      const contractAttempts = Math.max(1, options.maxContractAttempts ?? 2);
+      let lastFailure;
+      for (let attempt = 1; attempt <= contractAttempts; attempt += 1) {
+        const attemptParts = attempt === 1 ? parts : [{ text: `${parts[0].text}\nYour previous answer was rejected by the server: ${lastFailure.message} Return a corrected extraction that satisfies the contract. Omit anything you cannot support with a quoted excerpt rather than restating it.` }, ...parts.slice(1)];
+        try {
+          const extracted = await request(attemptParts, extractionSchema);
+          return validateExtractedSystem(hydrateExtraction(extracted, project), project, parsed, model);
+        } catch (error) {
+          if (!CONTRACT_ERROR_CODES.has(error.code) || attempt === contractAttempts) throw error;
+          lastFailure = error;
+        }
+      }
+      throw lastFailure;
     },
     async analyze(modelValue, change, language = "en") {
       let result;

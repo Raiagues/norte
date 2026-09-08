@@ -65,7 +65,7 @@ try {
   await save();
   for (const artifact of linked) console.log(`  ${artifact.label} · ${artifact.mimeType} · ${artifact.size} B · ${artifact.readability.status}`);
 
-  await check("project is Quetzal-1 EPS + COMMS", before.name === "Quetzal-1 EPS + COMMS");
+  await check("project is Quetzal-1", before.name === "Quetzal-1");
   await check("team is Norte Validation Team", before.context.teamName === "Norte Validation Team");
   await check("no competition reference program", before.context.programId === null && before.context.modalityId === null && before.context.categoryId === null);
   await check("no engineering system before conception", before.engineeringSystem === undefined);

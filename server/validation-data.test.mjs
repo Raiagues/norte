@@ -38,7 +38,7 @@ test("fresh data has one neutral team and an independent project with no seeded 
   // Startup invents no engineering documents: the real sources are imported by
   // the explicit, guarded seed command, never fabricated by the application.
   assert.equal(state.artifacts.length, 0);
-  assert.equal(project.name, "Quetzal-1 EPS + COMMS");
+  assert.equal(project.name, "Quetzal-1");
   assert.equal(project.context.programId, null);
   assert.equal(project.context.referenceProgram, "independent");
   assert.deepEqual(project.context.projectArtifactIds, []);

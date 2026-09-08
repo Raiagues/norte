@@ -27,7 +27,7 @@ const documentText = [
 
 const project = {
   id: "quetzal1-eps-comms",
-  name: "Quetzal-1 EPS + COMMS",
+  name: "Quetzal-1",
   memoryRevision: 4,
   context: { teamId: "team-norte-validation", teamArtifactIds: [], projectArtifactIds: ["memory-source"] }
 };

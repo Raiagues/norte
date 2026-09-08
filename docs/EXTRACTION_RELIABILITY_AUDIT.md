@@ -243,3 +243,85 @@ and the contract defect above are the open items.
 
 Run `npm run test:acceptance:quetzal` to reproduce; it uses the live provider and
 a copy of the seeded store, and never writes to local data.
+
+## Contract reliability fixed — 9 September 2026
+
+Contract validity on the real Quetzal-1 documents went from **1/6 to 8/8** over
+three measured live series. Three defects were found and fixed; none of them was
+a weakening of what the validator checks.
+
+### 1. The provider was asked the wrong question
+
+The persistence model calls a requirement's citations `sourceRefs` while every
+other object uses `evidenceRefs`. The extraction schema exposed that name to the
+provider, which read "source" as "source document" and answered with an
+`artifactId`. That single defect caused **5 of 6** rejections.
+
+The extraction contract now names the field `evidenceRefs` everywhere, and
+`restoreRequirementSourceRefs` maps it back to the stored name during hydration.
+The persisted schema is unchanged, so saved models still validate. The prompt
+also states plainly that an `evidenceRefs` entry is an evidence record's id and
+never an `artifactId`.
+
+Result: `SYSTEM_RESPONSE_INVALID` disappeared entirely from the next series.
+
+### 2. Quotations were checked against markup, not against the document
+
+With reference integrity fixed, the remaining rejections were quotations. Two
+real examples, both faithful and both rejected:
+
+| the model quoted | the file holds |
+| --- | --- |
+| `Thus, a microcontroller (Vendor, Cat. No. PART) was implemented` | `...a microcontroller ([Vendor, Cat. No. PART](https://vendor.example/part)) was implemented` |
+| `1X [Vendor, Cat. No. PART] - Single-Cell Li-Ion Battery Fuel Gauge` | `1X [Vendor, Cat. No. PART](https://vendor.example/part) - Single-Cell...` |
+
+The sources are Markdown and the model quotes the **rendered** document. The
+verifier compared raw bytes, so link targets, `<sup>` tags, HTML entities,
+emphasis markers and line wrapping all produced false rejections.
+
+`readableProjection` now projects both the source and the excerpt onto the text a
+reader sees, carrying an offset map so the line locator still points at the real
+source line. **Only markup is removed** — link targets, HTML tags, entities,
+emphasis, backticks, brackets, and whitespace runs collapse to one space. No
+word, number or punctuation mark is ever dropped, and the same projection is
+applied to both sides, so a paraphrase, a removed word, a changed part number, an
+inverted meaning or spliced sentences still fail. Those cases are covered by
+tests.
+
+### 3. The remaining failure was the guardrail working
+
+The last recurring rejection was `nominal_voltage=3.3 V` attached to an evidence
+record whose excerpt reads *"Quetzal-1 carried an Electrical Power System tasked
+with:"* — a sentence containing no voltage. That is the validator correctly
+refusing an unsupported number, and it was **not** relaxed.
+
+Two changes reduce how often it happens and make it recoverable:
+
+- the prompt now states the rule the validator actually enforces — a documented
+  numeric property must cite an excerpt whose text literally contains that number
+  with that unit, or the property must be omitted;
+- `generate` makes one bounded second attempt when the model breaks its own
+  contract (`SYSTEM_RESPONSE_INVALID`, `SYSTEM_EVIDENCE_INVALID`,
+  `SYSTEM_HIERARCHY_INVALID`, `SYSTEM_FORMULA_INVALID`). The follow-up states
+  only which rule the previous answer violated; it never supplies engineering
+  content or a desired answer. Every physical request still reaches `onAttempt`,
+  so nothing is hidden from diagnostics, and `maxContractAttempts: 1` disables it
+  for the deterministic benchmark, which continues to score a single answer.
+
+A provider fault is never retried this way — that stays with the transport policy.
+
+### Measured series
+
+| series | change under test | contract validity |
+| --- | --- | --- |
+| 8 Sep | baseline | 1/6 |
+| 9 Sep | evidence field renamed | 6/8 (the other two were HTTP 429 quota, not contract failures) |
+| 9 Sep | plus readable quotation and bounded retry | **8/8**, seven on the first attempt |
+
+Errors are also now specific. `describeEngineeringSystemViolation` names the
+object and field that failed — *"requirement REQ-1 cites doc in sourceRefs, which
+is not an evidence id"* — instead of "invalid fields or references", and the
+numeric check names the property and value it could not verify.
+
+Extracted breadth is still thin and variable: 4 to 6 entities, 1 relation and 1
+to 2 requirements per run. Coverage, not contract conformance, is the open item.
