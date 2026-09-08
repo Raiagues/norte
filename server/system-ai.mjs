@@ -1,3 +1,5 @@
+import { geminiGenerate } from "./gemini-transport.mjs";
+import { extractionEnums, EXTRACTED_SOURCE_KINDS, EXTRACTED_EVIDENCE_KINDS } from "./extraction-pipeline.mjs";
 import { randomUUID } from "node:crypto";
 import { analyzeImpact, normalizeQuantity } from "../shared/impact-engine.mjs";
 import { engineeringSystemSchema, validateEngineeringSystem } from "../shared/engineering-schema.mjs";
@@ -181,7 +183,7 @@ export function validateExtractedSystem(value, project, parsed, model) {
   const evidenceMap = new Map(result.evidence.map((item) => [item.id, item]));
   for (const evidence of result.evidence) {
     const artifact = sources.get(evidence.artifactId);
-    if (!artifact || !["parsed", "pdf"].includes(artifact.source.status) || evidence.kind !== "fact") throw serviceError(502, "SYSTEM_EVIDENCE_INVALID", "The architecture cites unread or unavailable evidence.");
+    if (!artifact || !["parsed", "pdf"].includes(artifact.source.status) || !EXTRACTED_EVIDENCE_KINDS.includes(evidence.kind)) throw serviceError(502, "SYSTEM_EVIDENCE_INVALID", "The architecture cites unread or unavailable evidence.");
     evidence.artifactLabel = artifact.source.artifactLabel;
     delete evidence.locator;
     if (artifact.text) {
@@ -199,7 +201,7 @@ export function validateExtractedSystem(value, project, parsed, model) {
   }
   function checkSource(item) {
     verifyRefs(item.evidenceRefs);
-    if (!["documented", "inferred"].includes(item.source)) throw serviceError(502, "SYSTEM_EVIDENCE_INVALID", "Extraction cannot claim a calculation or a user decision.");
+    if (!EXTRACTED_SOURCE_KINDS.includes(item.source)) throw serviceError(502, "SYSTEM_EVIDENCE_INVALID", "Extraction cannot claim a calculation or a user decision.");
     if (item.evidenceRefs.some((id) => evidenceMap.get(id).kind === "inference")) { item.source = "inferred"; if ("confidence" in item) item.confidence = Math.min(item.confidence, 0.6); }
     if (typeof item.value === "number") {
       const propertyKey = canonicalKey(item.key);
@@ -258,14 +260,7 @@ export function createSystemAiService(options = {}) {
   const model = /^[a-zA-Z0-9._-]+$/u.test(configured) ? configured : DEFAULT_MODEL;
   const fetchImpl = options.fetch ?? fetch;
   async function request(parts, schema) {
-    let response;
-    try {
-      response = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey }, signal: AbortSignal.timeout(55_000), body: JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: { temperature: 0.1, maxOutputTokens: 16_000, responseMimeType: "application/json", responseJsonSchema: geminiResponseSchema(schema) } }) });
-    } catch { throw serviceError(502, "SYSTEM_AI_UNAVAILABLE", "The engineering extraction service could not be reached. Retry when it is available."); }
-    if (!response.ok) throw serviceError(response.status === 429 ? 429 : 502, "SYSTEM_AI_UNAVAILABLE", "The engineering service is temporarily unavailable. The baseline was preserved.");
-    const body = await response.json().catch(() => null);
-    const text = body?.candidates?.[0]?.content?.parts?.filter((part) => !part.thought && typeof part.text === "string").map((part) => part.text).join("");
-    try { return JSON.parse(text); } catch { throw serviceError(502, "SYSTEM_RESPONSE_INVALID", "The engineering service returned an invalid structured response."); }
+    return geminiGenerate({ apiKey, model, fetchImpl, body: { contents: [{ role: "user", parts }], generationConfig: { temperature: 0.1, maxOutputTokens: 16_000, responseMimeType: "application/json", responseJsonSchema: geminiResponseSchema(schema) } }, ...(options.transportPolicy ? { policy: options.transportPolicy } : {}), onAttempt: options.onAttempt, ...(options.retryWait ? { wait: options.retryWait } : {}) });
   }
   return {
     status: () => ({ configured: Boolean(apiKey), model }),
@@ -282,10 +277,7 @@ export function createSystemAiService(options = {}) {
       delete extractionProperties.revision;
       // The extraction contract quotes sources; calculations and user decisions
       // are produced by other application flows, never by the provider here.
-      extractionProperties.evidence.items.properties.kind.enum = ["fact"];
-      const extractedSources = [extractionProperties.entities.items.properties.source, extractionProperties.entities.items.properties.properties.items.properties.source, extractionProperties.relations.items.properties.source, extractionProperties.requirements.items.properties.properties.items.properties.source, extractionProperties.requirements.items.properties.classificationSource];
-      for (const source of extractedSources) source.enum = ["documented", "inferred"];
-      const extractionSchema = { ...engineeringSystemSchema, properties: extractionProperties };
+      const extractionSchema = extractionEnums({ ...engineeringSystemSchema, properties: extractionProperties });
       const extracted = await request(parts, extractionSchema);
       return validateExtractedSystem(extracted, project, parsed, model);
     },
