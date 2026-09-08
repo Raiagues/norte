@@ -6,7 +6,6 @@ import { MissionSidebar } from "../src/components/MissionSidebar";
 import { HomePage } from "../src/pages/HomePage";
 import { completeConception, createEmptyProject, normalizeProject, recordMemoryRevision, saveProject } from "../src/lib/projectStore";
 import type { EngineeringSystemModel } from "../src/lib/engineeringSystem";
-import { changeFromHypothesis, recognizeEngineeringHypothesis } from "../src/lib/discoveryEngineering";
 
 vi.mock("../src/components/UserBadge", () => ({ UserBadge: () => null }));
 
@@ -30,6 +29,11 @@ describe("project-owned conception progression", () => {
     expect(reloaded.engineeringSystem).toEqual(model);
     expect(reloaded.navigation.lastConceptionWorkspace).toBe("system");
     expect(createEmptyProject().phaseProgress.highestUnlockedStep).toBe(0);
+  });
+  it("normalizes a removed workspace to System while keeping Discovery", () => {
+    const project = createEmptyProject();
+    expect(normalizeProject({ ...project, navigation: { ...project.navigation, lastConceptionWorkspace: "timeline" } } as unknown as typeof project).navigation.lastConceptionWorkspace).toBe("system");
+    expect(normalizeProject({ ...project, navigation: { ...project.navigation, lastConceptionWorkspace: "discovery" } }).navigation.lastConceptionWorkspace).toBe("discovery");
   });
   it("preserves historical progress and old boards without creating an engineering model", () => {
     const old = createEmptyProject();
@@ -62,33 +66,5 @@ describe("project-owned conception progression", () => {
     const html = renderToStaticMarkup(createElement(AuthProvider, { children: createElement(HomePage, { language: "en", t: (key) => key, onLanguageChange: noop }) }));
     expect(html).toMatch(/class="home-action-card accent-create"[^>]*disabled=""/u);
     expect(html).toContain("Coming soon");
-  });
-});
-
-describe("quiet engineering hypothesis recognition", () => {
-  it("resolves absolute TX duty and continuous transmission without a setup form", () => {
-    const dutyModel: EngineeringSystemModel = { ...model, entities: [{ ...model.entities[1], name: "Transmitter Q7", properties: [{ key: "tx_duty_cycle", name: "TX duty cycle", value: 3.6, unit: "%", source: "documented", evidenceRefs: ["design-duty"] }] }] };
-    const suggestion = recognizeEngineeringHypothesis("Q7 TX de 3,6% para 10%", dutyModel)!;
-    expect(suggestion).toEqual({ targetEntityId: "radio", propertyKey: "tx_duty_cycle", value: 10, unit: "%" });
-    const change = changeFromHypothesis(suggestion, dutyModel, "Q7 TX para 10%");
-    expect(change?.oldValues[0].value).toBe(3.6);
-    expect(change?.newValues[0]).toMatchObject({ value: 10, source: "user", evidenceRefs: [] });
-    expect(recognizeEngineeringHypothesis("communications transmitter remains continuously active", dutyModel)?.value).toBe(100);
-    expect(recognizeEngineeringHypothesis("transmissor continuamente ativo", dutyModel)?.value).toBe(100);
-    expect(recognizeEngineeringHypothesis("transmitter not continuously active", dutyModel)).toBeUndefined();
-    expect(recognizeEngineeringHypothesis("Increase Q7 TX by 10%", dutyModel)).toBeUndefined();
-    const ambiguous = { ...dutyModel, entities: [...dutyModel.entities, { ...dutyModel.entities[0], id: "second-radio", name: "Second transmitter" }] };
-    expect(recognizeEngineeringHypothesis("transmitter continuously active", ambiguous)).toBeUndefined();
-  });
-  it("recognizes the proposed final mass in Portuguese and English", () => {
-    expect(recognizeEngineeringHypothesis("Payload de 120 g para 280 g", model)).toEqual({ targetEntityId: "payload", propertyKey: "mass", value: 280, unit: "g" });
-    expect(recognizeEngineeringHypothesis("Increase Payload to 0.28 kg", model)?.value).toBe(.28);
-  });
-  it("recognizes a replacement but stays silent for discussion and ambiguous targets", () => {
-    expect(recognizeEngineeringHypothesis("Talvez usar o rádio XR2", model)).toEqual({ targetEntityId: "radio", replacementName: "XR2" });
-    expect(recognizeEngineeringHypothesis("Need to talk about radio", model)).toBeUndefined();
-    expect(recognizeEngineeringHypothesis("Payload and radio 280 g", model)).toBeUndefined();
-    expect(recognizeEngineeringHypothesis("Payload 280 g")).toBeUndefined();
-    expect(recognizeEngineeringHypothesis("Payload 120 g", model)).toBeUndefined();
   });
 });

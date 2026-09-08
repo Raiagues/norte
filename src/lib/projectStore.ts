@@ -73,7 +73,7 @@ export type MissionProject = {
   updatedAt: string;
   navigation: {
     lastRoute: "setup" | "brainstorm";
-    lastConceptionWorkspace?: "system" | "timeline" | "discovery";
+    lastConceptionWorkspace?: "system" | "discovery";
     systemLayouts?: Record<string, Record<string, { x: number; y: number }>>;
   };
   phaseProgress: { highestUnlockedStep: 0 | 1 };
@@ -189,7 +189,8 @@ export function normalizeProject(project: MissionProject, language: Language = "
     memoryRevision: Number.isSafeInteger(project.memoryRevision) && project.memoryRevision >= 0 ? project.memoryRevision : 0,
     navigation: {
       ...defaults.navigation,
-      ...(project.navigation && typeof project.navigation === "object" ? project.navigation : {})
+      ...(project.navigation && typeof project.navigation === "object" ? project.navigation : {}),
+      lastConceptionWorkspace: project.navigation?.lastConceptionWorkspace === "discovery" ? "discovery" : "system"
     },
     context: {
       ...defaults.context,

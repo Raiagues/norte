@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { CalendarDays, Lightbulb, Network } from "lucide-react";
-import { ConceptionTimeline } from "../components/ConceptionTimeline";
+import { Lightbulb, Network } from "lucide-react";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { UserBadge } from "../components/UserBadge";
 import { BrainstormLab } from "./BrainstormLab";
@@ -14,14 +13,14 @@ type Props = {
   onLanguageChange: (language: Language) => void;
   onProjectChange: (project: MissionProject) => void; onHome: () => void; onBackSetup: () => void;
 };
-type Workspace = "system" | "timeline" | "discovery";
+type Workspace = "system" | "discovery";
 
 export function BrainstormPage({ language, project, t, onLanguageChange, onProjectChange, onBackSetup }: Props) {
   const [workspace, setWorkspace] = useState<Workspace>(() => {
     const requested = new URLSearchParams(window.location.search).get("view");
-    if (requested === "timeline" || requested === "discovery") return requested;
+    if (requested === "discovery") return requested;
     if (requested === "system" || requested === "map") return "system";
-    return project.navigation.lastConceptionWorkspace ?? "system";
+    return project.navigation.lastConceptionWorkspace === "discovery" ? "discovery" : "system";
   });
   function selectWorkspace(next: Workspace) {
     setWorkspace(next);
@@ -32,7 +31,6 @@ export function BrainstormPage({ language, project, t, onLanguageChange, onProje
   }
   const tabs = [
     { id: "system" as const, label: language === "pt" ? "Sistema" : "System", Icon: Network },
-    { id: "timeline" as const, label: language === "pt" ? "Cronograma" : "Timeline", Icon: CalendarDays },
     { id: "discovery" as const, label: language === "pt" ? "Descoberta" : "Discovery", Icon: Lightbulb }
   ];
   return <div className="brain-shell brain-v2 engineering-conception">
@@ -49,16 +47,15 @@ export function BrainstormPage({ language, project, t, onLanguageChange, onProje
               {tabs.map(({ id, label, Icon }, index) => <button key={id} id={`workspace-tab-${id}`} type="button" role="tab" aria-controls="conception-workspace" aria-selected={workspace === id} tabIndex={workspace === id ? 0 : -1} className={workspace === id ? "active" : ""} onClick={() => selectWorkspace(id)} onKeyDown={(event) => {
                 if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
                 event.preventDefault();
-                const next = event.key === "Home" ? 0 : event.key === "End" ? 2 : (index + (event.key === "ArrowRight" ? 1 : 2)) % 3;
+                const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
                 selectWorkspace(tabs[next].id);
                 document.getElementById(`workspace-tab-${tabs[next].id}`)?.focus();
               }}><Icon aria-hidden="true" />{label}{id === "discovery" && <em>BETA</em>}</button>)}
             </div>
           </div>
-          {workspace === "discovery" && <div id="brainstorm-lab-toolbar" className="brain-toolbar" data-control />}
         </div>
         <div id="conception-workspace" className="conception-workspace-content" role="tabpanel" aria-labelledby={`workspace-tab-${workspace}`}>
-          {workspace === "timeline" ? <ConceptionTimeline language={language} project={project} /> : workspace === "system" ? <SystemWorkspace language={language} project={project} onProjectChange={onProjectChange} onBackSetup={onBackSetup} /> : <BrainstormLab language={language} project={project} onProjectChange={onProjectChange} />}
+          {workspace === "system" ? <SystemWorkspace language={language} project={project} onProjectChange={onProjectChange} onBackSetup={onBackSetup} /> : <BrainstormLab language={language} project={project} onProjectChange={onProjectChange} />}
         </div>
       </section>
     </main>

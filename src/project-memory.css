@@ -666,10 +666,6 @@
   overflow: hidden;
 }
 
-.pm-artifacts-board > .pm-artifact-band:first-child h2 { color: #57d8b4; }
-.pm-artifacts-board > .pm-artifact-band:last-child h2 { color: #ef9b87; }
-.pm-artifacts-board > .pm-artifact-band:first-child .pm-artifact-card { border-color: rgba(62, 212, 173, .24); }
-.pm-artifacts-board > .pm-artifact-band:last-child .pm-artifact-card { border-color: rgba(239, 134, 109, .24); }
 
 .pm-artifact-card {
   position: relative;
@@ -1719,3 +1715,13 @@
   .pm-dialog-form > footer { margin: 4px -14px 0; }
   .pm-structure-editor { padding: 16px 14px; }
 }
+
+.pm-artifact-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; min-width: 0; }
+.pm-artifact-grid .pm-artifact-card { width: 100%; min-width: 0; }
+.pm-artifact-grid .pm-track-empty { min-width: 0; width: 100%; }
+@media (max-width: 1200px) { .pm-artifact-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .pm-artifact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .pm-artifact-grid { grid-template-columns: minmax(0, 1fr); } }
+.pm-shell .pm-workspace { grid-template-rows: none; grid-auto-rows: max-content; align-content: start; overflow-y: auto; overflow-x: clip; }
+.pm-artifacts-board { overflow: visible; }
+.pm-artifact-grid .pm-artifact-card { height: auto; min-height: 145px; }

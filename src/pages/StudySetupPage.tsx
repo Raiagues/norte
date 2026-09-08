@@ -109,9 +109,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
 
   const c = useMemo(() => language === "pt" ? {
     back: "Início",
-    eyebrow: "MEMÓRIA DO PROJETO",
-    title: "Memória do projeto",
-    subtitle: "O contexto essencial da missão, sem tirar o foco do que a equipe precisa fazer.",
+    title: "MEMÓRIA DO PROJETO",
     projectName: "NOME DO PROJETO",
     projectPlaceholder: "Ex.: Missão Aurora",
     referenceProgram: "PROGRAMA DE REFERÊNCIA",
@@ -133,7 +131,6 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     milestone: "Próximo marco",
     deadline: "Prazo oficial",
     team: "EQUIPE DO PROJETO",
-    teamHint: "Associe uma equipe e escolha quem participará especificamente deste projeto.",
     chooseTeam: "Selecione uma equipe",
     noTeam: "Você ainda não participa de nenhuma equipe.",
     teamsArea: "Abrir equipes",
@@ -158,10 +155,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     role: "Função",
     sector: "Setor",
     noSector: "Sem setor",
-    teamArtifacts: "ARTEFATOS DA EQUIPE",
-    teamArtifactsHint: "Referências permanentes da equipe vinculadas a esta memória. Remover aqui não apaga o arquivo da equipe.",
-    projectArtifacts: "ARTEFATOS DO PROJETO",
-    projectArtifactsHint: "Repositórios e documentos criados especificamente para este projeto.",
+    artifacts: "ARTEFATOS",
     selectArtifacts: "Selecionar",
     addArtifact: "Adicionar",
     noArtifacts: "Nenhum artefato vinculado.",
@@ -171,7 +165,6 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     open: "Abrir",
     continue: "Começar concepção",
     createAndContinue: "Criar projeto e começar",
-    ready: "A memória essencial está pronta.",
     missing: "Para continuar, complete:",
     missingName: "nome do projeto",
     missingProgram: "programa, modalidade e categoria",
@@ -211,9 +204,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     sourceKinds: { document: "Documento", repository: "Repositório GitHub", dataset: "CSV ou planilha", link: "Link" }
   } : {
     back: "Home",
-    eyebrow: "PROJECT MEMORY",
-    title: "Project memory",
-    subtitle: "The mission's essential context, without distracting the team from the work ahead.",
+    title: "PROJECT MEMORY",
     projectName: "PROJECT NAME",
     projectPlaceholder: "E.g. Aurora Mission",
     referenceProgram: "REFERENCE PROGRAM",
@@ -235,7 +226,6 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     milestone: "Next milestone",
     deadline: "Official deadline",
     team: "PROJECT TEAM",
-    teamHint: "Associate a team and choose who will take part in this specific project.",
     chooseTeam: "Select a team",
     noTeam: "You are not part of a team yet.",
     teamsArea: "Open teams",
@@ -260,10 +250,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     role: "Role",
     sector: "Sector",
     noSector: "No sector",
-    teamArtifacts: "TEAM ARTIFACTS",
-    teamArtifactsHint: "Long-lived team references linked to this memory. Removing one here does not delete it from the team.",
-    projectArtifacts: "PROJECT ARTIFACTS",
-    projectArtifactsHint: "Repositories and documents created specifically for this project.",
+    artifacts: "ARTIFACTS",
     selectArtifacts: "Select",
     addArtifact: "Add",
     noArtifacts: "No artifacts linked.",
@@ -273,7 +260,6 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     open: "Open",
     continue: "Start conception",
     createAndContinue: "Create project and start",
-    ready: "Essential memory is ready.",
     missing: "To continue, complete:",
     missingName: "project name",
     missingProgram: "program, modality, and category",
@@ -573,7 +559,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
           <button type="button" onClick={() => void loadMemory()} disabled={loading}>{c.retryMemory}</button>
         </div>}
         <header className="pm-heading">
-          <div><span>{c.eyebrow}</span><h1>{c.title}</h1><p>{c.subtitle}</p></div>
+          <div><h1>{c.title}</h1></div>
           <label className="pm-project-name"><span>{c.projectName}</span><div><Pencil aria-hidden="true" /><input value={project.name} onChange={(event) => updateProject({ name: event.target.value })} placeholder={c.projectPlaceholder} maxLength={120} /></div></label>
         </header>
 
@@ -604,7 +590,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
         {programSyncing && <div className="pm-program-import" role="status"><span><LoaderCircle className="pm-spin" aria-hidden="true" /></span><div><strong>{c.importingProgram}</strong><i /></div></div>}
 
         <section className="pm-band pm-team-band">
-          <header><div><h2>{c.team}</h2><p>{c.teamHint}</p></div><div className="pm-band-actions"><button type="button" onClick={() => setDialog({ type: "team" })}><Settings2 aria-hidden="true" />{c.configureTeam}</button></div></header>
+          <header><div><h2>{c.team}</h2></div><div className="pm-band-actions"><button type="button" onClick={() => setDialog({ type: "team" })}><Settings2 aria-hidden="true" />{c.configureTeam}</button></div></header>
           <div className="pm-horizontal-track">
             {loading && <div className="pm-loading"><LoaderCircle aria-hidden="true" />{c.loading}</div>}
             {!loading && !selectedTeam && <button className="pm-track-empty" type="button" onClick={() => setDialog({ type: "team" })}><UsersRound aria-hidden="true" /><span><strong>{c.teamEmptyTitle}</strong><small>{c.teamEmptyHint}</small></span><ChevronRight aria-hidden="true" /></button>}
@@ -623,17 +609,13 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
 
         <section className="pm-artifacts-board">
           <section className="pm-band pm-artifact-band">
-            <header><div><h2>{c.teamArtifacts}</h2><p>{c.teamArtifactsHint}</p></div><button type="button" onClick={() => setDialog({ type: "team-artifacts" })} disabled={!selectedTeam}><Plus aria-hidden="true" />{c.selectArtifacts}</button></header>
-            <div className="pm-horizontal-track">{linkedTeamArtifacts.map((artifact) => <ArtifactCard artifact={artifact} scope="team" key={artifact.id} />)}{linkedTeamArtifacts.length === 0 && <button className="pm-track-empty compact" type="button" onClick={() => selectedTeam && setDialog({ type: "team-artifacts" })} disabled={!selectedTeam}><Link2 aria-hidden="true" /><span><strong>{c.noArtifacts}</strong></span></button>}</div>
-          </section>
-          <section className="pm-band pm-artifact-band">
-            <header><div><h2>{c.projectArtifacts}</h2><p>{c.projectArtifactsHint}</p></div><button type="button" onClick={() => setDialog({ type: "artifact", scope: "project", artifact: null })}><Plus aria-hidden="true" />{c.addArtifact}</button></header>
-            <div className="pm-horizontal-track">{linkedProjectArtifacts.map((artifact) => <ArtifactCard artifact={artifact} scope="project" key={artifact.id} />)}{linkedProjectArtifacts.length === 0 && <button className="pm-track-empty compact" type="button" onClick={() => setDialog({ type: "artifact", scope: "project", artifact: null })}><FileText aria-hidden="true" /><span><strong>{c.noArtifacts}</strong></span></button>}</div>
+            <header><h2>{c.artifacts}</h2><div className="pm-band-actions">{selectedTeam && availableTeamArtifacts.length > 0 && <button type="button" onClick={() => setDialog({ type: "team-artifacts" })}><Link2 aria-hidden="true" />{c.selectArtifacts}</button>}<button type="button" onClick={() => setDialog({ type: "artifact", scope: "project", artifact: null })}><Plus aria-hidden="true" />{c.addArtifact}</button></div></header>
+            <div className="pm-artifact-grid">{[...linkedTeamArtifacts, ...linkedProjectArtifacts].map((artifact) => <ArtifactCard artifact={artifact} scope={artifact.scope === "team" ? "team" : "project"} key={artifact.id} />)}{linkedTeamArtifacts.length + linkedProjectArtifacts.length === 0 && <button className="pm-track-empty compact" type="button" onClick={() => setDialog({ type: "artifact", scope: "project", artifact: null })}><FileText aria-hidden="true" /><span><strong>{c.noArtifacts}</strong></span></button>}</div>
           </section>
         </section>
 
         <footer className="pm-footer">
-          <div className={missing.length || memoryLoadError ? "pm-readiness missing" : "pm-readiness"} aria-live="polite">{loading ? <strong>{c.loading}</strong> : memoryLoadError ? <strong>{c.memoryUnavailable}</strong> : missing.length ? <><span>{c.missing}</span><strong>{missing.join(" · ")}</strong></> : <><Check aria-hidden="true" /><strong>{c.ready}</strong></>}</div>
+          <div className={missing.length || memoryLoadError ? "pm-readiness missing" : "pm-readiness"} aria-live="polite">{loading ? <strong>{c.loading}</strong> : memoryLoadError ? <strong>{c.memoryUnavailable}</strong> : missing.length ? <><span>{c.missing}</span><strong>{missing.join(" · ")}</strong></> : null}</div>
           <button type="button" onClick={() => void continueToConception()} disabled={!canContinue || busy}>{loading || busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : null}{isDraft ? c.createAndContinue : c.continue}<ArrowRight aria-hidden="true" /></button>
         </footer>
       </div>
@@ -671,8 +653,8 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
       </div>
     </MemoryDialog>}
 
-    {dialog?.type === "team-artifacts" && <MemoryDialog eyebrow={c.teamArtifacts} title={c.teamLibrary} onClose={() => setDialog(null)}><div className="pm-dialog-copy">{c.teamLibraryHint}</div><div className="pm-selection-list artifacts">{availableTeamArtifacts.map((artifact) => { const checked = project.context.teamArtifactIds.includes(artifact.id); return <label key={artifact.id}><input type="checkbox" checked={checked} onChange={() => toggleTeamArtifact(artifact.id)} /><ArtifactIcon artifact={artifact} /><span><strong>{artifact.label}</strong><small>{artifact.description || artifact.url}</small></span><Check aria-hidden="true" /></label>; })}{availableTeamArtifacts.length === 0 && <div className="pm-artifact-empty">{c.noArtifacts}</div>}</div><footer><button type="button" onClick={() => setDialog({ type: "artifact", scope: "team", artifact: null })}><Plus aria-hidden="true" />{c.addArtifact}</button><button className="primary" type="button" onClick={() => setDialog(null)}><Check aria-hidden="true" />{c.save}</button></footer></MemoryDialog>}
+    {dialog?.type === "team-artifacts" && <MemoryDialog eyebrow={c.artifacts} title={c.teamLibrary} onClose={() => setDialog(null)}><div className="pm-dialog-copy">{c.teamLibraryHint}</div><div className="pm-selection-list artifacts">{availableTeamArtifacts.map((artifact) => { const checked = project.context.teamArtifactIds.includes(artifact.id); return <label key={artifact.id}><input type="checkbox" checked={checked} onChange={() => toggleTeamArtifact(artifact.id)} /><ArtifactIcon artifact={artifact} /><span><strong>{artifact.label}</strong><small>{artifact.description || artifact.url}</small></span><Check aria-hidden="true" /></label>; })}{availableTeamArtifacts.length === 0 && <div className="pm-artifact-empty">{c.noArtifacts}</div>}</div><footer><button type="button" onClick={() => setDialog({ type: "artifact", scope: "team", artifact: null })}><Plus aria-hidden="true" />{c.addArtifact}</button><button className="primary" type="button" onClick={() => setDialog(null)}><Check aria-hidden="true" />{c.save}</button></footer></MemoryDialog>}
 
-    {dialog?.type === "artifact" && <MemoryDialog eyebrow={dialog.scope === "team" ? c.teamArtifacts : c.projectArtifacts} title={dialog.artifact ? c.editArtifact : c.newProjectArtifact} onClose={() => setDialog(null)}><form className="pm-dialog-form" onSubmit={(event) => void saveArtifact(event)}><label><span>{c.kind}</span><select name="kind" defaultValue={dialog.artifact?.kind || "document"}><option value="document">{c.sourceKinds.document}</option><option value="repository">{c.sourceKinds.repository}</option><option value="dataset">{c.sourceKinds.dataset}</option><option value="link">{c.sourceKinds.link}</option></select></label><label><span>{c.artifactName}</span><input name="label" defaultValue={dialog.artifact?.label || ""} required maxLength={140} autoFocus /></label><ArtifactSourceFields language={language} artifact={dialog.artifact} onError={setFeedback} /><label><span>{c.description}</span><textarea name="description" defaultValue={dialog.artifact?.description || ""} maxLength={500} rows={3} /></label><footer><button type="button" onClick={() => setDialog(null)}>{c.cancel}</button><button className="primary" type="submit" disabled={busy}>{busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}{c.save}</button></footer></form></MemoryDialog>}
+    {dialog?.type === "artifact" && <MemoryDialog eyebrow={dialog.scope === "team" ? c.artifacts : c.artifacts} title={dialog.artifact ? c.editArtifact : c.newProjectArtifact} onClose={() => setDialog(null)}><form className="pm-dialog-form" onSubmit={(event) => void saveArtifact(event)}><label><span>{c.kind}</span><select name="kind" defaultValue={dialog.artifact?.kind || "document"}><option value="document">{c.sourceKinds.document}</option><option value="repository">{c.sourceKinds.repository}</option><option value="dataset">{c.sourceKinds.dataset}</option><option value="link">{c.sourceKinds.link}</option></select></label><label><span>{c.artifactName}</span><input name="label" defaultValue={dialog.artifact?.label || ""} required maxLength={140} autoFocus /></label><ArtifactSourceFields language={language} artifact={dialog.artifact} onError={setFeedback} /><label><span>{c.description}</span><textarea name="description" defaultValue={dialog.artifact?.description || ""} maxLength={500} rows={3} /></label><footer><button type="button" onClick={() => setDialog(null)}>{c.cancel}</button><button className="primary" type="submit" disabled={busy}>{busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}{c.save}</button></footer></form></MemoryDialog>}
   </div>;
 }

@@ -1,3 +1,4 @@
+import { interpretationRequestSchema } from "./discovery-interpretation.mjs";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -1269,6 +1270,24 @@ export async function buildApp(options = {}) {
     })();
     initializingSystems.set(operationKey, operation);
     try { return await operation; } finally { initializingSystems.delete(operationKey); }
+  });
+
+  app.post("/api/system-ai/interpret-hypothesis", {
+    preHandler: [requireAuth, requireCsrf],
+    config: { rateLimit: { max: 60, timeWindow: "1 hour" } },
+    schema: { tags: ["System"], summary: "Interpret a canvas hypothesis against the saved architecture", body: interpretationRequestSchema }
+  }, async (request) => {
+    const data = store.read();
+    const record = data.workspace.projects?.[request.body.projectId];
+    if (!record) throw httpError(404, "PROJECT_NOT_FOUND", "Project was not found.");
+    if (!canAccessProject(data, request.auth.user, record) || request.auth.user.accessRole === "advisor") throw httpError(403, "FORBIDDEN", "You cannot change this project.");
+    const baseline = record.document.engineeringSystem;
+    if (!baseline) throw httpError(409, "SYSTEM_NOT_READY", "Initialize the project architecture first.");
+    const result = await systemAi.interpret(baseline, request.body.text, request.body.language);
+    const current = store.read(), latest = current.workspace.projects?.[request.body.projectId];
+    if (!latest || !canAccessProject(current, request.auth.user, latest)) throw httpError(403, "FORBIDDEN", "Project access changed.");
+    if (!isDeepStrictEqual(baseline, latest.document.engineeringSystem)) throw httpError(409, "SYSTEM_CHANGED", "The architecture changed. Interpret the idea again.");
+    return { ...result, baselineId: baseline.id, baselineRevision: baseline.revision || 0, baselineGeneratedAt: baseline.generatedAt };
   });
 
   app.post("/api/system-ai/analyze-change", {

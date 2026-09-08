@@ -1,27 +1,36 @@
-# System and Discovery interaction revision — 2026-09-08
+# System, Discovery and Project Memory — interaction validation
 
-The reported production view could not move cards, placed connected sibling subsystems in a long chain, opened requirements as a modal, and hid Discovery actions. This revision changes interaction and navigation without supplying a predefined Quetzal architecture.
+## System
 
-## Behavior
+The searchable hierarchy exposes every extracted system, subsystem and component. Breadcrumbs and Explore open individual levels. All levels exposes the complete saved model; Element relationships follows direct technical neighbors across hierarchy boundaries. Containment determines the normal layout and remains visually distinct from technical interfaces.
 
-- The left explorer exposes every extracted system, subsystem and component, supports search and preserves ancestors in search results. Breadcrumbs and explicit Explore actions change hierarchy levels. Selecting a card does not silently navigate away.
-- All levels exposes the complete saved model. Element relationships includes direct technical neighbors across hierarchy boundaries. Containment determines the normal architecture layout; relationship exploration and scenarios follow technical connections. Containment remains a dashed structural link, without an impact arrow.
-- Cards support pointer dragging, pan/zoom, fit, reset and Alt + arrows. Positions are stored in `navigation.systemLayouts` by hierarchy/relationship/requirement view. Position changes leave engineering facts, memory revision and source evidence unchanged.
-- Requirements occupy a dismissible sidebar beside the graph on desktop. Search, facets, trace and edit remain available. Tracing keeps the list open. Scenario requirement lists also dock beside the canvas. Narrow screens stack the explorer, canvas and requirement list in a scrollable workspace.
-- Discovery has visible create, test change, system targets, connect, duplicate and delete controls. Ideas with no recognized parameter change still offer an explicit target picker. New and duplicated ideas are placed in free space without moving existing cards. Board links and positions remain separate from physical engineering relations.
+Cards support dragging, pan/zoom, fit, reset and Alt + arrow keys. Positions persist per view in `navigation.systemLayouts`, independently of engineering facts and memory revision. Requirements occupy a dismissible sidebar on desktop, with search, facets, trace and edit. Tracing keeps the list open. Narrow screens stack the explorer, canvas and requirements.
 
-## Document review
+Document review requests an explicit, nonpersisting preview from linked source artifacts. Applying it records corrections and archives the previous architecture for saved scenarios. Extraction quality is separate from interaction validation: this interface does not invent missing systems or guarantee complete source coverage.
 
-`POST /api/system-ai/generate` accepts an optional `preview` boolean. Initialization still reuses an existing model. Explicit preview bypasses that reuse, reads only persisted linked artifacts, checks access/CSRF and rejects memory changes while extraction is running. Preview neither persists the model nor unlocks conception. The existing authenticated project-save path applies a reviewed candidate as a team correction.
+## Discovery
 
-Review retains the baseline identity, existing correction history and the architecture needed to reopen saved scenarios. Applying a new interpretation resets view positions so old coordinates cannot overlap newly arranged components. Snapshot references are validated separately from the new current architecture. Source coverage counts are evidence citations, not a guarantee of completeness. The generic extraction prompt asks for coverage of the supplied documents without encoding expected Quetzal systems, numbers or benchmark answers.
+Conception contains only System and Discovery. The Timeline component, Gantt helpers, styles and tab have been deleted. Old workspace preferences normalize to System.
 
-## Validation
+Discovery starts with New idea. Connection, duplication and deletion controls appear when a card is selected. Saving a new or edited idea automatically asks the configured AI to interpret its text. The result is a short summary or clarification question on the card. Refine idea opens the same text editor; See impact evaluates a resolved proposal. There is no target/property selection form in Discovery and no regex recognition fallback. New and duplicated ideas use free positions without moving existing cards.
 
-The automated browser flow uses real React, authenticated Fastify routes and temporary persistence, with a synthetic source document and a simulated external provider. It checks drag persistence after reload, unchanged engineering facts, hierarchy search, all levels, cross-subsystem relationships, a docked requirements list, source-preserving requirement edits, explicit Discovery actions, review without mutation, explicit application and an archived scenario after reinterpretation. Desktop and 390px viewport checks include horizontal overflow checks and screenshots. These are interaction tests, not evidence of live extraction quality.
+`POST /api/system-ai/interpret-hypothesis` receives project ID, hypothesis text and language. The server supplies the saved entity/requirement/property inventory to Gemini. It authenticates and authorizes access, requires CSRF, limits requests and rejects results when the architecture changes during interpretation. Raw source documents, canvas coordinates, correction archives and scenario history are excluded.
 
-Unit/API checks cover sibling hierarchy layout, directional curve endpoints, multi-system overview, scenario archives, preview nonmutation and rejection when source memory changes. Existing deterministic Quetzal and structural checks remain separate; evaluator documents and expected results were not edited.
+Interpretation may target an existing entity or requirement, propose a named component replacement, or request clarification. Unknown targets/keys, unsupported unit conversions, invented quoted wording, no-op changes and duplicate updates produce clarification. Relative increments and scaling are computed against current values. Interpretation never changes the baseline or infers physical dependencies. The impact engine evaluates the temporary change when requested.
 
-The real-document acceptance script supports `NORTE_ACCEPTANCE_PREVIEW=true` to exercise document review through the browser after initial extraction. This new live run has **not executed**: automatic approval review rejected sending the five seeded documents to Gemini. No new live-provider success or extraction-completeness claim is made for this revision. Render deployment remains manual.
+Stale responses after card edits are ignored; closing the workspace cancels pending browser requests. Interpretation requests have a 30-second deadline and no automatic provider retry. A failed request leaves the idea saved and offers a retry on the card. The browser-only demo explicitly reports that connected AI is required.
 
-Completed checks for this revision: `npm run quality` (98 client tests, all 17 backend test files, typecheck, lint and production build), `npm run test:visual`, `npm run test:visual:quetzal`, secret scanning, dependency audit (zero vulnerabilities), five deterministic Quetzal cases and four masked structural cases. The Quetzal browser fixture now maps its evidence to the IDs returned by the local artifact upload and waits for memory loading before initialization; the frozen benchmark context was not changed.
+## Project Memory
+
+One uppercase title replaces the eyebrow/title/subtitle stack. The introductory team/artifact descriptions and success-readiness message are removed. Incomplete-memory and API-error messages remain functional.
+
+One artifact grid displays linked team references and project documents, with at most four columns and fewer columns on narrow screens. The workspace scrolls vertically so additional rows remain accessible. Team artifacts retain ownership and unlink behavior; project files retain their edit/delete behavior. No documents are deleted by the UI simplification.
+
+## Checks
+
+- Quality: 96 client tests, all 18 backend test files, typecheck, lint and production build.
+- Authenticated browser checks: automatic interpretation, inline clarification without a modal, card operations, two-tab keyboard navigation, uppercase heading, unified artifact grid, mobile scrolling, existing System interactions and scenario preservation. The external provider is simulated with explicit synthetic responses.
+- Quetzal browser checks: the existing positive-margin and continuous-transmission scenarios still work with an explicit provider fixture. This is not an extraction-quality result.
+- Dependency audit: zero vulnerabilities. Secret scanning and diff checks pass.
+
+The live command `node --env-file-if-exists=.env.local scripts/acceptance-discovery.mjs` uses only a synthetic architecture and invented Portuguese phrases; it reads no database or Quetzal documents. The first interpretation with the configured `gemini-3.5-flash-lite` did not receive an HTTP response before the 30-second deadline. A separate minimal request also timed out after 15 seconds, while a public HTTPS connectivity check succeeded. The remaining live interpretation cases did not run. Live semantic acceptance therefore remains unconfirmed; simulated browser success is not represented as a live-provider success. No Render deployment was triggered.

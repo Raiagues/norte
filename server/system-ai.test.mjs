@@ -343,3 +343,31 @@ test("API preview neither initializes a project nor unlocks it, and rejects chan
   assert.equal(conflict.json().error, "PROJECT_MEMORY_CHANGED");
   assert.equal(store.read().workspace.projects[project.id].document.engineeringSystem, undefined);
 });
+
+test("API hypothesis interpretation uses the saved model, authenticates and never writes it", async (t) => {
+  const { app, store, headers } = await setupApi(t, async () => geminiResponse({ kind: "parameter", targetId: "radio", summary: "Radio current becomes 1.2 A", question: "", replacementName: "", updates: [{ propertyKey: "peak_current", operation: "set", value: 1.2, unit: "A", quote: "1.2 A" }] }));
+  await store.update((data) => { data.workspace.projects[project.id].document.engineeringSystem = createEngineeringValidationModel(); return null; });
+  const before = structuredClone(store.read().workspace.projects[project.id].document);
+  const options = { method: "POST", url: "/api/system-ai/interpret-hypothesis", payload: { projectId: project.id, text: "radio 1.2 A" } };
+  assert.equal((await app.inject(options)).statusCode, 401);
+  assert.equal((await app.inject({ ...options, headers: { cookie: headers.cookie } })).statusCode, 403);
+  const response = await app.inject({ ...options, headers });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(response.json().change.targetEntityId, "radio");
+  assert.equal(response.json().baselineId, before.engineeringSystem.id);
+  assert.deepEqual(store.read().workspace.projects[project.id].document, before);
+  const outsider = await app.inject({ method: "POST", url: "/api/auth/register", payload: { name: "Other Engineer", email: "discovery-outsider@example.test", password: "another explicit test passphrase" } });
+  await store.update((data) => { for (const team of data.teams) team.memberIds = team.memberIds.filter((id) => id !== outsider.json().user.memberId); return null; });
+  const outsiderHeaders = { cookie: outsider.headers["set-cookie"].split(";")[0], "x-csrf-token": outsider.json().csrfToken };
+  assert.equal((await app.inject({ ...options, headers: outsiderHeaders })).statusCode, 403);
+});
+
+test("API rejects an interpretation if the current architecture changed during the provider call", async (t) => {
+  let mutate;
+  const { app, store, headers } = await setupApi(t, async () => { await mutate(); return geminiResponse({ kind: "clarification", targetId: "", summary: "", question: "Which radio?", replacementName: "", updates: [] }); });
+  await store.update((data) => { data.workspace.projects[project.id].document.engineeringSystem = createEngineeringValidationModel(); return null; });
+  mutate = () => store.update((data) => { data.workspace.projects[project.id].document.engineeringSystem.revision = 2; return null; });
+  const response = await app.inject({ method: "POST", url: "/api/system-ai/interpret-hypothesis", headers, payload: { projectId: project.id, text: "better radio" } });
+  assert.equal(response.statusCode, 409, response.body);
+  assert.equal(response.json().error, "SYSTEM_CHANGED");
+});

@@ -1,4 +1,4 @@
-/* global document, window */
+/* global document, window, getComputedStyle */
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,8 +13,15 @@ import { createEngineeringValidationModel, validationMemoryText } from "../examp
 const directory = await mkdtemp(join(tmpdir(), "norte-browser-"));
 const port = Number(process.env.NORTE_VISUAL_PORT || 5275);
 const baseUrl = `http://127.0.0.1:${port}/norte/`;
-let generations = 0, failGeneration = true, failContract = false, artifactId = "";
+let interpretations = 0, generations = 0, failGeneration = true, failContract = false, artifactId = "";
 const app = await buildApp({ storeFile: join(directory, "state.json"), logger: false, systemAi: { retryWait: async () => {}, apiKey: "test-provider", fetch: async (_url, options) => {
+  const prompt = JSON.parse(options.body).contents[0].parts[0].text;
+  if (prompt.startsWith("Interpret the engineering hypothesis")) {
+    interpretations++;
+    const text = JSON.parse(prompt.slice(prompt.indexOf("\n") + 1)).hypothesis;
+    const result = text === "Payload 280 g" ? { kind: "parameter", targetId: "payload", summary: "A massa do payload passa a 280 g.", question: "", replacementName: "", updates: [{ propertyKey: "mass", operation: "set", value: 280, unit: "g", quote: "280 g" }] } : { kind: "clarification", targetId: "", summary: "", question: "O que mudaria nessa alternativa?", replacementName: "", updates: [] };
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(result) }] } }] }), { status: 200 });
+  }
   if (JSON.parse(options.body).contents[0].parts[0].text.startsWith("Give concise")) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"inferences":[]}' }] } }] }), { status: 200 });
   generations += 1;
   if (failGeneration) return new Response("{}", { status: 503 });
@@ -42,6 +49,11 @@ project.context.configured = true;
 const artifact = (await request("POST", "/api/artifacts", { kind: "document", label: "Validation memory", description: "Explicit test fixture", url: `data:text/plain;base64,${Buffer.from(validationMemoryText).toString("base64")}`, scope: "project", ownerId: projectId, tags: [], fileName: "validation.txt", mimeType: "text/plain", size: Buffer.byteLength(validationMemoryText) })).artifact;
 artifactId = artifact.id;
 project.context.projectArtifactIds = [artifact.id];
+for (let index = 1; index <= 4; index++) {
+  const extra = (await request("POST", "/api/artifacts", { kind: "document", label: `Synthetic attachment ${index}`, description: "Browser layout fixture", url: `data:text/plain;base64,${Buffer.from(`Synthetic attachment ${index}. No engineering quantities.`).toString("base64")}`, scope: "project", ownerId: projectId, tags: [], fileName: `fixture-${index}.txt`, mimeType: "text/plain", size: Buffer.byteLength(`Synthetic attachment ${index}. No engineering quantities.`) })).artifact;
+  project.context.projectArtifactIds.push(extra.id);
+}
+
 await request("PUT", `/api/projects/${projectId}`, project);
 const vite = spawn(process.execPath, ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { env: { ...process.env, VITE_DEMO_MODE: "false" }, stdio: ["ignore", "pipe", "pipe"] });
 const viteReady = new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error("Vite startup timeout")), 15000); vite.stdout.on("data", (chunk) => { if (String(chunk).includes("Local:")) { clearTimeout(timer); resolve(); } }); vite.once("exit", (code) => reject(new Error(`Vite exited ${code}`))); });
@@ -104,7 +116,24 @@ try {
   await page.waitForFunction(() => document.querySelector(".pm-footer > button")?.disabled === false);
   assert.equal(memoryReads - beforeRetry, 2);
   assert.equal(await page.locator(".pm-memory-error").count(), 0);
-  assert.ok((await page.locator(".pm-readiness").innerText()).includes("pronta"));
+  assert.equal(await page.locator(".pm-readiness").innerText(), "");
+  assert.equal(await page.locator(".pm-heading h1").innerText(), "MEMÓRIA DO PROJETO");
+  assert.equal(await page.locator(".pm-heading > div > span, .pm-heading > div > p").count(), 0);
+  assert.equal(await page.locator(".pm-artifact-band").count(), 1);
+  assert.equal(await page.locator(".pm-artifact-grid .pm-artifact-card").count(), 5);
+  assert.equal(await page.locator(".pm-artifact-grid").evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length), 4);
+  assert.ok(await page.locator(".pm-artifact-grid").evaluate((element) => element.scrollWidth <= element.clientWidth + 1));
+  await page.getByRole("button", { name: "EN", exact: true }).click();
+  assert.equal(await page.locator(".pm-heading h1").innerText(), "PROJECT MEMORY");
+  for (const text of ["Essential memory is ready.", "The mission's essential context", "Associate a team and choose", "Repositories and documents created specifically", "TEAM ARTIFACTS"]) assert.ok(!(await page.locator(".pm-workspace").innerText()).includes(text));
+  await page.screenshot({ path: "/tmp/norte-memory-simplified.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.locator(".pm-artifact-grid").evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length), 1);
+  await page.locator(".pm-artifact-card").last().scrollIntoViewIfNeeded();
+  assert.ok(await page.locator(".pm-artifact-grid").evaluate((element) => element.scrollWidth <= element.clientWidth + 1));
+  await page.screenshot({ path: "/tmp/norte-memory-mobile.png", fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.getByRole("button", { name: "PT", exact: true }).click();
   await page.locator(".pm-footer > button").click();
   await page.locator(".pm-feedback").waitFor();
   assert.ok((await page.locator(".pm-feedback").innerText()).includes("temporariamente indisponível"));
@@ -242,17 +271,17 @@ try {
   await page.getByRole("tab", { name: /Descoberta/u }).click();
   await page.locator(".lab-canvas").waitFor();
   for (const removed of ["Arrumar mapa", "Estruturar missão", "Organização automática"]) assert.equal(await page.getByRole("button", { name: removed, exact: true }).count(), 0);
-  await page.getByRole("button", { name: "Testar alteração", exact: true }).click();
-  await page.locator(".engineering-target-picker").waitFor();
-  await closeDialog();
-  await page.getByRole("button", { name: "Elementos do sistema", exact: true }).click();
-  assert.ok(await page.locator(".discovery-system-tools button").count() > 1);
-  await page.screenshot({ path: "/tmp/norte-discovery-tools.png", fullPage: true });
-  await page.getByRole("button", { name: "Elementos do sistema", exact: true }).click();
+  assert.equal(await page.getByRole("button", { name: "Testar alteração", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Elementos do sistema", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("tab").count(), 2);
   await page.getByRole("button", { name: "Nova ideia", exact: true }).first().click();
   await page.locator(".lab-composer textarea").fill("Payload 280 g");
   await page.locator(".lab-composer textarea").press("Enter");
   await page.locator(".lab-composer textarea").press("Escape");
+  await page.locator(".discovery-interpretation.resolved").waitFor();
+  assert.equal(interpretations, 1);
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  await page.screenshot({ path: "/tmp/norte-discovery-interpreted.png", fullPage: true });
   await page.locator(".lab-node").getByRole("button", { name: "Ver impacto" }).click();
   await page.locator(".engineering-scenario").waitFor();
   assert.equal(await page.getByRole("dialog").count(), 0);
@@ -270,9 +299,13 @@ try {
   await page.locator(".lab-composer textarea").fill("Investigar uma alternativa");
   await page.locator(".lab-composer textarea").press("Enter");
   await page.locator(".lab-composer textarea").press("Escape");
-  await page.locator(".lab-node").last().getByRole("button", { name: "Ver impacto", exact: true }).click();
-  await page.locator(".engineering-target-picker").waitFor();
-  await closeDialog();
+  await page.locator(".discovery-interpretation.clarification").waitFor();
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  assert.equal(await page.locator(".engineering-target-picker").count(), 0);
+  assert.ok((await page.locator(".lab-node").last().innerText()).includes("O que mudaria"));
+  await page.locator(".lab-node").last().getByRole("button", { name: "Completar ideia", exact: true }).click();
+  await page.locator(".lab-composer textarea").waitFor();
+  await page.locator(".lab-composer textarea").press("Escape");
   await page.locator(".lab-node").last().locator(".discovery-node-text").click();
   await page.getByRole("button", { name: "Duplicar", exact: true }).click();
   assert.equal(await page.locator(".lab-node").count(), 3);
@@ -328,8 +361,12 @@ try {
   assert.equal(await page.locator(".mission-phase").nth(1).getAttribute("aria-current"), "step");
   assert.equal(await page.locator(".mission-project-team strong").innerText(), "Norte Validation Team");
   await page.locator(".mission-sidebar-toggle").click();
-  await page.getByRole("tab", { name: /Cronograma/u }).click();
-  await page.locator(".conception-timeline").waitFor();
+  assert.equal(await page.getByRole("tab", { name: /Cronograma|Timeline/u }).count(), 0);
+  await page.getByRole("tab", { name: "Sistema", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  assert.equal(await page.getByRole("tab", { selected: true }).innerText(), "Descoberta\nBETA");
+  await page.keyboard.press("Home");
+  assert.equal(await page.getByRole("tab", { selected: true }).innerText(), "Sistema");
   for (const [width, height] of [[1366, 768], [390, 844]]) {
     await page.setViewportSize({ width, height });
     await page.getByRole("tab", { name: "Sistema", exact: true }).click();
@@ -347,6 +384,6 @@ try {
   await page.locator(".home-project-dialog-empty button").dispatchEvent("keydown", { key: "Enter" });
   assert.equal(await page.locator(".pm-workspace").count(), 0);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ passed: true, generations, checks: ["disabled creation", "owning team", "persistent phases", "automatic initialization and recovery", "macro and drilldown", "persistent node dragging", "hierarchy search and all levels", "docked requirements", "explicit Discovery tools", "review preview and explicit apply", "archived scenario after reinterpretation", "contextual details", "provenance", "current conflict", "scenario save", "requirement filtering/editing/source preservation", "requirement trace", "project-specific progress and team switching", "Discovery mass conflict", "undo redo persistence", "timeline", "responsive"], viewports: results }, null, 2));
+  console.log(JSON.stringify({ passed: true, generations, checks: ["disabled creation", "owning team", "persistent phases", "automatic initialization and recovery", "macro and drilldown", "persistent node dragging", "hierarchy search and all levels", "docked requirements", "automatic AI interpretation and inline clarification", "review preview and explicit apply", "archived scenario after reinterpretation", "contextual details", "provenance", "current conflict", "scenario save", "requirement filtering/editing/source preservation", "requirement trace", "project-specific progress and team switching", "Discovery mass conflict", "undo redo persistence", "two accessible conception tabs", "unified four-column artifacts", "responsive"], viewports: results }, null, 2));
 } catch (error) { await page.screenshot({ path: "/tmp/norte-browser-failure.png", fullPage: true }).catch(() => undefined); throw error; }
 finally { await browser.close(); await app.close(); vite.kill("SIGTERM"); await rm(directory, { recursive: true, force: true }); }

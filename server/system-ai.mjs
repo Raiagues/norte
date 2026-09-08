@@ -1,3 +1,4 @@
+import { interpretationPrompt, interpretationSchema, resolveInterpretation } from "./discovery-interpretation.mjs";
 import { geminiGenerate } from "./gemini-transport.mjs";
 import { extractionEnums, requirementEvidenceField, restoreRequirementSourceRefs, EXTRACTED_SOURCE_KINDS, EXTRACTED_EVIDENCE_KINDS } from "./extraction-contract.mjs";
 import { randomUUID } from "node:crypto";
@@ -333,8 +334,8 @@ export function createSystemAiService(options = {}) {
   const configured = options.model ?? process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
   const model = /^[a-zA-Z0-9._-]+$/u.test(configured) ? configured : DEFAULT_MODEL;
   const fetchImpl = options.fetch ?? fetch;
-  async function request(parts, schema) {
-    return geminiGenerate({ apiKey, model, fetchImpl, body: { contents: [{ role: "user", parts }], generationConfig: { temperature: 0.1, maxOutputTokens: 16_000, responseMimeType: "application/json", responseJsonSchema: geminiResponseSchema(schema) } }, ...(options.transportPolicy ? { policy: options.transportPolicy } : {}), onAttempt: options.onAttempt, ...(options.retryWait ? { wait: options.retryWait } : {}) });
+  async function request(parts, schema, settings = {}) {
+    return geminiGenerate({ apiKey, model, fetchImpl, body: { contents: [{ role: "user", parts }], generationConfig: { temperature: 0.1, maxOutputTokens: settings.maxOutputTokens ?? 16_000, responseMimeType: "application/json", responseJsonSchema: geminiResponseSchema(schema) } }, ...(options.transportPolicy || settings.policy ? { policy: options.transportPolicy ?? settings.policy } : {}), onAttempt: options.onAttempt, ...(options.retryWait ? { wait: options.retryWait } : {}) });
   }
   return {
     status: () => ({ configured: Boolean(apiKey), model }),
@@ -372,6 +373,11 @@ export function createSystemAiService(options = {}) {
         }
       }
       throw lastFailure;
+    },
+    async interpret(modelValue, text, language = "en") {
+      if (!apiKey) throw serviceError(503, "SYSTEM_AI_NOT_CONFIGURED", "Hypothesis interpretation is not configured.");
+      const output = await request([{ text: interpretationPrompt(modelValue, text, language) }], interpretationSchema, { maxOutputTokens: 2048, policy: { timeoutMs: 30_000, maxAttempts: 1, totalDeadlineMs: 30_000 } });
+      return resolveInterpretation(modelValue, text, output, language);
     },
     async analyze(modelValue, change, language = "en") {
       let result;

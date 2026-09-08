@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Link2, Pencil, Plus, Redo2, Trash2, Undo2, Network, Copy, FlaskConical } from "lucide-react";
+import { ArrowRight, Link2, Pencil, Plus, Redo2, Trash2, Undo2, Copy, LoaderCircle } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { createLabLink, createLabNode, LAB_NODE_WIDTH, LAB_NODE_HEIGHT, LAB_WORLD_HEIGHT, LAB_WORLD_WIDTH, loadLabBoard, normalizeLabBoard, saveLabBoard } from "../lib/brainstormLab";
 import type { LabBoard, LabNode } from "../lib/brainstormLab";
 import type { MissionProject } from "../lib/projectStore";
 import type { Language } from "../lib/types";
-import type { EngineeringAnalysis } from "../lib/engineeringSystem";
-import { changeFromHypothesis, recognizeEngineeringHypothesis } from "../lib/discoveryEngineering";
+import type { EngineeringAnalysis, EngineeringChange } from "../lib/engineeringSystem";
 import { analyzeImpact } from "../lib/impactEngine";
-import type { DiscoveryHypothesis } from "../lib/discoveryEngineering";
-import { EngineeringScenario, EngineeringWhatIf } from "./SystemWorkspace";
+import { EngineeringScenario } from "./SystemWorkspace";
 
+type Interpretation = { text: string; status: "loading" | "resolved" | "clarification" | "error"; summary?: string; question?: string; change?: EngineeringChange; baselineId?: string; baselineRevision?: number; baselineGeneratedAt?: string };
 type Props = { language: Language; project: MissionProject; onProjectChange: (project: MissionProject) => void };
 type Transform = { scale: number; x: number; y: number };
 type Composer = { x: number; y: number; text: string; nodeId?: string };
@@ -33,9 +32,10 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [composer, setComposer] = useState<Composer | null>(null);
-  const [hypothesis, setHypothesis] = useState<DiscoveryHypothesis | null>(null);
+  const [interpretations, setInterpretations] = useState<Record<string, Interpretation>>({});
+  const interpretationRequests = useRef(new Map<string, AbortController>());
+  const projectRef = useRef(project); projectRef.current = project;
   const [scenario, setScenario] = useState<EngineeringAnalysis | null>(null);
-  const [systemTools, setSystemTools] = useState(false);
   const [panning, setPanning] = useState(false);
   const prompt = useAnimatedPrompt(PROMPTS[language]);
   const copy = language === "pt" ? { add: "Nova ideia", edit: "Editar ideia", remove: "Excluir ideia", connect: "Conectar ideia", undo: "Desfazer", redo: "Refazer", fit: "Enquadrar ideias", in: "Aumentar zoom", out: "Diminuir zoom", placeholder: "Escreva uma hipótese…", impact: "Ver impacto", save: "Salvar", cancel: "Cancelar", idea: "HIPÓTESE", sync: "Não foi possível sincronizar. As ideias estão salvas neste navegador." } : { add: "New idea", edit: "Edit idea", remove: "Delete idea", connect: "Connect idea", undo: "Undo", redo: "Redo", fit: "Fit ideas", in: "Zoom in", out: "Zoom out", placeholder: "Write a hypothesis…", impact: "See impact", save: "Save", cancel: "Cancel", idea: "HYPOTHESIS", sync: "Could not sync. Ideas are saved in this browser." };
@@ -61,14 +61,35 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
     update(next); updateHistory(); setSelected(null);
   }
   function remove(id: string) { commit({ ...boardRef.current, nodes: boardRef.current.nodes.filter((node) => node.id !== id), links: boardRef.current.links.filter((link) => link.from !== id && link.to !== id) }); setSelected(null); setComposer(null); }
-  function showImpact(suggestion: DiscoveryHypothesis, text: string) {
-    const model = project.engineeringSystem;
+  function openImpact(change: EngineeringChange) {
+    const model = projectRef.current.engineeringSystem;
     if (!model) return;
-    const change = changeFromHypothesis(suggestion, model, text);
-    if (!change) { setHypothesis(suggestion); return; }
     try { setScenario(analyzeImpact(model, change, language)); setComposer(null); }
-    catch { setFeedback(language === "pt" ? "Revise o valor e a unidade desta hipótese." : "Review this hypothesis value and unit."); }
+    catch { setFeedback(language === "pt" ? "Não foi possível avaliar esta hipótese. Revise a ideia no cartão." : "Could not evaluate this hypothesis. Refine the idea on the card."); }
   }
+  async function interpret(node: LabNode, showResult = false) {
+    if (!projectRef.current.engineeringSystem) return;
+    interpretationRequests.current.get(node.id)?.abort();
+    const controller = new AbortController(); interpretationRequests.current.set(node.id, controller);
+    setInterpretations((current) => ({ ...current, [node.id]: { text: node.text, status: "loading" } }));
+    try {
+      if (auth.isDemo) throw new Error(language === "pt" ? "A interpretação por IA está disponível no ambiente conectado." : "AI interpretation is available in the connected workspace.");
+      const response = await auth.api<Omit<Interpretation, "text">>("/system-ai/interpret-hypothesis", { method: "POST", body: JSON.stringify({ projectId: project.id, text: node.text, language }), signal: controller.signal });
+      if (controller.signal.aborted || boardRef.current.nodes.find((item) => item.id === node.id)?.text !== node.text) return;
+      const model = projectRef.current.engineeringSystem;
+      if (response.baselineId !== model?.id || response.baselineRevision !== (model?.revision || 0) || response.baselineGeneratedAt !== model?.generatedAt) throw new Error(language === "pt" ? "O sistema mudou. Interprete esta ideia novamente." : "The system changed. Interpret this idea again.");
+      setInterpretations((current) => ({ ...current, [node.id]: { ...response, text: node.text } }));
+      if (showResult && response.status === "resolved" && response.change) openImpact(response.change);
+    } catch (error) {
+      if (!controller.signal.aborted && boardRef.current.nodes.find((item) => item.id === node.id)?.text === node.text) setInterpretations((current) => ({ ...current, [node.id]: { text: node.text, status: "error", question: error instanceof Error && "code" in error && ["SYSTEM_AI_UNAVAILABLE", "SYSTEM_AI_NOT_CONFIGURED"].includes(String(error.code)) ? language === "pt" ? "A IA não respondeu agora. Sua ideia está salva; tente novamente." : "AI could not respond. Your idea is saved; try again." : error instanceof Error ? error.message : language === "pt" ? "Não foi possível interpretar a ideia. Tente novamente." : "Could not interpret the idea. Try again." } }));
+    } finally { if (interpretationRequests.current.get(node.id) === controller) interpretationRequests.current.delete(node.id); }
+  }
+  function showImpact(node: LabNode) {
+    const result = interpretations[node.id], model = project.engineeringSystem;
+    if (result?.text === node.text && result.status === "resolved" && result.change && result.baselineId === model?.id && result.baselineRevision === (model?.revision || 0) && result.baselineGeneratedAt === model?.generatedAt) openImpact(result.change);
+    else void interpret(node, true);
+  }
+  useEffect(() => () => { interpretationRequests.current.forEach((controller) => controller.abort()); }, []);
   function fit() {
     const rect = viewportRef.current?.getBoundingClientRect();
     if (!rect || !boardRef.current.nodes.length) return;
@@ -107,12 +128,13 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
     const text = composer.text.trim().slice(0, 220);
     if (composer.nodeId) {
       commit({ ...boardRef.current, nodes: boardRef.current.nodes.map((node) => node.id === composer.nodeId ? { ...node, text } : node) }); setComposer(null);
+      const edited = boardRef.current.nodes.find((node) => node.id === composer.nodeId); if (edited) void interpret(edited);
     } else {
       const position = freePosition(composer);
       const node = createLabNode(text, position.x, position.y);
       commit({ ...boardRef.current, nodes: [...boardRef.current.nodes, node] });
       setComposer({ x: composer.x, y: composer.y + LAB_NODE_HEIGHT + 30, text: "" });
-      setSelected(node.id); fit();
+      setSelected(node.id); fit(); void interpret(node);
     }
   }
   function selectNode(node: LabNode) {
@@ -181,7 +203,7 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
   useEffect(() => { if (ready) fit(); }, [ready]);
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
-      if (hypothesis || scenario || (event.target instanceof HTMLElement && event.target.closest("input,textarea,select,[contenteditable=true]"))) return;
+      if (scenario || (event.target instanceof HTMLElement && event.target.closest("input,textarea,select,[contenteditable=true]"))) return;
       const command = event.ctrlKey || event.metaKey;
       if (command && event.key.toLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) redo(); else undo(); }
       else if (command && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
@@ -196,14 +218,11 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
   return <div className="brainstorm-lab quiet-discovery">
     {!scenario && <div className="discovery-tools" role="toolbar" aria-label={language === "pt" ? "Ferramentas do Discovery" : "Discovery tools"}>
       <button className="primary" type="button" onClick={() => openComposer()} disabled={!ready}><Plus />{copy.add}</button>
-      <button type="button" onClick={() => setHypothesis({ targetEntityId: "" })} disabled={!project.engineeringSystem}><FlaskConical />{language === "pt" ? "Testar alteração" : "Test a change"}</button>
-      <button type="button" aria-pressed={systemTools} onClick={() => setSystemTools(!systemTools)} disabled={!project.engineeringSystem}><Network />{language === "pt" ? "Elementos do sistema" : "System elements"}</button>
-      <span />
+      {selected && <><span />
       <button type="button" disabled={!selected} onClick={() => setConnecting(connecting ? null : selected)} aria-pressed={Boolean(connecting)}><Link2 />{language === "pt" ? "Conectar" : "Connect"}</button>
       <button type="button" disabled={!selected} onClick={() => { const original = boardRef.current.nodes.find((node) => node.id === selected); if (original) { const position = freePosition({ x: original.x + LAB_NODE_WIDTH + 40, y: original.y }); const node = createLabNode(original.text, position.x, position.y); commit({ ...boardRef.current, nodes: [...boardRef.current.nodes, node] }); setSelected(node.id); fit(); } }}><Copy />{language === "pt" ? "Duplicar" : "Duplicate"}</button>
-      <button type="button" disabled={!selected} onClick={() => { if (selected) remove(selected); }}><Trash2 />{language === "pt" ? "Excluir" : "Delete"}</button>
+      <button type="button" disabled={!selected} onClick={() => { if (selected) remove(selected); }}><Trash2 />{language === "pt" ? "Excluir" : "Delete"}</button></>}
     </div>}
-    {systemTools && !scenario && <div className="discovery-system-tools"><header><strong>{language === "pt" ? "O que você quer explorar?" : "What would you like to explore?"}</strong><button type="button" onClick={() => setSystemTools(false)} aria-label={language === "pt" ? "Fechar elementos" : "Close elements"}>×</button></header><div>{project.engineeringSystem?.entities.filter((entity) => entity.kind !== "system").map((entity) => <button type="button" key={entity.id} onClick={() => setHypothesis({ targetEntityId: entity.id })}><strong>{entity.name}</strong><small>{entity.properties.filter((property) => property.key !== "formula").map((property) => property.name).slice(0, 3).join(" · ") || (language === "pt" ? "Explorar com um dado técnico" : "Explore a technical value")}</small><ArrowRight /></button>)}</div></div>}
     {scenario && project.engineeringSystem ? <EngineeringScenario language={language} model={project.engineeringSystem} analysis={scenario} onClear={() => setScenario(null)} saved={project.engineeringSystem.scenarios?.some((item) => item.id === scenario.id)} onSave={() => onProjectChange({ ...project, engineeringSystem: { ...project.engineeringSystem!, scenarios: [...(project.engineeringSystem?.scenarios ?? []).filter((item) => item.id !== scenario.id), scenario] } })} /> : <div ref={viewportRef} className={`lab-canvas${panning ? " panning" : ""}`} onPointerDown={(event) => { if (ready) pointerDown(event); }} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onWheel={(event) => {
       if ((event.target as HTMLElement).closest("textarea")) return;
       const rect = event.currentTarget.getBoundingClientRect(); zoom(event.deltaY < 0 ? 1.08 : 1 / 1.08, { x: event.clientX - rect.left, y: event.clientY - rect.top });
@@ -216,12 +235,12 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
           return <path key={link.id} className="lab-relation confirmed" d={`M${from.x + LAB_NODE_WIDTH / 2},${from.y + LAB_NODE_HEIGHT} C${from.x + LAB_NODE_WIDTH / 2},${from.y + LAB_NODE_HEIGHT + 35} ${to.x + LAB_NODE_WIDTH / 2},${to.y - 35} ${to.x + LAB_NODE_WIDTH / 2},${to.y}`} markerEnd="url(#discovery-arrow)" />;
         })}</svg>
         {board.nodes.map((node) => {
-          const suggestion = recognizeEngineeringHypothesis(node.text, project.engineeringSystem);
+          const interpretation = interpretations[node.id]?.text === node.text ? interpretations[node.id] : undefined;
           return <article className={`lab-node${selected === node.id ? " selected" : ""}`} style={{ left: node.x, top: node.y, width: LAB_NODE_WIDTH, minHeight: LAB_NODE_HEIGHT }} key={node.id} data-node-id={node.id} onPointerDown={(event) => pointerDown(event, node)} onDoubleClick={() => openComposer(undefined, node)}>
             <div className="lab-node-head"><span>{copy.idea}</span><button type="button" title={copy.edit} aria-label={`${copy.edit}: ${node.text}`} onClick={() => openComposer(undefined, node)}><Pencil aria-hidden="true" /></button></div>
             <button className="discovery-node-text" type="button" onClick={() => selectNode(node)} onDoubleClick={() => openComposer(undefined, node)}>{node.text}</button>
-            <button className="discovery-impact-action" type="button" disabled={!project.engineeringSystem} onClick={() => suggestion ? showImpact(suggestion, node.text) : setHypothesis({ targetEntityId: "" })}><ArrowRight aria-hidden="true" />{copy.impact}</button>
-            {selected === node.id && <div className="discovery-node-actions" data-control><button type="button" aria-label={copy.connect} title={copy.connect} aria-pressed={connecting === node.id} onClick={() => setConnecting(connecting === node.id ? null : node.id)}><Link2 aria-hidden="true" /></button><button type="button" aria-label={copy.remove} title={copy.remove} onClick={() => remove(node.id)}><Trash2 aria-hidden="true" /></button></div>}
+            {interpretation && <p className={`discovery-interpretation ${interpretation.status}`} aria-live="polite">{interpretation.status === "loading" ? <><LoaderCircle className="engineering-spin" />{language === "pt" ? "Interpretando a ideia…" : "Interpreting the idea…"}</> : interpretation.summary || interpretation.question}</p>}
+            {interpretation?.status === "clarification" ? <button className="discovery-impact-action" type="button" onClick={() => openComposer(undefined, node)}><Pencil />{language === "pt" ? "Completar ideia" : "Refine idea"}</button> : <button className="discovery-impact-action" type="button" disabled={!project.engineeringSystem || interpretation?.status === "loading"} onClick={() => showImpact(node)}><ArrowRight />{interpretation?.status === "error" ? language === "pt" ? "Tentar novamente" : "Try again" : copy.impact}</button>}
           </article>;
         })}
         {composer && <form className="lab-composer" data-control style={{ left: composer.x, top: composer.y, width: LAB_NODE_WIDTH }} onSubmit={(event) => { event.preventDefault(); saveIdea(); }}><textarea ref={textareaRef} value={composer.text} maxLength={220} placeholder={copy.placeholder} aria-label={copy.placeholder} onChange={(event) => setComposer({ ...composer, text: event.target.value })} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); saveIdea(); } if (event.key === "Escape") setComposer(null); }} /><button type="submit" aria-label={copy.save}><Plus aria-hidden="true" /></button><button type="button" onClick={() => setComposer(null)} aria-label={copy.cancel}>×</button></form>}
@@ -230,7 +249,6 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
       {connecting && <div className="discovery-notice">{language === "pt" ? "Selecione a outra ideia para conectar." : "Select the other idea to connect."}<button type="button" onClick={() => setConnecting(null)}>{copy.cancel}</button></div>}
       <div className="discovery-navigation" data-control><button type="button" aria-label={copy.undo} title={`${copy.undo} · Ctrl+Z`} disabled={!history.undo} onClick={undo}><Undo2 aria-hidden="true" /></button><button type="button" aria-label={copy.redo} title={`${copy.redo} · Ctrl+Shift+Z`} disabled={!history.redo} onClick={redo}><Redo2 aria-hidden="true" /></button><span /><button type="button" aria-label={copy.out} onClick={() => zoom(1 / 1.15)}>−</button><output>{Math.round(transform.scale * 100)}%</output><button type="button" aria-label={copy.in} onClick={() => zoom(1.15)}>+</button><button type="button" aria-label={copy.fit} title={copy.fit} onClick={fit}>⌂</button></div>
     </div>}
-    {hypothesis && <EngineeringWhatIf language={language} project={project} suggestion={hypothesis} targetEntityId={hypothesis.targetEntityId} onClose={() => setHypothesis(null)} onAnalyzed={(analysis) => { setScenario(analysis); setHypothesis(null); setComposer(null); }} />}
   </div>;
 }
 

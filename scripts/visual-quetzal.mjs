@@ -17,6 +17,12 @@ let generations = 0, vite, browser;
 const artifactIds = new Map();
 const app = await buildApp({ storeFile: join(directory, "state.json"), logger: false, systemAi: { apiKey: "test-provider", fetch: async (_url, options) => {
   const payload = JSON.parse(options.body);
+  const prompt = payload.contents[0].parts[0].text;
+  if (prompt.startsWith("Interpret the engineering hypothesis")) {
+    const text = JSON.parse(prompt.slice(prompt.indexOf("\n") + 1)).hypothesis;
+    const result = { kind: "parameter", targetId: "radio", summary: text, question: "", replacementName: "", updates: [{ propertyKey: "tx_duty_cycle", operation: "set", value: text.includes("continuously") ? 100 : 10, unit: "%", quote: text }] };
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(result) }] } }] }), { status: 200 });
+  }
   assert.ok(payload.contents[0].parts[0].text.includes("transmit input power 2640 mW"));
   assert.ok(!options.body.includes("QUETZAL_EVALUATOR_ONLY"));
   generations += 1;

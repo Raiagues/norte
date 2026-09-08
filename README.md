@@ -26,7 +26,7 @@ The core interaction is a proposed change followed by its consequences: an alter
 
 | State | Scope |
 | --- | --- |
-| Implemented | Project Memory, account and team context, project persistence, timeline and freeform canvas navigation. |
+| Implemented | Project Memory, account and team context, project persistence, System and Discovery canvas navigation. |
 | Beta | Automatic engineering-model extraction, System navigation, requirement traceability, auditable expert corrections, contextual what-if scenarios and a bounded deterministic impact engine. Extraction quality depends on the linked evidence. |
 | Planned | Raw-artifact extraction benchmark, broader engineering rules, controlled promotion of scenarios to the baseline and independent engineering/student validation. |
 
@@ -40,7 +40,7 @@ Norte is not a general physics simulator. An inferred dependency is a hypothesis
 2. Select **Start conception**. Norte reads the linked memory, builds and persists the initial engineering model, then opens **System**. Failed extraction can be retried after correcting the memory.
 3. Inspect the macro architecture, focus a subsystem and open object information intentionally. Requirements are a separate layer linked to the architecture.
 4. Propose a component, parameter or requirement change. Inspect the affected path, source facts and calculations. Corrections preserve the original suggestion, revised object, supporting evidence and context in exportable records.
-5. Use **Discovery BETA** to write hypotheses. A recognized value change opens its impact with one contextual action; unresolved replacements retain a compact editor. Scenarios remain separate from the baseline.
+5. Use **Discovery BETA** to write hypotheses. Saving an idea asks the configured AI to interpret it against the saved architecture. The card shows the interpretation or a short clarification question; **See impact** opens the temporary scenario.
 
 ## Architecture
 
@@ -211,7 +211,9 @@ The browser demo exposes `resetDemoValidationData('RESET_VALIDATION_DATA')` from
 
 System has a searchable hierarchy on the left and a docked requirements list on the right. Drag cards (or use Alt + arrow keys); their positions persist per view without changing engineering facts. Use **Explore** to enter a level, **All levels** to see the complete saved model, and **Element relationships** to follow an element's interfaces across subsystem boundaries. Structure and technical relationships can be shown independently. Fit and reset layout remain available.
 
-Discovery exposes creation, connection, duplication, deletion and **Test a change** directly in its toolbar. Every idea offers **See impact**: recognized engineering changes open their analysis; other ideas open the explicit element/property picker. **System elements** lists the current model's available targets.
+Discovery keeps the canvas focused on text. Saving a new or edited idea triggers AI interpretation; **See impact** uses the proposed change without opening a target/property form. Ambiguous ideas receive one short question on the card and can be edited in place. Connection, duplication and deletion appear when an idea is selected. AI interpretation needs the connected environment and configured Gemini credentials. Conception contains only System and Discovery.
+
+Project Memory has one uppercase title and a unified artifact grid with at most four columns. Existing team references retain their ownership and unlink behavior; project files retain their edit/delete behavior.
 
 If the saved interpretation is incomplete, **Review documents** can request a fresh interpretation of the linked sources. Opening the dialog does not run extraction. A preview does not change the project; **Use this interpretation** explicitly applies it and records object changes in correction history. Existing scenarios carry their previous architecture when a reinterpretation is applied. The interface does not invent missing systems or promise that extraction covered every document.
 
