@@ -215,9 +215,9 @@ Discovery keeps the canvas focused on text. Saving a new or edited idea triggers
 
 Project Memory has one uppercase title and a unified artifact grid with at most four columns. Existing team references retain their ownership and unlink behavior; project files retain their edit/delete behavior.
 
-**Open conception** sits at the top right of Project Memory; the project name is edited below the title. Conception shows the current project name and provides **Edit memory** in the same action area. The mission sidebar previews preliminary design, detailed design, integration/verification and operations as disabled future phases.
+**Open conception** sits at the top right of Project Memory; the project name is edited below the title. Conception shows the current project name and provides **Edit memory** and **Next phase** in the same action area. Next phase opens an explicitly labeled preliminary-design preview and keeps that phase accessible after reload. Detailed design, integration/verification and operations remain future phases.
 
-[Additional official Quetzal-1 sources](docs/QUETZAL1_ADDITIONAL_SUBSYSTEMS.md) cover ADCS and antenna deployment. Three attributed text artifacts are prepared for manual upload. Adding artifacts does not overwrite an existing architecture; source re-interpretation and its preview endpoint option have been removed.
+[Additional Quetzal-1 sources](docs/QUETZAL1_ADDITIONAL_SUBSYSTEMS.md) cover ADCS, antenna deployment and the mission overview. Four attributed artifacts and real source-verified Gemini extractions are added once to the existing real-source Quetzal project on server startup. This expands the map while archiving the previous architecture and preserving technical values and OBSAT selection. Other projects are unaffected. This specific extension does not reintroduce general document re-interpretation; coverage and limits are recorded alongside the extraction files.
 
 See [the interaction validation record](docs/SYSTEM_WORKSPACE_INTERACTIONS.md) for tested behavior and the remaining live-provider check.
 

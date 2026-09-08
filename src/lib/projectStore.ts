@@ -72,11 +72,11 @@ export type MissionProject = {
   createdAt: string;
   updatedAt: string;
   navigation: {
-    lastRoute: "setup" | "brainstorm";
+    lastRoute: "setup" | "brainstorm" | "preliminary";
     lastConceptionWorkspace?: "system" | "discovery";
     systemLayouts?: Record<string, Record<string, { x: number; y: number }>>;
   };
-  phaseProgress: { highestUnlockedStep: 0 | 1 };
+  phaseProgress: { highestUnlockedStep: 0 | 1 | 2 };
   memoryRevision: number;
   systemGeneratedFromRevision?: number;
   engineeringSystem?: EngineeringSystemModel;
@@ -185,7 +185,7 @@ export function normalizeProject(project: MissionProject, language: Language = "
     ...project,
     // Old projects that already reached conception keep their access even after
     // returning to memory. New projects have no engineering baseline yet.
-    phaseProgress: { highestUnlockedStep: project.phaseProgress?.highestUnlockedStep === 1 || Boolean(project.engineeringSystem) || (!project.phaseProgress && (project.navigation?.lastRoute === "brainstorm" || project.board?.nodes?.length > 0)) ? 1 : 0 },
+    phaseProgress: { highestUnlockedStep: project.phaseProgress?.highestUnlockedStep === 2 ? 2 : project.phaseProgress?.highestUnlockedStep === 1 || Boolean(project.engineeringSystem) || (!project.phaseProgress && (project.navigation?.lastRoute === "brainstorm" || project.board?.nodes?.length > 0)) ? 1 : 0 },
     memoryRevision: Number.isSafeInteger(project.memoryRevision) && project.memoryRevision >= 0 ? project.memoryRevision : 0,
     navigation: {
       ...defaults.navigation,
@@ -332,5 +332,5 @@ export function recordMemoryRevision(previous: MissionProject, next: MissionProj
 }
 
 export function completeConception(project: MissionProject, engineeringSystem: EngineeringSystemModel): MissionProject {
-  return { ...project, engineeringSystem, systemGeneratedFromRevision: engineeringSystem.generatedFromRevision, phaseProgress: { highestUnlockedStep: 1 }, navigation: { ...project.navigation, lastRoute: "brainstorm", lastConceptionWorkspace: project.navigation.lastConceptionWorkspace ?? "system" } };
+  return { ...project, engineeringSystem, systemGeneratedFromRevision: engineeringSystem.generatedFromRevision, phaseProgress: { highestUnlockedStep: project.phaseProgress.highestUnlockedStep === 2 ? 2 : 1 }, navigation: { ...project.navigation, lastRoute: "brainstorm", lastConceptionWorkspace: project.navigation.lastConceptionWorkspace ?? "system" } };
 }

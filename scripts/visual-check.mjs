@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright-core";
 import { buildApp } from "../server/app.mjs";
+import { attachQuetzalArchitectureSources } from "../server/quetzal-source-extension.mjs";
 import { createEngineeringValidationModel, validationMemoryText } from "../examples/engineering-validation.mjs";
 
 // Real React + authenticated API + persistence; only the external extraction provider is mocked.
@@ -137,6 +138,18 @@ try {
   assert.ok(await page.locator(".pm-artifact-grid").evaluate((element) => element.scrollWidth <= element.clientWidth + 1));
   await page.screenshot({ path: "/tmp/norte-memory-mobile.png", fullPage: true });
   await page.setViewportSize({ width: 1440, height: 960 });
+  await page.locator(".pm-empty-program").click();
+  await page.locator('.pm-program-picker [role="radio"]').nth(1).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Save", exact: true }).click();
+  await page.locator(".pm-program-toast").waitFor();
+  assert.equal(await page.locator(".pm-feedback").count(), 0);
+  assert.equal(await page.locator(".pm-program-toast").evaluate((element) => getComputedStyle(element).position), "fixed");
+  const programLabel = await page.locator(".pm-program-card .pm-card-label").boundingBox();
+  const programContent = await page.locator(".pm-program-copy").boundingBox();
+  assert.ok(programContent.y - (programLabel.y + programLabel.height) >= 14);
+  assert.ok((await page.locator(".pm-artifact-card").first().boundingBox()).height <= 115);
+  await page.screenshot({ path: "/tmp/norte-memory-obsat-toast.png", fullPage: true });
+  await page.locator(".pm-program-toast").waitFor({ state: "hidden" });
   await page.getByRole("button", { name: "PT", exact: true }).click();
   await page.locator(".pm-open-conception").click();
   await page.locator(".pm-feedback").waitFor();
@@ -207,6 +220,14 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   await draggable.waitFor();
   assert.ok(Math.abs(await draggable.evaluate((element) => parseFloat(element.style.left)) - savedPosition.x) < .01);
+  const communicationToggle = page.getByRole("button", { name: "Expandir ou recolher Communication", exact: true });
+  await communicationToggle.click();
+  await node("radio").waitFor();
+  assert.equal(await node("communication").locator(".engineering-node-expand").getAttribute("aria-expanded"), "true");
+  await communicationToggle.click();
+  assert.equal(await node("radio").count(), 0);
+  await node("communication").locator(".engineering-node-expand").click();
+  assert.equal(await communicationToggle.getAttribute("aria-expanded"), "true");
   await page.locator('.engineering-tree-row button[title="Radio R1"]').click();
   await node("radio").waitFor();
   assert.ok((await node("radio").getAttribute("class")).includes("selected"));
@@ -294,6 +315,14 @@ try {
   assert.equal(generations, 5);
   await page.getByRole("tab", { name: "Sistema", exact: true }).click();
   await page.getByRole("tab", { name: /Descoberta/u }).click();
+  await page.getByRole("button", { name: "Próxima fase", exact: true }).click();
+  await page.locator(".preliminary-preview").waitFor();
+  await waitSaved();
+  await page.reload({ waitUntil: "networkidle" });
+  assert.equal(await page.locator(".mission-phase").nth(2).getAttribute("aria-current"), "step");
+  await page.getByRole("button", { name: "Voltar à concepção", exact: true }).click();
+  await page.locator(".lab-canvas").waitFor();
+  assert.equal(await page.locator(".mission-phase").nth(2).isDisabled(), false);
   // Each selected project brings its own progress, team and workspace.
   const secondTeam = (await request("POST", "/api/teams", { name: "Independent test team", description: "Temporary acceptance fixture" })).team;
   const secondProject = { ...project, id: "independent-browser-project", name: "Independent project", phaseProgress: { highestUnlockedStep: 0 }, navigation: { lastRoute: "setup" }, context: { ...project.context, teamId: secondTeam.id, teamName: secondTeam.name, projectArtifactIds: [] } };
@@ -325,6 +354,40 @@ try {
     await page.screenshot({ path: `/tmp/norte-system-${width}.png`, fullPage: true });
     results.push({ width, height, overflow: false });
   }
+  // Replay real, source-verified extractions onto this isolated synthetic baseline.
+  // The marker is test setup only; no user's database or production account is read.
+  await waitSaved();
+  await app.missionStore.update((data) => {
+    data.artifacts.find((item) => item.id === artifactId).provenance = { sourceId: "quetzal-eps-hardware-readme" };
+  });
+  const beforeExtension = await request("GET", `/api/projects/${projectId}`);
+  assert.equal((await attachQuetzalArchitectureSources(app.missionStore)).added, 4);
+  const staleSave = await app.inject({ method: "PUT", url: `/api/projects/${projectId}`, headers, payload: beforeExtension.project });
+  assert.equal(staleSave.statusCode, 409);
+  assert.equal(staleSave.json().error, "PROJECT_UPDATED");
+  const expandedProject = (await request("GET", `/api/projects/${projectId}`)).project;
+  assert.equal(expandedProject.context.programId, beforeExtension.project.context.programId);
+  await page.setViewportSize({ width: 1844, height: 1000 });
+  await page.reload({ waitUntil: "networkidle" });
+  await page.locator(".engineering-graph").waitFor();
+  await page.waitForFunction((count) => document.querySelector(".engineering-model-title small")?.textContent?.endsWith(`/ ${count}`), expandedProject.engineeringSystem.entities.length);
+  for (const name of ["ADCS", "Antenna Deployment Mechanism", "On-Board Computer", "Payload", "Structure"]) {
+    const entity = expandedProject.engineeringSystem.entities.find((item) => item.name === name);
+    assert.ok(entity, name);
+    // Existing branches retain their parent; newly added top-level blocks appear now.
+    if (["ADCS", "Antenna Deployment Mechanism", "On-Board Computer"].includes(name)) assert.equal(await node(entity.id).count(), 1, `${name} visible in the overview`);
+  }
+  await page.getByRole("button", { name: "Enquadrar sistema", exact: true }).click();
+  await page.screenshot({ path: "/tmp/norte-quetzal-whole-overview.png", fullPage: true });
+  await page.getByRole("button", { name: "Expandir tudo", exact: true }).click();
+  assert.equal(await page.locator(".engineering-node").count(), expandedProject.engineeringSystem.entities.length);
+  await page.getByRole("button", { name: "Enquadrar sistema", exact: true }).click();
+  await page.screenshot({ path: "/tmp/norte-quetzal-whole-expanded.png", fullPage: true });
+  await page.getByRole("button", { name: "Editar memória", exact: true }).click();
+  await page.locator(".pm-artifact-card").last().waitFor();
+  assert.equal(await page.locator(".pm-artifact-card").count(), 9);
+  for (const source of ["ADCS hardware", "ADM hardware", "ADCS software", "MISSION overview"]) assert.equal(await page.locator(".pm-artifact-card").filter({ hasText: source }).count(), 1);
+  await page.screenshot({ path: "/tmp/norte-quetzal-whole-memory.png", fullPage: true });
   await request("DELETE", `/api/projects/${projectId}`);
   await request("DELETE", "/api/projects/independent-browser-project");
   await page.goto(baseUrl, { waitUntil: "networkidle" });

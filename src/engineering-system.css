@@ -303,10 +303,11 @@
 .engineering-node.kind-subsystem { --node-accent: #80b9e3; background: #132b42; border-color: #476887; }
 .engineering-node.kind-component { --node-accent: #d8b584; background: #2b2c32; border-color: #78684f; }
 .engineering-node.kind-parameter, .engineering-node.kind-calculation, .engineering-node.kind-performance { --node-accent: #b9acd8; background: #252b40; border-color: #645c83; }
-.engineering-workspace .engineering-node { border-top: 3px solid var(--node-accent, #80b9e3); }
+.engineering-workspace .engineering-node { border: 1px solid var(--node-accent, #80b9e3); }
 .engineering-workspace .engineering-node-kind { color: var(--node-accent, #80b9e3); }
-.engineering-workspace .engineering-node.selected { border-color: var(--node-accent, #80b9e3); box-shadow: 0 0 0 3px #d3eee823, 0 12px 28px #0005; }
-.engineering-workspace .engineering-node.dimmed { opacity: .28; filter: saturate(.3); }
+.engineering-workspace .engineering-node.selected { background: #22546a; border: 1px solid #e4fff6; box-shadow: 0 0 0 3px #69d3ba45, 0 12px 28px #0006; }
+.engineering-workspace .engineering-node.context-node { opacity: .62; }
+.engineering-workspace .engineering-node.dimmed { opacity: .16; filter: saturate(.15); }
 .engineering-edge.dimmed { opacity: .12; }
 .engineering-workspace .engineering-node-expand { position: absolute; bottom: 8px; left: 12px; padding: 3px 2px; gap: 6px; color: var(--node-accent, #80b9e3); font-size: 11px; background: transparent; border: 0; }
 .engineering-node-expand svg { width: 15px; height: 15px; }
@@ -327,3 +328,12 @@
   .engineering-conception .brain-title-row { flex-wrap: wrap; }
   .conception-memory-action { margin-left: auto; }
 }
+
+.engineering-workspace .engineering-node.selected .engineering-node-main { background: transparent; }
+.engineering-workspace .engineering-node.selected .engineering-node-kind { color: #c4f9ea; }
+.conception-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.conception-next-action { background: #874739; border-color: #ba7866; }
+.preliminary-preview { display: grid; place-content: center; justify-items: start; gap: 18px; height: 100%; padding: 36px; max-width: 780px; }
+.preliminary-preview > svg { width: 44px; height: 44px; color: #d3b781; }
+.preliminary-preview h2 { margin: 0; font-size: 24px; font-weight: 500; }
+.preliminary-preview p { margin: 0; line-height: 1.6; color: #a3b9ca; }

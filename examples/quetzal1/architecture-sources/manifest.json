@@ -15,7 +15,7 @@
       "license": "CC-BY-SA-4.0",
       "classification": "design-context",
       "adaptation": "See file attribution header",
-      "status": "public source verified; not imported or AI-extracted"
+      "status": "live Gemini extraction recorded; schema and source excerpts verified; revalidated before additive import"
     },
     {
       "id": "ADM-hardware",
@@ -30,7 +30,7 @@
       "license": "CC-BY-SA-4.0",
       "classification": "design-context",
       "adaptation": "See file attribution header",
-      "status": "public source verified; not imported or AI-extracted"
+      "status": "live Gemini extraction recorded; schema and source excerpts verified; revalidated before additive import"
     },
     {
       "id": "ADCS-software",
@@ -45,7 +45,22 @@
       "license": "GPL-3.0",
       "classification": "design-context",
       "adaptation": "See file attribution header",
-      "status": "public source verified; not imported or AI-extracted"
+      "status": "live Gemini extraction recorded; schema and source excerpts verified; revalidated before additive import"
+    },
+    {
+      "id": "MISSION-overview",
+      "sourceUrl": "https://hackaday.io/project/191065-open-sourcing-the-design-for-the-quetzal-1-cubesat",
+      "sourceRevision": "retrieved-2026-09-08",
+      "sourcePath": "Details / architecture paragraph",
+      "originalBytes": 81829,
+      "originalSha256": "35fb9aa7284168908df2cfac6b399f00ade4add2b3c3fb4e847003c34a111d31",
+      "file": "MISSION-overview.txt",
+      "bytes": 709,
+      "sha256": "12a47f76475b25a38a3ac7c6ee9e51ebb34218e0f2828a76fbeb516af56ba4a0",
+      "license": "Short attributed excerpts; author retains copyright",
+      "classification": "design-context",
+      "adaptation": "Two excerpts totaling 21 source words; omitted content marked explicitly",
+      "status": "live Gemini extraction recorded; schema and source excerpts verified; revalidated before additive import"
     }
   ]
 }

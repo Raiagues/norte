@@ -71,7 +71,7 @@ export function MissionSidebar({ language, currentStep, expanded, connectedLabel
 
         <nav className="mission-pipeline" aria-label={language === "pt" ? "Pipeline da missão" : "Mission pipeline"}>
           {phaseLabels.map((label, step) => {
-            const upcoming = step > 1;
+            const upcoming = step > 2 || step === 2 && highestUnlockedStep < 2;
             const complete = !upcoming && step < highestUnlockedStep;
             const current = currentStep === step;
             const locked = upcoming || step > highestUnlockedStep;

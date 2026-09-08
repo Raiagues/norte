@@ -1721,9 +1721,14 @@
 @media (max-width: 560px) { .pm-artifact-grid { grid-template-columns: minmax(0, 1fr); } }
 .pm-shell .pm-workspace { grid-template-rows: none; grid-auto-rows: max-content; align-content: start; overflow-y: auto; overflow-x: clip; }
 .pm-artifacts-board { overflow: visible; }
-.pm-artifact-grid .pm-artifact-card { height: auto; min-height: 145px; }
+.pm-artifact-grid .pm-artifact-card { height: auto; min-height: 108px; }
 
 .pm-heading { grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 20px; }
 .pm-heading .pm-project-name { max-width: 460px; margin-top: 18px; }
 .pm-heading > .pm-open-conception { margin-top: 5px; }
 @media (max-width: 600px) { .pm-heading { grid-template-columns: minmax(0, 1fr); } .pm-heading > .pm-open-conception { justify-self: end; width: auto; } }
+
+.pm-program-card, .pm-program-card.empty { padding-top: 38px; padding-bottom: 16px; margin-bottom: 10px; }
+.pm-program-toast { position: fixed; z-index: 150; right: 24px; bottom: 24px; max-width: min(420px, calc(100vw - 32px)); display: flex; align-items: center; gap: 16px; padding: 14px 16px; border: 1px solid #4e9788; border-radius: 8px; background: #153b3b; color: #d9f1eb; box-shadow: 0 8px 28px #0005; font-size: 13px; }
+.pm-program-toast button { display: grid; place-items: center; border: 0; background: transparent; color: inherit; cursor: pointer; padding: 4px; }
+.pm-program-toast svg { width: 16px; height: 16px; }

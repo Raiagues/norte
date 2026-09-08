@@ -69,7 +69,7 @@ export function SystemWorkspace({ language, project, onProjectChange, onBackSetu
     <div className="engineering-workspace-body">
       <div className={`engineering-hierarchy-panel ${treeOpen ? "open" : "closed"}`}>
         <button type="button" className="engineering-hierarchy-toggle" aria-label={pt ? treeOpen ? "Recolher hierarquia" : "Expandir hierarquia" : treeOpen ? "Collapse hierarchy" : "Expand hierarchy"} aria-expanded={treeOpen} onClick={() => setTreeOpen(!treeOpen)}>{treeOpen ? <PanelLeftClose /> : <PanelLeftOpen />}{treeOpen && <span>{pt ? "Hierarquia" : "Hierarchy"}</span>}</button>
-        {treeOpen && <EngineeringExplorer model={model} language={language} selectedId={selectedId} onSelect={selectTree} onOverview={() => setSelectedId(null)} />}
+        {treeOpen && <EngineeringExplorer model={model} language={language} selectedId={selectedId} expandedIds={expanded} onToggle={toggle} onSelect={selectTree} onOverview={() => setSelectedId(null)} />}
       </div>
       <div className="engineering-canvas-shell">
         <SystemGraph key={model.generatedAt} positions={project.navigation.systemLayouts?.architecture} onPositionsChange={(positions) => onProjectChange({ ...project, navigation: { ...project.navigation, systemLayouts: { ...project.navigation.systemLayouts, architecture: positions } } })} language={language} model={model} entities={entities} selectedId={selectedId} highlightIds={highlightIds} onSelect={(item) => setSelectedId(item.id)} onClearSelection={() => setSelectedId(null)} onInfo={(item) => setInspection({ kind: "entity", id: item.id })} expandedIds={expanded} onToggleChildren={(item) => toggle(item.id)} onRelation={(relation) => setInspection({ kind: "relation", relation })} />

@@ -104,6 +104,8 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
   const memoryLoadId = useRef(0);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [programToast, setProgramToast] = useState("");
+  useEffect(() => { if (!programToast) return; const timer = window.setTimeout(() => setProgramToast(""), 4500); return () => window.clearTimeout(timer); }, [programToast]);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [programSyncing, setProgramSyncing] = useState(false);
 
@@ -429,7 +431,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     setProgramSyncing(true);
     window.setTimeout(() => {
       setProgramSyncing(false);
-      setFeedback(c.importedProgram);
+      setProgramToast(c.importedProgram);
     }, 1100);
   }
 
@@ -564,6 +566,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
           <button className="pm-open-conception" type="button" onClick={() => void continueToConception()} disabled={!canContinue || busy}>{loading || busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : null}{isDraft ? c.createAndContinue : c.continue}<ArrowRight aria-hidden="true" /></button>
         </header>
 
+        {programToast && <div className="pm-program-toast" role="status">{programToast}<button type="button" onClick={() => setProgramToast("")} aria-label={language === "pt" ? "Fechar notificação" : "Dismiss notification"}><X /></button></div>}
         {feedback && <div className="pm-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback("")} aria-label="Fechar"><X aria-hidden="true" /></button></div>}
 
         <section className={program ? "pm-program-card" : "pm-program-card empty"}>

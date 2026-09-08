@@ -305,11 +305,14 @@ function validProjectDocument(value) {
     && (value.engineeringSystem === undefined || validateEngineeringSystem(value.engineeringSystem))
     && (value.memoryRevision === undefined || (Number.isInteger(value.memoryRevision) && value.memoryRevision >= 0))
     && (value.systemGeneratedFromRevision === undefined || (Number.isInteger(value.systemGeneratedFromRevision) && value.systemGeneratedFromRevision >= 0))
-    && (value.phaseProgress === undefined || (value.phaseProgress && [0, 1].includes(value.phaseProgress.highestUnlockedStep)));
+    && (value.phaseProgress === undefined || (value.phaseProgress && [0, 1, 2].includes(value.phaseProgress.highestUnlockedStep)));
 }
 
 function preserveProjectProgress(previous, next) {
   if (!previous || previous.id !== next.id) return next;
+  if (previous.sourcePackages?.some((id) => !next.sourcePackages?.includes(id))) {
+    throw httpError(409, "PROJECT_UPDATED", "New project sources were added. Reload before saving to keep the updated architecture.");
+  }
   const memory = (project) => ({ name: project.name, setup: project.setup, teamId: project.context?.teamId, teamArtifactIds: project.context?.teamArtifactIds, projectArtifactIds: project.context?.projectArtifactIds, programId: project.context?.programId, modalityId: project.context?.modalityId, categoryId: project.context?.categoryId });
   const changed = !isDeepStrictEqual(memory(previous), memory(next));
   return { ...next,

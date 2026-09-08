@@ -121,7 +121,7 @@ export function SystemGraph({ language, model, entities, selectedId, highlightId
         const childCount = model.entities.filter((child) => engineeringParentId(model, child) === entity.id).length;
         const hasChildren = childCount > 0;
         const name = changed && analysis.change.replacementName ? analysis.change.replacementName : entity.name;
-        return <article className={`engineering-node kind-${entity.kind} ${selectedId === entity.id ? "selected" : ""} ${impact ? `status-${impact.status}` : ""} ${highlightIds && !highlightIds.has(entity.id) ? "dimmed" : ""}`} key={entity.id} style={{ left: nodeX, top: nodeY, width: ENGINEERING_NODE_WIDTH, height: ENGINEERING_NODE_HEIGHT }} data-entity-id={entity.id}
+        return <article className={`engineering-node kind-${entity.kind} ${selectedId === entity.id ? "selected" : selectedId && !analysis ? "context-node" : ""} ${impact ? `status-${impact.status}` : ""} ${highlightIds && !highlightIds.has(entity.id) ? "dimmed" : ""}`} key={entity.id} style={{ left: nodeX, top: nodeY, width: ENGINEERING_NODE_WIDTH, height: ENGINEERING_NODE_HEIGHT }} data-entity-id={entity.id}
           onPointerDown={(event) => {
             if (event.button !== 0 || (event.target as HTMLElement).closest(".engineering-node-info,.engineering-node-expand")) return;
             event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);

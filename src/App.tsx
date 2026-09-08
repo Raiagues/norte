@@ -13,7 +13,7 @@ import type { ProjectSummary, TeamRecord } from "./lib/team";
 import type { Language } from "./lib/types";
 import "./mission-sidebar.css";
 
-type Route = "home" | "setup" | "teams" | "projectTeam" | "brainstorm";
+type Route = "home" | "setup" | "teams" | "projectTeam" | "brainstorm" | "preliminary";
 
 const ACTIVE_PROJECT_KEY = "norte-active-project-v1";
 
@@ -22,6 +22,7 @@ function storedPreference(key: string): string {
 }
 
 function getRoute(): Route {
+  if (window.location.hash === "#/preliminary-design") return "preliminary";
   if (window.location.hash === "#/brainstorming") return "brainstorm";
   if (window.location.hash === "#/study-setup" || window.location.hash === "#/project-setup") return "setup";
   if (window.location.hash === "#/project-team") return "projectTeam";
@@ -247,7 +248,7 @@ export function App() {
   }, [route]);
 
   const t = useMemo(() => (path: string) => resolveText(language, path), [language]);
-  const currentStep = ["setup", "projectTeam"].includes(route) ? 0 : route === "brainstorm" ? 1 : null;
+  const currentStep = ["setup", "projectTeam"].includes(route) ? 0 : route === "brainstorm" ? 1 : route === "preliminary" ? 2 : null;
 
   function changeLanguage(nextLanguage: Language) {
     setLanguage(nextLanguage);
@@ -267,16 +268,16 @@ export function App() {
       setIsDraft(false);
       setActiveProjectId(next.id);
       window.localStorage.setItem(ACTIVE_PROJECT_KEY, next.id);
-      const nextRoute = next.navigation.lastRoute === "brainstorm" ? "brainstorm" : "setup";
+      const nextRoute = next.navigation.lastRoute === "preliminary" ? "preliminary" : next.navigation.lastRoute === "brainstorm" ? "brainstorm" : "setup";
       const url = new URL(window.location.href);
       if (nextRoute === "brainstorm") url.searchParams.set("view", next.navigation.lastConceptionWorkspace ?? "system");
       else url.searchParams.delete("view");
-      url.hash = nextRoute === "brainstorm" ? "/brainstorming" : "/study-setup";
+      url.hash = nextRoute === "preliminary" ? "/preliminary-design" : nextRoute === "brainstorm" ? "/brainstorming" : "/study-setup";
       window.history.pushState(window.history.state, "", url);
       setRoute(nextRoute);
     } catch {
       const local = projects.find((item) => item.id === projectId);
-      if (local && projectRef.current.id === projectId) window.location.hash = projectRef.current.navigation.lastRoute === "brainstorm" ? "#/brainstorming" : "#/study-setup";
+      if (local && projectRef.current.id === projectId) window.location.hash = projectRef.current.navigation.lastRoute === "preliminary" ? "#/preliminary-design" : projectRef.current.navigation.lastRoute === "brainstorm" ? "#/brainstorming" : "#/study-setup";
     }
   }
 
@@ -397,8 +398,16 @@ export function App() {
     window.location.hash = "#/";
   }
 
+  function openPreliminary() {
+    const current = projectRef.current;
+    if (!current.engineeringSystem) return;
+    changeProject({ ...current, phaseProgress: { highestUnlockedStep: 2 }, navigation: { ...current.navigation, lastRoute: "preliminary" } });
+    window.location.hash = "#/preliminary-design";
+  }
+
   function openPipelineStep(step: number) {
     if (step === 0) openMemory();
+    if (step === 2 && projectRef.current.phaseProgress.highestUnlockedStep >= 2) openPreliminary();
     if (step === 1 && projectRef.current.phaseProgress.highestUnlockedStep >= 1) void openBrainstorm().catch(() => undefined);
   }
 
@@ -406,7 +415,7 @@ export function App() {
   if (route === "setup") page = <StudySetupPage language={language} project={project} isDraft={isDraft} t={t} onLanguageChange={changeLanguage} onProjectChange={changeProject} onContinue={openBrainstorm} onHome={openHome} onTeams={openTeams} onManageTeam={openProjectTeam} />;
   if (route === "teams") page = <TeamsHubPage language={language} t={t} onLanguageChange={changeLanguage} onBack={openHome} initialTeamId={project.context.teamId ?? ""} onTeamsChanged={() => void refreshTeams()} />;
   if (route === "projectTeam") page = <TeamPage language={language} project={project} t={t} onLanguageChange={changeLanguage} onBack={openMemory} onProjectSetup={openMemory} />;
-  if (route === "brainstorm") page = <BrainstormPage key={project.id} language={language} project={project} t={t} onLanguageChange={changeLanguage} onProjectChange={changeProject} onHome={openHome} onBackSetup={openMemory} />;
+  if (route === "brainstorm" || route === "preliminary") page = <BrainstormPage key={`${project.id}:${route}`} preliminary={route === "preliminary"} onNextPhase={openPreliminary} onConception={() => void openBrainstorm().catch(() => undefined)} language={language} project={project} t={t} onLanguageChange={changeLanguage} onProjectChange={changeProject} onHome={openHome} onBackSetup={openMemory} />;
 
   return (
     <div className={sidebarExpanded ? "app-shell route-" + route + " sidebar-expanded" : "app-shell route-" + route}>

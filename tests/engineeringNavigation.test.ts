@@ -30,6 +30,11 @@ describe("project-owned conception progression", () => {
     expect(reloaded.navigation.lastConceptionWorkspace).toBe("system");
     expect(createEmptyProject().phaseProgress.highestUnlockedStep).toBe(0);
   });
+  it("keeps preliminary-design access after reopening conception", () => {
+    const project = { ...completeConception(createEmptyProject("en"), model), phaseProgress: { highestUnlockedStep: 2 as const }, navigation: { lastRoute: "preliminary" as const } };
+    expect(normalizeProject(project).navigation.lastRoute).toBe("preliminary");
+    expect(completeConception(project, model).phaseProgress.highestUnlockedStep).toBe(2);
+  });
   it("normalizes a removed workspace to System while keeping Discovery", () => {
     const project = createEmptyProject();
     expect(normalizeProject({ ...project, navigation: { ...project.navigation, lastConceptionWorkspace: "timeline" } } as unknown as typeof project).navigation.lastConceptionWorkspace).toBe("system");
