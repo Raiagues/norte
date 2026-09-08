@@ -1,5 +1,5 @@
 import { geminiGenerate } from "./gemini-transport.mjs";
-import { extractionEnums, EXTRACTED_SOURCE_KINDS, EXTRACTED_EVIDENCE_KINDS } from "./extraction-pipeline.mjs";
+import { extractionEnums, EXTRACTED_SOURCE_KINDS, EXTRACTED_EVIDENCE_KINDS } from "./extraction-contract.mjs";
 import { randomUUID } from "node:crypto";
 import { analyzeImpact, normalizeQuantity } from "../shared/impact-engine.mjs";
 import { engineeringSystemSchema, validateEngineeringSystem } from "../shared/engineering-schema.mjs";
@@ -12,7 +12,7 @@ const TEXT_MIMES = new Set(["text/plain", "text/markdown", "text/csv", "applicat
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const KNOWN_PROPERTY_DIMENSIONS = new Map([
   ["current", ["required_current", "peak_current", "available_current", "maximum_current", "max_current", "current"]],
-  ["voltage", ["output_voltage", "minimum_voltage", "min_voltage", "maximum_voltage", "max_voltage", "voltage"]],
+  ["voltage", ["output_voltage", "nominal_voltage", "minimum_voltage", "min_voltage", "maximum_voltage", "max_voltage", "voltage"]],
   ["power", ["operating_power", "active_power", "required_power", "available_power", "maximum_power", "max_power", "tx_power", "rx_power", "generated_power", "average_power", "total_power", "power", "power_margin", "minimum_power_margin"]],
   ["energy", ["available_energy", "generated_energy", "consumed_energy", "energy", "energy_margin", "minimum_energy_margin"]],
   ["mass", ["mass", "total_mass", "maximum_mass", "max_mass"]],
@@ -145,7 +145,7 @@ export function buildSystemPrompt(project, parsed, language = "en") {
     "Keep the initial model small: at most 40 entities, 80 relations, 60 requirements and 120 evidence records. Names must be under 140 characters, property keys under 100, and exact evidence excerpts under 600. Use short IDs and descriptions.",
     "Start with the system and documented subsystems. Include specific components only when the artifact supplies them. No requirement may appear inside entities: use requirements exclusively.",
     "If memory names the overall engineered system, preserve that named system as kind=system. Its documented functional divisions are kind=subsystem with parentId pointing to that system; limiting analysis to selected divisions does not promote a division to the overall system. Do not use an empty parentId for a subsystem whose parent is documented.",
-    'Use parentId for the hierarchy. A contains relationship, if included, must agree with it: if child.parentId="parent", the only matching direct containment is {"from":"parent","to":"child","kind":"contains"}. Never child contains parent. The combined parentId and contains hierarchy must have no cycles; do not add redundant containment if it adds no information.',
+    'Use only parentId for direct hierarchy. Never output contains relations. Every parent must exist, and parentId must have no cycles. Containment is already represented by parentId and is not an engineering impact path.',
     "Preserve distinct documented power interfaces and intermediate suppliers that connect included loads: a bus, a regulated rail and their parent subsystem are different objects. Never collapse two endpoints into one subsystem or replace a missing object with its parent. Every relationship must have two DIFFERENT existing IDs. If an endpoint is not supported, omit that relationship.",
     "Each entity, relationship, requirement and property must cite evidence IDs. Evidence must cite an artifactId listed below and include a short exact excerpt. Do not use document metadata as evidence for unread document content.",
     "For plain text each evidence excerpt MUST be a single contiguous substring copied verbatim from one artifact, under 600 characters. Do not translate, paraphrase, splice sentences or remove words from the middle of a quote. If you need nonadjacent sentences, use separate evidence records. Preserve punctuation and whitespace exactly. The server rejects any quote that is not found literally, and determines actual line locators. For PDFs never invent pages or sections: omit locator, and mark uncertain PDF extraction inferred (including numeric properties) pending verification.",
@@ -153,7 +153,7 @@ export function buildSystemPrompt(project, parsed, language = "en") {
     "A quoted hypothesis is still a hypothesis. Relationships described under a hypothesis/hypotheses heading, conditional risks, or proposed dependencies must use source=inferred and confidence below 1 even when their wording is copied literally. Evidence.kind=fact records the literal source text; it does not make the proposed relationship a verified fact. Preserve source uncertainty instead of promoting it to documented.",
     "Do not invent inferred links merely because components sound related. Use unknown relationships only when the sources explicitly mention an unresolved interface. Each inference needs supporting evidence.",
     "Use numerical values with separate units. Preserve units exactly (A, mA, V, W, g, kg, min, h, Wh, J, %). Duty cycles may use % or the dimensionless unit 1 for fractions. If a value is unknown omit it; never substitute zero.",
-    "Property keys must match the documented physical quantity, never merely a similarly named operating mode. Current (A/mA) uses required_current, peak_current or available_current; power (W/mW) uses operating_power, tx_power, rx_power, generated_power or available_power; voltage (V/mV) uses output_voltage, minimum_voltage or maximum_voltage. A transmit input power in mW is tx_power, NEVER peak_current. A receive input power is rx_power, NEVER required_current. Preserve explicit tx_duty_cycle and duty_cycle percentages as separate numeric properties on their input components. Other supported keys include mass, total_mass, maximum_mass, available_energy, estimated_autonomy and minimum_autonomy.",
+    "Property keys must match the documented physical quantity, never merely a similarly named operating mode. Current (A/mA) uses required_current, peak_current or available_current; power (W/mW) uses operating_power, tx_power, rx_power, generated_power or available_power; voltage (V/mV) uses output_voltage, nominal_voltage, minimum_voltage or maximum_voltage. Preserve all documented quantitative constraints, including capacity, count, voltage, current, power, mass, temperature and duty cycle. Distinguish per-item capacity from aggregate capacity and nominal values from bounds; use physical qualifiers in property keys. A transmit input power in mW is tx_power, NEVER peak_current. A receive input power is rx_power, NEVER required_current. Preserve explicit tx_duty_cycle and duty_cycle percentages as separate numeric properties on their input components. Other supported keys include mass, total_mass, maximum_mass, available_energy, estimated_autonomy and minimum_autonomy.",
     "A formula property can be sum_power, sum_mass, energy_over_power, duty_cycle_power, duty_cycle_load or energy_balance ONLY if the source explicitly defines that calculation, its operating assumptions, and ALL inputs. Connect inputs with contributes_to or derived_from. Never assume peak current equals average power.",
     'Formula declarations must have this exact property shape: {"key":"formula","name":"Calculation","value":"sum_power","source":"documented","evidenceRefs":["source-evidence-id"]}. Substitute the supported formula name as the string value. Do not put a number in a formula property. For each declared formula preserve every explicitly documented input property on its source component, including duty cycles; missing input properties prevent calculation. Do not compute or output a derived result: the deterministic engine executes formulas later. Even obvious arithmetic such as 1 W + 5 W = 6 W must NOT become a documented numeric property unless the source itself explicitly states 6 W.',
     "When source documentation or an explicit sourced analysis method defines mutually exclusive transmit/receive modes, use a duty_cycle_power calculation with tx_power, rx_power and tx_duty_cycle inputs on the connected component. This declares average_power = tx_power × duty + rx_power × (1 − duty). Do not assume receive is the remaining mode without source support. Keep mode power separate from duty-weighted average power; never derive instantaneous current changes from a duty-cycle increase.",
@@ -161,12 +161,12 @@ export function buildSystemPrompt(project, parsed, language = "en") {
     "sum_power consumes explicitly connected average_power or operating_power inputs. If a sourced design margin is specified, place power_margin_multiplier (dimensionless unit 1, such as 1.1 for a ten percent margin) on the appropriate calculation entity. Apply it only once where the source defines it, never invent a default margin.",
     "energy_balance subtracts total_power from generated_power or available_power ONLY when both represent averages over the same documented operating interval. It produces signed power_margin in W. With a documented analysis_duration in h/min/s it also gives energy_margin in Wh. Alternatively generated_energy minus consumed_energy in the same documented interval yields energy_margin directly. Do not confuse peak solar generation with orbit-average generation or nominal battery capacity with usable energy.",
     "Trace energy balance to storage and power-dependent objects only through sourced relations. A negative balance supports a review of energy depletion and operation; do not predict a reset, failure time or flight outcome without data. Never invent a numerical mission requirement: minimum_power_margin or minimum_energy_margin may represent a separately sourced explicit analysis criterion, clearly distinguished from the original requirement statement.",
-    "Relation directions: supplier powers consumer; dependent depends_on dependency; contributor contributes_to aggregate; cause affects effect; calculation derived_from input; parent contains child. contains is hierarchy, never an impact path.",
+    "Relation directions: supplier powers consumer; dependent depends_on dependency; contributor contributes_to aggregate; cause affects effect; calculation derived_from input. Hierarchy uses parentId only and is never an impact path.",
     'Read derived_from literally as FROM is derived from TO. Abstract example: if "mode-mean" calculates inputs on "device", use {"from":"mode-mean","to":"device","kind":"derived_from"}; NEVER from device to mode-mean. A balance calculated from a total uses {"from":"balance","to":"total","kind":"derived_from"}. In contrast, a contribution to a total uses {"from":"mode-mean","to":"total","kind":"contributes_to"}. For every formula verify all source input IDs and the direction before returning; do not reverse an edge to match the visual left-to-right flow.',
-    "Requirement relatedEntityIds/relatedRelationIds must refer to existing model objects. When a source supplies a requirement identifier, copy it exactly as the requirement id; do not add prefixes, translate it or replace it with a generated identifier. Only assign tags when supported; classificationSource=inferred for inferred metadata. status=unreviewed. Preserve statement as originalStatement.",
+    "Requirement relatedEntityIds/relatedRelationIds must refer to existing model objects. When a source supplies a requirement identifier, copy it exactly as the requirement id; do not add prefixes, translate it or replace it with a generated identifier. Only assign tags when supported; classificationSource=inferred for inferred metadata. The server preserves original statements and sets unreviewed status.",
     "Do not request or provide private reasoning or chain-of-thought. Return auditable facts, concise descriptions and citations only.",
-    "Return the requested JSON schema. Set schemaVersion=1, generatedFromRevision to the supplied memoryRevision, generatedAt to the supplied timestamp. artifactSources will be assigned by the server; return an empty array. Do not include scenarios, revision or corrections. Expert correction history is written only by the application after a person reviews the model.",
-    JSON.stringify({ project: { id: project.id, name: project.name, memoryRevision: project.memoryRevision || 0, timestamp: new Date().toISOString() }, artifacts: parsed.map((item) => ({ ...item.source, description: item.description, fileName: item.fileName, ...(item.text ? { text: item.text } : {}) })) })
+    "Return only entities, relations, requirements and evidence. The server assigns model identity, timestamps, source metadata and unreviewed requirement status, preserving original statements itself. Do not produce those duplicated fields, scenarios, revision or corrections. Expert correction history is written only after a person reviews the model.",
+    JSON.stringify({ project: { id: project.id, name: project.name, memoryRevision: project.memoryRevision || 0 }, artifacts: parsed.map((item) => ({ ...item.source, description: item.description, fileName: item.fileName, ...(item.text ? { text: item.text } : {}) })) })
   ].join("\n");
 }
 
@@ -254,6 +254,13 @@ export function validateExtractedSystem(value, project, parsed, model) {
   return result;
 }
 
+/** Deterministic persistence metadata, never a substitute for missing engineering content. */
+export function hydrateExtraction(value, project) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw serviceError(502, "SYSTEM_RESPONSE_INVALID", "Invalid engineering response.");
+  if (Array.isArray(value.relations) && value.relations.some((relation) => relation.kind === "contains")) throw serviceError(502, "SYSTEM_HIERARCHY_INVALID", "Extraction must express hierarchy only with parentId.");
+  return { ...value, schemaVersion: 1, id: `system-${project.id}`, name: project.name, generatedAt: new Date().toISOString(), generatedFromRevision: project.memoryRevision || 0, artifactSources: [], requirements: Array.isArray(value.requirements) ? value.requirements.map((item) => ({ ...item, status: "unreviewed", originalStatement: item.statement, originalSourceRefs: item.sourceRefs })) : value.requirements };
+}
+
 export function createSystemAiService(options = {}) {
   const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "";
   const configured = options.model ?? process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
@@ -271,15 +278,16 @@ export function createSystemAiService(options = {}) {
       if (!apiKey) throw serviceError(503, "SYSTEM_AI_NOT_CONFIGURED", "Engineering extraction is not configured. Project memory is saved; retry when the service is available.");
       const parts = [{ text: buildSystemPrompt(project, parsed, language) }];
       for (const artifact of parsed.filter((item) => item.inlineData)) parts.push({ text: `PDF artifactId=${artifact.source.artifactId}; artifactLabel=${artifact.source.artifactLabel}` }, { inlineData: artifact.inlineData });
-      const extractionProperties = structuredClone(engineeringSystemSchema.properties);
-      delete extractionProperties.scenarios;
-      delete extractionProperties.corrections;
-      delete extractionProperties.revision;
+      const extractionProperties = Object.fromEntries(["entities", "relations", "requirements", "evidence"].map((key) => [key, structuredClone(engineeringSystemSchema.properties[key])]));
+      extractionProperties.relations.items.properties.kind.enum = extractionProperties.relations.items.properties.kind.enum.filter((kind) => kind !== "contains");
+      const requirements = extractionProperties.requirements.items;
+      for (const key of ["status", "originalStatement", "originalSourceRefs"]) delete requirements.properties[key];
+      requirements.required = requirements.required.filter((key) => Object.hasOwn(requirements.properties, key));
       // The extraction contract quotes sources; calculations and user decisions
       // are produced by other application flows, never by the provider here.
-      const extractionSchema = extractionEnums({ ...engineeringSystemSchema, properties: extractionProperties });
+      const extractionSchema = extractionEnums({ type: "object", additionalProperties: false, required: Object.keys(extractionProperties), properties: extractionProperties });
       const extracted = await request(parts, extractionSchema);
-      return validateExtractedSystem(extracted, project, parsed, model);
+      return validateExtractedSystem(hydrateExtraction(extracted, project), project, parsed, model);
     },
     async analyze(modelValue, change, language = "en") {
       let result;

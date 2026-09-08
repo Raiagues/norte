@@ -29,6 +29,7 @@
     "security:audit": "npm audit --audit-level=high",
     "quality": "npm run typecheck && npm run lint && npm run test && npm run build",
     "test:visual": "node scripts/visual-check.mjs",
+    "test:visual:live": "node --env-file-if-exists=.env.local scripts/visual-live-extraction.mjs",
     "test:visual:quetzal": "node scripts/visual-quetzal.mjs",
     "benchmark:quetzal": "node scripts/benchmark-quetzal.mjs",
     "benchmark:structural": "node scripts/benchmark-structural.mjs",

@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { geminiGenerate, retryDelay } from "./gemini-transport.mjs";
-import { compactExtractionSchema, evidenceFactSetSchema, extractionEnums, validateFactSet, assembleExtraction } from "./extraction-pipeline.mjs";
+import { compactExtractionSchema, evidenceFactSetSchema, extractionEnums, validateFactSet, assembleExtraction, sourceLedger, assembleLedgerExtraction, ledgerExtractionSchema } from "./extraction-pipeline.mjs";
+import { hydrateExtraction } from "./system-ai.mjs";
 import { engineeringSystemSchema } from "../shared/engineering-schema.mjs";
 const body = { contents: [{ role: "user", parts: [{ text: "public test" }] }], generationConfig: { temperature: 0.1, responseJsonSchema: { type: "object" } } };
 const policy = { timeoutMs: 1000, maxAttempts: 2, totalDeadlineMs: 5000 };
@@ -28,6 +29,11 @@ test("a client timeout is distinct from provider 504 and can have one bounded re
   assert.equal(count, 2); assert.ok(attempts.every((item) => item.clientAborted && item.httpStatus === null));
   assert.equal(retryDelay(new Response(null, { headers: { "retry-after": "Tue, 08 Sep 2026 12:00:02 GMT" } }).headers, 1, () => 0, Date.parse("2026-09-08T12:00:00Z")), 2000);
 });
+test("zero model quota is an external configuration block, not a transient retry", async () => {
+  let count = 0;
+  await assert.rejects(geminiGenerate({ apiKey: "test", model: "test", body, policy, fetchImpl: async () => { count++; return new Response('{"error":{"code":429,"message":"Quota exceeded, limit: 0, model: example"}}', { status: 429 }); } }), (error) => error.category === "provider_error");
+  assert.equal(count, 1);
+});
 test("provider extraction enums are subsets of the shared runtime schema at every matching path", () => {
   const provider = extractionEnums(engineeringSystemSchema);
   function check(node, runtime) {
@@ -52,4 +58,22 @@ test("fact stage cannot invent a citation and deterministic assembly preserves r
   assert.deepEqual(evidenceFactSetSchema.properties.facts.items.properties.classification.enum, ["documented", "inferred"]);
   const result = assembleExtraction({ entities: [], relations: [], requirements: [] }, { id: "test", name: "Test", memoryRevision: 4 }, parsed, [fact]);
   assert.equal(result.evidence[0].id, "fact-1"); assert.equal(result.evidence[0].artifactLabel, "Test"); assert.equal(result.generatedFromRevision, 4);
+});
+test("literal ledger preserves text and typed assembly derives calculation directions without arithmetic", () => {
+  const text = "Source capacity 4 Wh.\nDemand 2 W.\nDuration uses energy_over_power.";
+  const parsed = [{ source: { artifactId: "doc", artifactLabel: "Method" }, text }];
+  const ledger = sourceLedger(parsed);
+  assert.ok(ledger.every((item) => text.includes(item.excerpt)));
+  const output = { entities: [{ id: "duration", properties: [], calculation: { formula: "energy_over_power", source: "documented", evidenceRefs: ["source-3"] }, calculationInputs: [{ entityId: "energy", source: "documented", evidenceRefs: ["source-1", "source-3"] }] }], relations: [], requirements: [] };
+  const model = assembleLedgerExtraction(output, ledger, { id: "example", name: "Example" }, parsed);
+  assert.equal(model.relations[0].from, "duration"); assert.equal(model.relations[0].to, "energy"); assert.equal(model.relations[0].kind, "derived_from");
+  assert.deepEqual(model.entities[0].properties.map((property) => property.value), ["energy_over_power"]);
+  assert.ok(ledgerExtractionSchema(true).properties.entities.items.properties.calculation.anyOf[1].properties.formula.enum.includes("energy_over_power"));
+  assert.equal(output.relations.length, 0);
+});
+test("metadata hydration cannot create missing architecture or accept duplicate hierarchy", () => {
+  const project = { id: "example", name: "Example", memoryRevision: 9 };
+  const result = hydrateExtraction({ entities: [], relations: [], requirements: [], evidence: [], generatedFromRevision: 99, id: "invented" }, project);
+  assert.equal(result.id, "system-example"); assert.equal(result.generatedFromRevision, 9); assert.equal(result.entities.length, 0);
+  assert.throws(() => hydrateExtraction({ relations: [{ kind: "contains" }] }, project), { code: "SYSTEM_HIERARCHY_INVALID" });
 });

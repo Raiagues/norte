@@ -31,6 +31,7 @@ export async function geminiGenerate({ apiKey, model, body, fetchImpl = fetch, p
       const candidates = (data.candidates || []).map((candidate) => ({ finishReason: candidate.finishReason ?? null, text: (candidate.content?.parts || []).filter((part) => !part.thought && typeof part.text === "string").map((part) => part.text).join("") }));
       // Whitelist response fields; never expose request headers, thoughts or raw error messages.
       const publicMessage = typeof data.error?.message === "string" ? data.error.message.replaceAll(apiKey || "__no_key__", "[redacted]").replace(/AIza[\w-]+/gu, "[redacted]").slice(0, 1200) : null;
+      record.quotaUnavailable = response.status === 429 && /\blimit:\s*0\b/iu.test(publicMessage || "");
       publicBody = { modelVersion: data.modelVersion ?? null, usageMetadata: data.usageMetadata ?? null, candidates, error: data.error ? { code: data.error.code, status: data.error.status, message: publicMessage } : null };
       record.modelVersion = publicBody.modelVersion;
       record.usageMetadata = publicBody.usageMetadata;
@@ -47,7 +48,7 @@ export async function geminiGenerate({ apiKey, model, body, fetchImpl = fetch, p
     }
     record.elapsedMs = Date.now() - start;
     const delay = retryDelay(response?.headers, attempt, random);
-    const retryable = failure && (failure.category === "provider_timeout" || (failure.category === "provider_error" && (!response || retryStatuses.has(response.status))));
+    const retryable = failure && !record.quotaUnavailable && (failure.category === "provider_timeout" || (failure.category === "provider_error" && (!response || retryStatuses.has(response.status))));
     record.retryScheduled = Boolean(retryable && attempt < policy.maxAttempts && Date.now() - started + delay + 1000 < policy.totalDeadlineMs);
     record.retryDelayMs = record.retryScheduled ? delay : null;
     await onAttempt(record, { request: body, response: publicBody ?? null, output: output ?? null });

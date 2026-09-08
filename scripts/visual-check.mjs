@@ -14,7 +14,7 @@ const directory = await mkdtemp(join(tmpdir(), "norte-browser-"));
 const port = Number(process.env.NORTE_VISUAL_PORT || 5275);
 const baseUrl = `http://127.0.0.1:${port}/norte/`;
 let generations = 0, failGeneration = true, artifactId = "";
-const app = await buildApp({ storeFile: join(directory, "state.json"), logger: false, systemAi: { apiKey: "test-provider", fetch: async (_url, options) => {
+const app = await buildApp({ storeFile: join(directory, "state.json"), logger: false, systemAi: { retryWait: async () => {}, apiKey: "test-provider", fetch: async (_url, options) => {
   if (JSON.parse(options.body).contents[0].parts[0].text.startsWith("Give concise")) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"inferences":[]}' }] } }] }), { status: 200 });
   generations += 1;
   if (failGeneration) return new Response("{}", { status: 503 });
@@ -91,7 +91,7 @@ try {
   failGeneration = false;
   await page.locator(".pm-footer > button").click();
   await page.locator(".engineering-graph").waitFor();
-  assert.equal(generations, 2);
+  assert.equal(generations, 3);
   assert.equal(await page.getByRole("tab", { selected: true }).innerText(), "Sistema");
   assert.equal(await page.getByRole("button", { name: /Gerar arquitetura|Generate initial/u }).count(), 0);
   const baseline = (await request("GET", `/api/projects/${projectId}`)).project;
@@ -106,7 +106,7 @@ try {
   assert.equal(await page.locator(".mission-phase").nth(1).isDisabled(), false);
   await page.locator(".mission-phase").nth(1).click();
   await page.locator(".engineering-graph").waitFor();
-  assert.equal(generations, 2);
+  assert.equal(generations, 3);
   await page.locator(".mission-sidebar-toggle").click();
   await page.waitForTimeout(220);
   await page.screenshot({ path: "/tmp/norte-system-macro.png", fullPage: true });
@@ -197,7 +197,7 @@ try {
   await waitSaved();
   await page.reload({ waitUntil: "networkidle" });
   await page.locator(".lab-node").waitFor();
-  assert.equal(generations, 2);
+  assert.equal(generations, 3);
   // Each selected project brings its own progress, team and workspace.
   const secondTeam = (await request("POST", "/api/teams", { name: "Independent test team", description: "Temporary acceptance fixture" })).team;
   const secondProject = { ...project, id: "independent-browser-project", name: "Independent project", phaseProgress: { highestUnlockedStep: 0 }, navigation: { lastRoute: "setup" }, context: { ...project.context, teamId: secondTeam.id, teamName: secondTeam.name, projectArtifactIds: [] } };

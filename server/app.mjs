@@ -331,13 +331,17 @@ export async function buildApp(options = {}) {
     ? new JsonDataStore(options.storeFile || resolve("var/mission-dev-data.json"))
     : new PostgresDataStore(databaseUrl)).init();
   const ai = createBrainstormAiService(options.ai);
-  const systemAi = createSystemAiService(options.systemAi || options.ai);
+  const systemAiOptions = options.systemAi || options.ai || {};
   const initializingSystems = new Map();
   const logger = options.logger ?? {
     level: process.env.LOG_LEVEL || "info",
     redact: ["req.headers.cookie", "req.headers.authorization", "password", "body.password"]
   };
   const app = Fastify({ logger, bodyLimit: 512 * 1024, trustProxy: production });
+  const systemAi = createSystemAiService({ ...systemAiOptions, onAttempt: async (record, payload) => {
+    app.log.info({ event: "engineering.provider_attempt", ...record }, "Engineering provider attempt completed");
+    await systemAiOptions.onAttempt?.(record, payload);
+  } });
 
   await app.register(cookie);
   await app.register(helmet, {

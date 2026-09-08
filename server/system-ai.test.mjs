@@ -191,6 +191,10 @@ test("generation only calls the fixed Gemini origin and does not fetch external 
   assert.equal(calls[0].body.generationConfig.responseJsonSchema.properties.corrections, undefined);
   assert.equal(calls[0].body.generationConfig.responseJsonSchema.properties.revision, undefined);
   const extraction = calls[0].body.generationConfig.responseJsonSchema.properties;
+  assert.deepEqual(Object.keys(extraction).sort(), ["entities", "evidence", "relations", "requirements"]);
+  assert.ok(!extraction.relations.items.properties.kind.enum.includes("contains"));
+  assert.equal(extraction.requirements.items.properties.status, undefined);
+  assert.equal(extraction.requirements.items.properties.originalStatement, undefined);
   assert.deepEqual(extraction.evidence.items.properties.kind.enum, ["fact"]);
   for (const source of [extraction.entities.items.properties.source, extraction.entities.items.properties.properties.items.properties.source, extraction.relations.items.properties.source, extraction.requirements.items.properties.properties.items.properties.source, extraction.requirements.items.properties.classificationSource]) assert.deepEqual(source.enum, ["documented", "inferred"]);
   assert.deepEqual(engineeringSystemSchema.properties.evidence.items.properties.kind.enum, ["fact", "calculation", "inference", "user"]);

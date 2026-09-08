@@ -4,19 +4,8 @@ import { entitySchema, relationSchema, requirementSchema, evidenceSchema, matche
 const object = (properties) => ({ type: "object", additionalProperties: false, properties, required: Object.keys(properties) });
 const array = (items) => ({ type: "array", items });
 const string = { type: "string" };
-export const EXTRACTED_SOURCE_KINDS = Object.freeze(["documented", "inferred"]);
-export const EXTRACTED_EVIDENCE_KINDS = Object.freeze(["fact"]);
-export function extractionEnums(schema) {
-  const copy = structuredClone(schema);
-  function visit(node) {
-    if (!node || typeof node !== "object") return;
-    if (node.properties?.source) node.properties.source.enum = [...EXTRACTED_SOURCE_KINDS];
-    if (node.properties?.classificationSource) node.properties.classificationSource.enum = [...EXTRACTED_SOURCE_KINDS];
-    if (node.properties?.excerpt && node.properties?.kind) node.properties.kind.enum = [...EXTRACTED_EVIDENCE_KINDS];
-    Object.values(node).forEach((value) => { if (Array.isArray(value)) value.forEach(visit); else visit(value); });
-  }
-  visit(copy); return copy;
-}
+export { EXTRACTED_SOURCE_KINDS, EXTRACTED_EVIDENCE_KINDS, extractionEnums } from "./extraction-contract.mjs";
+import { EXTRACTED_SOURCE_KINDS, extractionEnums } from "./extraction-contract.mjs";
 function fields(schema, omit) {
   const result = extractionEnums(schema);
   for (const key of omit) delete result.properties[key];
@@ -70,8 +59,58 @@ export function validateFactSet(value, parsed) {
   }
   return value.facts;
 }
+
+/** Literal source ledger: segmentation is deterministic, not a claim that every sentence is true. */
+export function sourceLedger(parsed) {
+  const ledger = [];
+  for (const artifact of parsed) {
+    if (!artifact.text) continue;
+    for (const line of artifact.text.split("\n")) {
+      // Preserve literal text, including whitespace. Large lines are split, never paraphrased.
+      for (let offset = 0; offset < line.length; offset += 580) {
+        const excerpt = line.slice(offset, offset + 580);
+        if (excerpt.trim()) ledger.push({ id: `source-${ledger.length + 1}`, artifactId: artifact.source.artifactId, excerpt });
+      }
+    }
+  }
+  if (ledger.length > 200) throw Object.assign(new Error("Source ledger exceeds the bounded extraction scope"), { code: "SYSTEM_MEMORY_INSUFFICIENT" });
+  return ledger;
+}
+export function ledgerExtractionSchema(typed = false) {
+  const schema = structuredClone(compactExtractionSchema);
+  delete schema.properties.evidence;
+  schema.required = schema.required.filter((key) => key !== "evidence");
+  const input = object({ entityId: string, evidenceRefs: array(string), source: { type: "string", enum: [...EXTRACTED_SOURCE_KINDS] } });
+  schema.properties.entities.items.properties.calculationInputs = array(input);
+  schema.properties.entities.items.required.push("calculationInputs");
+  schema.properties.relations.items.properties.kind.enum = schema.properties.relations.items.properties.kind.enum.filter((kind) => !["derived_from", "contributes_to"].includes(kind));
+  if (typed) {
+    schema.properties.entities.items.properties.calculation = { anyOf: [{ type: "null" }, object({ formula: { type: "string", enum: ["sum_power", "sum_mass", "energy_over_power", "duty_cycle_power", "duty_cycle_load", "energy_balance"] }, source: { type: "string", enum: [...EXTRACTED_SOURCE_KINDS] }, evidenceRefs: array(string) })] };
+    schema.properties.entities.items.required.push("calculation");
+  }
+  return schema;
+}
+export function assembleLedgerExtraction(output, ledger, project, parsed) {
+  const raw = structuredClone(output);
+  for (const entity of raw.entities) {
+    if (Object.hasOwn(entity, "calculation")) {
+      if (entity.properties.some((property) => property.key === "formula")) throw Object.assign(new Error("Formula must use the typed calculation declaration"), { code: "SYSTEM_RESPONSE_INVALID" });
+      if (entity.calculation) entity.properties.push({ key: "formula", name: "Calculation", value: entity.calculation.formula, source: entity.calculation.source, evidenceRefs: entity.calculation.evidenceRefs });
+      delete entity.calculation;
+    }
+    for (const input of entity.calculationInputs) raw.relations.push({ from: entity.id, to: input.entityId, kind: "derived_from", label: "Calculation input", source: input.source, evidenceRefs: input.evidenceRefs, confidence: input.source === "documented" ? 1 : 0.6 });
+    delete entity.calculationInputs;
+  }
+  raw.evidence = ledger;
+  return assembleExtraction(raw, project, parsed);
+}
 export async function runExtractionPipeline({ strategy, parsed, project, request, language = "en", internalLanguage = "en", ablation = 6 }) {
   const prompt = (stage, state) => pipelinePrompt(parsed, { language, internalLanguage, stage, state });
+  if (["ledger", "ledger-typed"].includes(strategy)) {
+    const ledger = sourceLedger(parsed);
+    const output = await request(prompt("source-ledger interpretation: every source-N is an exact documentary fragment, not an inferred fact. Read ALL fragments including later method/requirements. Cite source-N ids directly; do not retype quotes. Preserve all quantities and distinctions in each relevant object. For calculations list calculationInputs with the existing input entityId and supporting source-N; code derives the dependency direction. Do not output derived_from/contributes_to relations. Non-calculation entities use an empty calculationInputs array. General relationships remain directional and source-classified. Preserve per-item qualifiers such as nominal, per-cell, per-channel or aggregate in physical property keys instead of silently changing what the value measures." + (strategy === "ledger-typed" ? " Use calculation=null on non-calculations; for a calculation use the typed calculation object and exact supported formula enum, never an expression or formula property. Documented average generation uses generated_power; preserve input quantities with the physical keys consumed by the declared calculation. Do not merge documented buses/rails/chargers or subsystems into their parent." : ""), { project: { name: project.name }, sourceLedger: ledger }), ledgerExtractionSchema(strategy === "ledger-typed"), "ledger-interpretation");
+    return { raw: assembleLedgerExtraction(output, ledger, project, parsed), stageOutputs: { ledger, interpretation: output } };
+  }
   if (strategy === "C") {
     const factSet = await request(prompt("evidence-facts: record each explicit object, numerical property, directional relationship, analysis method and requirement as a separate subject/predicate/value fact with exact source quote; preserve conditional hypotheses and all quantitative qualifiers"), evidenceFactSetSchema, "facts");
     const facts = validateFactSet(factSet, parsed);
