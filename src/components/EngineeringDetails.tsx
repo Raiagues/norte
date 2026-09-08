@@ -129,7 +129,7 @@ export function EngineeringCorrectionHistory({ language, model, targetId }: { la
   </details>;
 }
 
-export function EngineeringEntityInfo({ language, model, entity, impact, onClose, onModelChange, onWhatIf, onRelation, correctionContext }: { language: Language; model: EngineeringSystemModel; entity: EngineeringEntity; impact?: EngineeringImpact; onClose: () => void; onModelChange?: (model: EngineeringSystemModel) => void; onWhatIf?: () => void; onRelation: (relation: EngineeringRelation) => void; correctionContext?: EngineeringCorrectionProjectContext }) {
+export function EngineeringEntityInfo({ language, model, entity, impact, onClose, onModelChange, onRelation, correctionContext }: { language: Language; model: EngineeringSystemModel; entity: EngineeringEntity; impact?: EngineeringImpact; onClose: () => void; onModelChange?: (model: EngineeringSystemModel) => void; onRelation: (relation: EngineeringRelation) => void; correctionContext?: EngineeringCorrectionProjectContext }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(entity);
   const [correctionRefs, setCorrectionRefs] = useState<string[]>([]);
@@ -157,7 +157,7 @@ export function EngineeringEntityInfo({ language, model, entity, impact, onClose
       <div className="engineering-provenance"><small>{engineeringLabel(entity.source, language)}{entity.source === "inferred" && ` · ${Math.round(entity.confidence * 100)}%`}</small><EngineeringEvidenceList language={language} model={model} refs={entity.evidenceRefs} /></div>
       <details className="engineering-disclosure"><summary>{pt ? "Dependências diretas" : "Direct dependencies"} · {relations.length}</summary>{relations.map((relation) => <button key={relation.id} type="button" className="engineering-relation-row" onClick={() => onRelation(relation)}>{model.entities.find((item) => item.id === relation.from)?.name ?? relation.from}<span>{engineeringLabel(relation.kind, language)}</span>{model.entities.find((item) => item.id === relation.to)?.name ?? model.requirements.find((item) => item.id === relation.to)?.title ?? relation.to}</button>)}{onModelChange && <button type="button" className="engineering-text-button" onClick={() => onRelation({ id: "", from: entity.id, to: "", kind: "depends_on", label: "", source: "user", evidenceRefs: [], confidence: 1 })}><Plus aria-hidden="true" />{pt ? "Vincular elemento" : "Link an element"}</button>}</details>
       {!impact && <EngineeringCorrectionHistory language={language} model={model} targetId={entity.kind === "system" ? undefined : entity.id} />}
-      {(onWhatIf || onModelChange) && <footer className="engineering-dialog-actions">{onModelChange && <button type="button" onClick={() => { setDraft(entity); setEditing(true); }}><Pencil aria-hidden="true" />{pt ? "Corrigir" : "Correct"}</button>}{onWhatIf && <button type="button" className="primary" onClick={onWhatIf}>{pt ? "E se…" : "What if…"}</button>}</footer>}
+      {onModelChange && <footer className="engineering-dialog-actions"><button type="button" onClick={() => { setDraft(entity); setEditing(true); }}><Pencil aria-hidden="true" />{pt ? "Corrigir" : "Correct"}</button></footer>}
     </>}
   </EngineeringDialog>;
 }
@@ -217,7 +217,7 @@ export function EngineeringRequirements({ language, model, impacts = [], onClose
   </aside> : <EngineeringDialog language={language} title={`${pt ? "Requisitos" : "Requirements"} · ${model.requirements.length}`} onClose={onClose} wide>{content}</EngineeringDialog>;
 }
 
-export function EngineeringRequirementInfo({ language, model, requirement, impact, onClose, onModelChange, onTrace, onWhatIf, correctionContext }: { language: Language; model: EngineeringSystemModel; requirement: EngineeringRequirement; impact?: EngineeringImpact; onClose: () => void; onModelChange?: (model: EngineeringSystemModel) => void; onTrace: () => void; onWhatIf?: () => void; correctionContext?: EngineeringCorrectionProjectContext }) {
+export function EngineeringRequirementInfo({ language, model, requirement, impact, onClose, onModelChange, onTrace, correctionContext }: { language: Language; model: EngineeringSystemModel; requirement: EngineeringRequirement; impact?: EngineeringImpact; onClose: () => void; onModelChange?: (model: EngineeringSystemModel) => void; onTrace: () => void; correctionContext?: EngineeringCorrectionProjectContext }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(requirement);
   const [error, setError] = useState("");
@@ -240,7 +240,7 @@ export function EngineeringRequirementInfo({ language, model, requirement, impac
       <dl className="engineering-properties">{requirement.properties.map((property) => <div key={property.key}><dt>{property.name}<small>{engineeringLabel(property.source, language)}</small></dt><dd>{formatEngineeringValue(property)}</dd></div>)}</dl>
       <p className="engineering-muted">{[requirement.category, ...requirement.subsystemTags, ...requirement.reviewTags].filter(Boolean).join(" · ")}{requirement.classificationSource && ` · ${engineeringLabel(requirement.classificationSource, language)}`}</p><EngineeringEvidenceList language={language} model={model} refs={requirement.sourceRefs} />
       {!impact && <EngineeringCorrectionHistory language={language} model={model} targetId={requirement.id} />}
-      <footer className="engineering-dialog-actions">{onModelChange && <button type="button" onClick={() => { setDraft(requirement); setEditing(true); }}><Pencil aria-hidden="true" />{pt ? "Corrigir" : "Correct"}</button>}<button type="button" onClick={onTrace}>{pt ? "Ver no sistema" : "Trace in system"}</button>{onWhatIf && <button type="button" className="primary" onClick={onWhatIf}>{pt ? "E se…" : "What if…"}</button>}</footer>
+      <footer className="engineering-dialog-actions">{onModelChange && <button type="button" onClick={() => { setDraft(requirement); setEditing(true); }}><Pencil aria-hidden="true" />{pt ? "Corrigir" : "Correct"}</button>}<button type="button" onClick={onTrace}>{pt ? "Ver no sistema" : "Trace in system"}</button></footer>
     </>}
   </EngineeringDialog>;
 }

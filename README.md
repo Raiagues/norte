@@ -27,7 +27,7 @@ The core interaction is a proposed change followed by its consequences: an alter
 | State | Scope |
 | --- | --- |
 | Implemented | Project Memory, account and team context, project persistence, System and Discovery canvas navigation. |
-| Beta | Automatic engineering-model extraction, System navigation, requirement traceability, auditable expert corrections, contextual what-if scenarios and a bounded deterministic impact engine. Extraction quality depends on the linked evidence. |
+| Beta | Automatic engineering-model extraction, System navigation, requirement traceability, auditable expert corrections, text-driven Discovery scenarios and a bounded deterministic impact engine. Extraction quality depends on the linked evidence. |
 | Planned | Raw-artifact extraction benchmark, broader engineering rules, controlled promotion of scenarios to the baseline and independent engineering/student validation. |
 
 New project and team creation are temporarily disabled in the interface. A fresh database contains one neutral team and the **Quetzal-1** project with an empty memory and no reference competition; its real documents are imported by an explicit command. Its architecture is generated when conception starts. Generation failures never substitute a prebuilt model.
@@ -209,13 +209,15 @@ The browser demo exposes `resetDemoValidationData('RESET_VALIDATION_DATA')` from
 
 ## System and Discovery navigation
 
-System has a searchable hierarchy on the left and a docked requirements list on the right. Drag cards (or use Alt + arrow keys); their positions persist per view without changing engineering facts. Use **Explore** to enter a level, **All levels** to see the complete saved model, and **Element relationships** to follow an element's interfaces across subsystem boundaries. Structure and technical relationships can be shown independently. Fit and reset layout remain available.
+System expands and collapses children directly on the map. Selecting a card highlights its branch and direct technical interfaces while dimming unrelated elements. The hierarchy toggle sits beside the explorer. Neighboring interfaces use side ports; containment remains a separate dashed connection. Drag cards or use Alt + arrow keys; positions persist without changing engineering facts. Fit and reset remain available. System no longer exposes Requirements, Review documents, What if, Element relationships or hierarchy search.
 
 Discovery keeps the canvas focused on text. Saving a new or edited idea triggers AI interpretation; **See impact** uses the proposed change without opening a target/property form. Ambiguous ideas receive one short question on the card and can be edited in place. Connection, duplication and deletion appear when an idea is selected. AI interpretation needs the connected environment and configured Gemini credentials. Conception contains only System and Discovery.
 
 Project Memory has one uppercase title and a unified artifact grid with at most four columns. Existing team references retain their ownership and unlink behavior; project files retain their edit/delete behavior.
 
-If the saved interpretation is incomplete, **Review documents** can request a fresh interpretation of the linked sources. Opening the dialog does not run extraction. A preview does not change the project; **Use this interpretation** explicitly applies it and records object changes in correction history. Existing scenarios carry their previous architecture when a reinterpretation is applied. The interface does not invent missing systems or promise that extraction covered every document.
+**Open conception** sits at the top right of Project Memory; the project name is edited below the title. Conception shows the current project name and provides **Edit memory** in the same action area. The mission sidebar previews preliminary design, detailed design, integration/verification and operations as disabled future phases.
+
+[Additional official Quetzal-1 sources](docs/QUETZAL1_ADDITIONAL_SUBSYSTEMS.md) cover ADCS and antenna deployment. Three attributed text artifacts are prepared for manual upload. Adding artifacts does not overwrite an existing architecture; source re-interpretation and its preview endpoint option have been removed.
 
 See [the interaction validation record](docs/SYSTEM_WORKSPACE_INTERACTIONS.md) for tested behavior and the remaining live-provider check.
 

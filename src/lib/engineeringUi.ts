@@ -30,7 +30,7 @@ export function engineeringCurve(from: { x: number; y: number }, to: { x: number
   const sign = (horizontal ? to.x - from.x : to.y - from.y) >= 0 ? 1 : -1;
   const start = { x: from.x + ENGINEERING_NODE_WIDTH / 2 + (horizontal ? sign * ENGINEERING_NODE_WIDTH / 2 : lane), y: from.y + ENGINEERING_NODE_HEIGHT / 2 + (horizontal ? lane : sign * ENGINEERING_NODE_HEIGHT / 2) };
   const end = { x: to.x + ENGINEERING_NODE_WIDTH / 2 - (horizontal ? sign * ENGINEERING_NODE_WIDTH / 2 : -lane), y: to.y + ENGINEERING_NODE_HEIGHT / 2 - (horizontal ? -lane : sign * ENGINEERING_NODE_HEIGHT / 2) };
-  const bend = Math.max(50, Math.abs(horizontal ? end.x - start.x : end.y - start.y) / 2);
+  const bend = Math.abs(horizontal ? end.x - start.x : end.y - start.y) / 2;
   const c1 = { x: start.x + (horizontal ? sign * bend : 0), y: start.y + (horizontal ? 0 : sign * bend) };
   const c2 = { x: end.x - (horizontal ? sign * bend : 0), y: end.y - (horizontal ? 0 : sign * bend) };
   if (from.x === to.x && from.y === to.y) {
@@ -39,20 +39,37 @@ export function engineeringCurve(from: { x: number; y: number }, to: { x: number
   return { path: `M${start.x},${start.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${end.x},${end.y}`, label: { x: (start.x + 3 * c1.x + 3 * c2.x + end.x) / 8, y: (start.y + 3 * c1.y + 3 * c2.y + end.y) / 8 } };
 }
 
-/** Interfaces between siblings arc above the row instead of crossing intervening cards. */
-export function engineeringInterfaceCurve(from: { x: number; y: number }, to: { x: number; y: number }, lane = 0) {
-  if (Math.abs(to.y - from.y) < 30 && Math.abs(to.x - from.x) >= ENGINEERING_NODE_WIDTH) {
-    const start = { x: from.x + ENGINEERING_NODE_WIDTH / 2 + lane, y: from.y };
-    const end = { x: to.x + ENGINEERING_NODE_WIDTH / 2 + lane, y: to.y };
-    const arch = Math.min(from.y, to.y) - 80 - Math.min(80, Math.abs(to.x - from.x) / 8) - Math.abs(lane);
-    return { path: `M${start.x},${start.y} C${start.x},${arch} ${end.x},${arch} ${end.x},${end.y}`, label: { x: (start.x + end.x) / 2, y: (start.y + end.y + 6 * arch) / 8 } };
-  }
-  return engineeringCurve(from, to, lane);
+/** Side ports for peers; route under intervening cards instead of through them. */
+export function engineeringInterfaceCurve(from: { x: number; y: number }, to: { x: number; y: number }, lane = 0, obstacles: Array<{ x: number; y: number }> = []) {
+  const horizontal = Math.abs(to.x - from.x) >= ENGINEERING_NODE_WIDTH && Math.abs(to.x - from.x) > Math.abs(to.y - from.y);
+  if (!horizontal) return engineeringCurve(from, to, lane);
+  const sign = to.x > from.x ? 1 : -1;
+  const start = { x: from.x + (sign > 0 ? ENGINEERING_NODE_WIDTH : 0), y: from.y + ENGINEERING_NODE_HEIGHT / 2 + lane };
+  const end = { x: to.x + (sign > 0 ? 0 : ENGINEERING_NODE_WIDTH), y: to.y + ENGINEERING_NODE_HEIGHT / 2 + lane };
+  const blockers = obstacles.filter((node) => node.x + ENGINEERING_NODE_WIDTH > Math.min(start.x, end.x) && node.x < Math.max(start.x, end.x) && node.y < Math.max(start.y, end.y) + 16 && node.y + ENGINEERING_NODE_HEIGHT > Math.min(start.y, end.y) - 16);
+  if (!blockers.length) return engineeringCurve(from, to, lane);
+  const channel = Math.max(from.y, to.y, ...blockers.map((node) => node.y)) + ENGINEERING_NODE_HEIGHT + 32 + Math.abs(lane);
+  const sx = start.x + sign * 24, ex = end.x - sign * 24, radius = 10;
+  return { path: `M${start.x},${start.y} L${sx - sign * radius},${start.y} Q${sx},${start.y} ${sx},${start.y + radius} L${sx},${channel - radius} Q${sx},${channel} ${sx + sign * radius},${channel} L${ex - sign * radius},${channel} Q${ex},${channel} ${ex},${channel - radius} L${ex},${end.y + radius} Q${ex},${end.y} ${ex + sign * radius},${end.y} L${end.x},${end.y}`, label: { x: (sx + ex) / 2, y: channel } };
 }
 
-export function engineeringInitialScale(viewport: { width: number; height: number }, graph: { width: number; height: number }, fitRequested = false, readableScenario = false): number {
-  const overview = Math.min(1, Math.max(0.2, Math.min((viewport.width - 70) / graph.width, (viewport.height - 70) / graph.height)));
-  return (viewport.width < 600 || readableScenario) && !fitRequested ? Math.max(0.72, overview) : overview;
+/** A branch expands locally without hiding its siblings or fabricating entities. */
+export function expandedSystemEntities(model: EngineeringSystemModel, expanded: Set<string>): EngineeringEntity[] {
+  return model.entities.filter((entity) => String(entity.kind) !== "requirement" && engineeringAncestors(model, entity.id).slice(0, -1).every((ancestor) => expanded.has(ancestor.id)));
+}
+
+/** Selection highlights descendants, direct interfaces and their ancestor context. */
+export function engineeringFocus(model: EngineeringSystemModel, selectedId: string): Set<string> {
+  const focus = new Set(model.entities.filter((entity) => engineeringAncestors(model, entity.id).some((ancestor) => ancestor.id === selectedId)).map((entity) => entity.id));
+  const branch = new Set(focus);
+  model.relations.filter((relation) => relation.kind !== "contains" && (branch.has(relation.from) || branch.has(relation.to))).forEach((relation) => { focus.add(relation.from); focus.add(relation.to); });
+  for (const id of [...focus]) engineeringAncestors(model, id).forEach((ancestor) => focus.add(ancestor.id));
+  return focus;
+}
+
+export function engineeringInitialScale(viewport: { width: number; height: number }, graph: { width: number; height: number }, fitRequested = false): number {
+  const fitted = Math.min(1, (viewport.width - 100) / graph.width, (viewport.height - 130) / graph.height);
+  return Math.max(fitRequested ? .2 : .8, fitted);
 }
 
 function reviewId(prefix = "review"): string { return `${prefix}-${crypto.randomUUID()}`; }
@@ -82,20 +99,20 @@ export function systemVisibleEntities(model: EngineeringSystemModel, parentId: s
   return entities.filter((entity) => roots.has(entity.id) || roots.has(engineeringParentId(model, entity) ?? ""));
 }
 
-export function layoutEngineeringGraph(model: EngineeringSystemModel, entities: EngineeringEntity[], analysis?: EngineeringAnalysis | null, mode: "hierarchy" | "relationships" = "hierarchy") {
+export function layoutEngineeringGraph(model: EngineeringSystemModel, entities: EngineeringEntity[], analysis?: EngineeringAnalysis | null) {
   const visible = new Set(entities.map((entity) => entity.id));
   const traversed = analysis ? new Set(analysis.impacts.filter((impact) => impact.status !== "unaffected").flatMap((impact) => impact.traversedRelationIds)) : null;
   const relations = model.relations.filter((relation) => visible.has(relation.from) && visible.has(relation.to) && (!traversed || traversed.has(relation.id)));
-  const graph = new graphlib.Graph({ directed: true, multigraph: true }).setGraph({ rankdir: "TB", nodesep: 42, ranksep: 90, marginx: 40, marginy: 40 }).setDefaultEdgeLabel(() => ({}));
+  const graph = new graphlib.Graph({ directed: true, multigraph: true }).setGraph({ rankdir: "TB", nodesep: 156, ranksep: 110, marginx: 40, marginy: 40 }).setDefaultEdgeLabel(() => ({}));
   entities.forEach((entity) => graph.setNode(entity.id, { width: ENGINEERING_NODE_WIDTH, height: ENGINEERING_NODE_HEIGHT }));
   const reversedIds = new Set(relations.filter((relation) => analysis?.impacts.some((impact) => impact.path.some((id, index) => id === relation.to && impact.path[index + 1] === relation.from))).map((relation) => relation.id));
   // Architecture ranks express containment. Power/dependency cycles must not
   // turn sibling subsystems into a fake serial hierarchy.
-  relations.filter((relation) => analysis || mode === "relationships" || relation.kind === "contains").forEach((relation) => graph.setEdge(reversedIds.has(relation.id) ? relation.to : relation.from, reversedIds.has(relation.id) ? relation.from : relation.to, { weight: 3 }, relation.id));
+  relations.filter((relation) => analysis || relation.kind === "contains").forEach((relation) => graph.setEdge(reversedIds.has(relation.id) ? relation.to : relation.from, reversedIds.has(relation.id) ? relation.from : relation.to, { weight: 3 }, relation.id));
   // A parentId carries containment too. This affects layout only; it is never evidence for impact.
   const containmentIds = new Set<string>();
   entities.forEach((entity) => {
-    if (!analysis && mode === "hierarchy" && entity.parentId && visible.has(entity.parentId) && !relations.some((relation) => relation.kind === "contains" && relation.from === entity.parentId && relation.to === entity.id)) {
+    if (!analysis && entity.parentId && visible.has(entity.parentId) && !relations.some((relation) => relation.kind === "contains" && relation.from === entity.parentId && relation.to === entity.id)) {
       graph.setEdge(entity.parentId, entity.id, { weight: 3 }, `parent:${entity.id}`);
       containmentIds.add(entity.id);
     }

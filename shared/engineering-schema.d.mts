@@ -10,6 +10,5 @@ export const analysisSchema: JsonSchema;
 export const correctionSchema: JsonSchema;
 export const engineeringSystemSchema: JsonSchema;
 export const generationRequestSchema: JsonSchema;
-export const analysisRequestSchema: JsonSchema;
 export function matchesSchema(value: unknown, schema: JsonSchema): boolean;
 export function validateEngineeringSystem(value: unknown): value is EngineeringSystemModel;

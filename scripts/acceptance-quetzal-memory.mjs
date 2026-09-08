@@ -108,14 +108,14 @@ try {
   await check("Project Memory lists the seeded documents", linked.every((artifact) => shown.includes(artifact.label)));
   await check("every card is marked usable", statuses.length === shown.length && statuses.every((text) => /Source connected|Fonte conectada/u.test(text)));
   await check("the page shows an independent project, not OBSAT", !/OBSAT|Olimpíada|Brazilian Satellite/iu.test(await page.locator(".pm-program-card").innerText()));
-  await check("the readiness line agrees the memory is ready", !(await page.locator(".pm-readiness").getAttribute("class")).includes("missing") && await page.locator(".pm-footer > button").isEnabled());
+  await check("the readiness line agrees the memory is ready", !(await page.locator(".pm-readiness").getAttribute("class")).includes("missing") && await page.locator(".pm-open-conception").isEnabled());
   await page.screenshot({ path: join(reportDirectory, "project-memory.png"), fullPage: true });
 
   console.log("\nStart conception");
   let model = null;
   for (let attempt = 1; attempt <= attempts && !model; attempt += 1) {
     console.log(`  attempt ${attempt}`);
-    await page.locator(".pm-footer > button").click();
+    await page.locator(".pm-open-conception").click();
     await page.locator(".conception-initialization").waitFor({ timeout: 5000 }).catch(() => undefined);
     // Evaluated in the page, not in Node: wait for the loading state to clear.
     await page.locator(".conception-initialization").waitFor({ state: "detached", timeout: 240000 });
@@ -159,35 +159,13 @@ try {
   console.log("\nRe-entry");
   await page.goto(`${base}#/study-setup`, { waitUntil: "networkidle" });
   await page.locator(".pm-artifacts-board").waitFor({ timeout: 20000 });
-  await check("returning to Project Memory does not lock conception", await page.locator(".pm-footer > button").isEnabled());
+  await check("returning to Project Memory does not lock conception", await page.locator(".pm-open-conception").isEnabled());
   const providerCallsBefore = report.providerAttempts.length;
-  await page.locator(".pm-footer > button").click();
+  await page.locator(".pm-open-conception").click();
   await page.locator(".system-graph, [data-entity-id]").first().waitFor({ timeout: 30000 });
   const reopened = await saved();
   await check("re-entering conception reopens the saved model without regenerating", report.providerAttempts.length === providerCallsBefore && JSON.stringify(reopened.engineeringSystem) === JSON.stringify(model));
 
-  if (process.env.NORTE_ACCEPTANCE_PREVIEW === "true") {
-    console.log("\nExplicit document review in the browser");
-    await page.getByRole("button", { name: /Review documents|Revisar documentos/u }).click();
-    const responsePromise = page.waitForResponse((response) => response.url().endsWith("/api/system-ai/generate"), { timeout: 300000 });
-    await page.getByRole("button", { name: /Generate new interpretation|Gerar nova interpretação/u }).click();
-    const response = await responsePromise;
-    const body = await response.json();
-    report.preview = { status: response.status(), ...(response.ok() ? { entities: body.engineeringSystem.entities.length, relations: body.engineeringSystem.relations.length, requirements: body.engineeringSystem.requirements.length } : { error: body.code ?? body.error }) };
-    await save();
-    await check("live document review returns a new valid interpretation", response.ok());
-    await writeFile(join(reportDirectory, "preview-system.json"), JSON.stringify(body.engineeringSystem, null, 2), { mode: 0o600 });
-    await check("review alone preserves the saved architecture", JSON.stringify((await saved()).engineeringSystem) === JSON.stringify(model));
-    await page.screenshot({ path: join(reportDirectory, "document-review.png"), fullPage: true });
-    await page.getByRole("button", { name: /Use this interpretation|Usar esta interpretação/u }).click();
-    await page.getByRole("dialog").waitFor({ state: "hidden" });
-    await page.waitForTimeout(700);
-    const accepted = (await saved()).engineeringSystem;
-    await check("explicitly accepting the interpretation persists its actual entities", JSON.stringify(accepted.entities) === JSON.stringify(body.engineeringSystem.entities));
-    await page.getByRole("button", { name: /All levels|Todos os níveis/u }).click();
-    await check("all levels exposes every extracted entity", await page.locator("[data-entity-id]").count() === accepted.entities.length);
-    await page.screenshot({ path: join(reportDirectory, "reviewed-system.png"), fullPage: true });
-  }
 
   report.passed = report.checks.every((item) => item.value);
   await save();

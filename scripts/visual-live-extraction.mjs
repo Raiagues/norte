@@ -61,7 +61,7 @@ try {
   page.setDefaultTimeout(20000);
   for (let interaction = 1; interaction <= 3; interaction++) {
     const started = performance.now();
-    await page.locator(".pm-footer > button").click();
+    await page.locator(".pm-open-conception").click();
     await page.locator(".conception-initialization").waitFor();
     report.checks.push("Visible loading before provider completion");
     const outcome = await Promise.race([
@@ -91,10 +91,6 @@ try {
   await page.getByRole("dialog").locator(".engineering-source").first().waitFor();
   await page.keyboard.press("Escape");
   report.checks.push("Macro graph, explicit detail dialog and source excerpt visible");
-  await page.locator(".engineering-requirements-trigger").click();
-  await page.getByRole("dialog").waitFor();
-  assert.ok((await page.getByRole("dialog").innerText()).length > 20);
-  await page.keyboard.press("Escape");
   const beforeReentry = generations;
   await page.screenshot({ path: join(reportDirectory, "system.png"), fullPage: true });
   await page.locator(".mission-phase").first().click();
@@ -106,7 +102,7 @@ try {
   assert.equal(generations, beforeReentry);
   assert.deepEqual((await saved()).engineeringSystem, baseline);
   assert.equal(errors.length, 0);
-  report.checks.push("Requirements visible", "Refresh and re-entry preserve exact baseline with zero new provider requests", "No browser JavaScript errors");
+  report.checks.push("Refresh and re-entry preserve exact baseline with zero new provider requests", "No browser JavaScript errors");
   report.passed = true;
 } catch (error) {
   report.failure = error.message;

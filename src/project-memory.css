@@ -30,7 +30,7 @@
 .pm-topbar > button,
 .pm-band header button,
 .pm-details-button,
-.pm-footer button,
+.pm-open-conception,
 .pm-dialog button {
   min-height: 40px;
   border: 1px solid rgba(83, 153, 212, .36);
@@ -45,7 +45,7 @@
 .pm-topbar > button,
 .pm-band header button,
 .pm-details-button,
-.pm-footer button,
+.pm-open-conception,
 .pm-dialog > footer button,
 .pm-dialog-form footer button,
 .pm-team-config-actions button,
@@ -60,7 +60,7 @@
 .pm-topbar button:hover,
 .pm-band header button:hover:not(:disabled),
 .pm-details-button:hover,
-.pm-footer button:hover:not(:disabled),
+.pm-open-conception:hover:not(:disabled),
 .pm-dialog button:hover:not(:disabled) {
   border-color: #58a9e9;
   background: #0a355a;
@@ -69,7 +69,7 @@
 
 .pm-topbar button:disabled,
 .pm-band header button:disabled,
-.pm-footer button:disabled,
+.pm-open-conception:disabled,
 .pm-dialog button:disabled {
   opacity: .42;
   cursor: default;
@@ -78,7 +78,7 @@
 .pm-topbar svg,
 .pm-band header button svg,
 .pm-details-button svg,
-.pm-footer button svg {
+.pm-open-conception svg {
   width: 17px;
   height: 17px;
 }
@@ -202,12 +202,9 @@
 }
 
 .pm-feedback {
-  position: fixed;
-  z-index: 140;
-  top: 82px;
-  right: 24px;
+  position: relative;
   display: flex;
-  max-width: 440px;
+  max-width: 100%;
   align-items: center;
   gap: 14px;
   padding: 12px 14px;
@@ -860,14 +857,14 @@
   font-weight: 520;
 }
 
-.pm-footer > button {
+.pm-heading > .pm-open-conception {
   min-width: 174px;
   border-color: #4c9de2;
   background: #0a4f85;
   color: white;
 }
 
-.pm-footer > button:not(:disabled) { border-color: rgba(239, 134, 109, .72); background: #874739; }
+.pm-heading > .pm-open-conception:not(:disabled) { border-color: rgba(239, 134, 109, .72); background: #874739; }
 
 .pm-dialog-backdrop {
   position: fixed;
@@ -1665,7 +1662,7 @@
     margin-top: 4px;
     padding: 14px 0 0;
   }
-  .pm-footer > button { width: 100%; }
+  .pm-heading > .pm-open-conception { width: 100%; }
   .pm-readiness.missing strong { line-height: 1.4; }
   .pm-dialog-backdrop {
     align-items: end;
@@ -1725,3 +1722,8 @@
 .pm-shell .pm-workspace { grid-template-rows: none; grid-auto-rows: max-content; align-content: start; overflow-y: auto; overflow-x: clip; }
 .pm-artifacts-board { overflow: visible; }
 .pm-artifact-grid .pm-artifact-card { height: auto; min-height: 145px; }
+
+.pm-heading { grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 20px; }
+.pm-heading .pm-project-name { max-width: 460px; margin-top: 18px; }
+.pm-heading > .pm-open-conception { margin-top: 5px; }
+@media (max-width: 600px) { .pm-heading { grid-template-columns: minmax(0, 1fr); } .pm-heading > .pm-open-conception { justify-self: end; width: auto; } }

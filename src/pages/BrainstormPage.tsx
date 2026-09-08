@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lightbulb, Network } from "lucide-react";
+import { Lightbulb, Network, FileText } from "lucide-react";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { UserBadge } from "../components/UserBadge";
 import { BrainstormLab } from "./BrainstormLab";
@@ -53,6 +53,7 @@ export function BrainstormPage({ language, project, t, onLanguageChange, onProje
               }}><Icon aria-hidden="true" />{label}{id === "discovery" && <em>BETA</em>}</button>)}
             </div>
           </div>
+          <button type="button" className="conception-memory-action" onClick={onBackSetup}><FileText />{language === "pt" ? "Editar memória" : "Edit memory"}</button>
         </div>
         <div id="conception-workspace" className="conception-workspace-content" role="tabpanel" aria-labelledby={`workspace-tab-${workspace}`}>
           {workspace === "system" ? <SystemWorkspace language={language} project={project} onProjectChange={onProjectChange} onBackSetup={onBackSetup} /> : <BrainstormLab language={language} project={project} onProjectChange={onProjectChange} />}

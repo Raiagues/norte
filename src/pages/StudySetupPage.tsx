@@ -163,7 +163,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     edit: "Editar",
     delete: "Excluir artefato do projeto",
     open: "Abrir",
-    continue: "Começar concepção",
+    continue: "Abrir concepção",
     createAndContinue: "Criar projeto e começar",
     missing: "Para continuar, complete:",
     missingName: "nome do projeto",
@@ -258,7 +258,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     edit: "Edit",
     delete: "Delete project artifact",
     open: "Open",
-    continue: "Start conception",
+    continue: "Open conception",
     createAndContinue: "Create project and start",
     missing: "To continue, complete:",
     missingName: "project name",
@@ -559,8 +559,9 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
           <button type="button" onClick={() => void loadMemory()} disabled={loading}>{c.retryMemory}</button>
         </div>}
         <header className="pm-heading">
-          <div><h1>{c.title}</h1></div>
-          <label className="pm-project-name"><span>{c.projectName}</span><div><Pencil aria-hidden="true" /><input value={project.name} onChange={(event) => updateProject({ name: event.target.value })} placeholder={c.projectPlaceholder} maxLength={120} /></div></label>
+          <div><h1>{c.title}</h1>
+          <label className="pm-project-name"><span>{c.projectName}</span><div><Pencil aria-hidden="true" /><input id="project-memory-name" name="projectName" value={project.name} onChange={(event) => updateProject({ name: event.target.value })} placeholder={c.projectPlaceholder} maxLength={120} /></div></label></div>
+          <button className="pm-open-conception" type="button" onClick={() => void continueToConception()} disabled={!canContinue || busy}>{loading || busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : null}{isDraft ? c.createAndContinue : c.continue}<ArrowRight aria-hidden="true" /></button>
         </header>
 
         {feedback && <div className="pm-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback("")} aria-label="Fechar"><X aria-hidden="true" /></button></div>}
@@ -616,7 +617,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
 
         <footer className="pm-footer">
           <div className={missing.length || memoryLoadError ? "pm-readiness missing" : "pm-readiness"} aria-live="polite">{loading ? <strong>{c.loading}</strong> : memoryLoadError ? <strong>{c.memoryUnavailable}</strong> : missing.length ? <><span>{c.missing}</span><strong>{missing.join(" · ")}</strong></> : null}</div>
-          <button type="button" onClick={() => void continueToConception()} disabled={!canContinue || busy}>{loading || busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : null}{isDraft ? c.createAndContinue : c.continue}<ArrowRight aria-hidden="true" /></button>
+
         </footer>
       </div>
     </main>

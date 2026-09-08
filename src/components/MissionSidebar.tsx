@@ -1,6 +1,6 @@
 import { Brand } from "./Brand";
 import { UserBadge } from "./UserBadge";
-import { FolderKanban, Home, UsersRound } from "lucide-react";
+import { FolderKanban, Home, UsersRound, FileText, Compass, DraftingCompass, Boxes, TestTubeDiagonal, Satellite } from "lucide-react";
 import type { ProjectSummary } from "../lib/team";
 import type { Language } from "../lib/types";
 
@@ -25,22 +25,11 @@ type Props = {
 };
 
 const labels = {
-  pt: ["Memória do projeto", "Concepção"],
-  en: ["Project memory", "Conception"]
+  pt: ["Memória do projeto", "Concepção", "Projeto preliminar", "Projeto detalhado", "Integração e verificação", "Operações"],
+  en: ["Project memory", "Conception", "Preliminary design", "Detailed design", "Integration & verification", "Operations"]
 };
-
-function PhaseIcon({ step }: { step: number }) {
-  if (step === 0) return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14v13H5z" /><path d="M8 9h8M8 12h8M8 15h5" /></svg>;
-  if (step === 1) return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 3v4M12 17v4M3 12h4M17 12h4" /><circle cx="12" cy="12" r="8" /></svg>;
-  if (step === 2) return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 15 9l6 .9-4.5 4.3 1.1 6.1L12 17.4 6.4 20.3l1.1-6.1L3 9.9 9 9z" /></svg>;
-  if (step === 3) return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 7 4v10l-7 4-7-4V7z" /><path d="m5 7 7 4 7-4M12 11v10" /></svg>;
-  if (step === 4) return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M4 12c2.2-4 4.9-6 8-6s5.8 2 8 6c-2.2 4-4.9 6-8 6s-5.8-2-8-6Z" /></svg>;
-  if (step === 5) return <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9" ry="4.5" transform="rotate(-25 12 12)" /><circle cx="12" cy="12" r="2" /></svg>;
-  if (step === 6) return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v4M9 21h6" /><path d="M8.5 15.5 12 12l3.5 3.5" /><path d="M6 11a8 8 0 0 1 12 0M8.8 13.2a4.5 4.5 0 0 1 6.4 0" /></svg>;
-  if (step === 7) return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z" /><path d="m8 9 1.5 1.5L12 8M14 9h2M8 14l1.5 1.5L12 13M14 14h2" /></svg>;
-  if (step === 8) return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7-4 5 4 5M15 7l4 5-4 5M13 5l-2 14" /></svg>;
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z" /><path d="m8 12 2.2 2.2L16 8.5" /></svg>;
-}
+const phaseIcons = [FileText, Compass, DraftingCompass, Boxes, TestTubeDiagonal, Satellite];
+function PhaseIcon({ step }: { step: number }) { const Icon = phaseIcons[step]; return <Icon aria-hidden="true" />; }
 
 function LockIcon() {
   return <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.2" y="5.1" width="7.6" height="5.1" rx="1" /><path d="M3.8 5.1V3.7a2.2 2.2 0 0 1 4.4 0v1.4" /></svg>;
@@ -82,16 +71,17 @@ export function MissionSidebar({ language, currentStep, expanded, connectedLabel
 
         <nav className="mission-pipeline" aria-label={language === "pt" ? "Pipeline da missão" : "Mission pipeline"}>
           {phaseLabels.map((label, step) => {
-            const complete = step < highestUnlockedStep;
+            const upcoming = step > 1;
+            const complete = !upcoming && step < highestUnlockedStep;
             const current = currentStep === step;
-            const locked = step > highestUnlockedStep;
+            const locked = upcoming || step > highestUnlockedStep;
             const state = current ? "current" : locked ? "locked" : complete ? "complete" : "available";
             const clickable = !locked && !current;
-            const stateLabel = stateWords[state];
+            const stateLabel = upcoming ? language === "pt" ? "Fase futura" : "Upcoming phase" : stateWords[state];
             const tooltip = `${String(step + 1).padStart(2, "0")} · ${label} · ${stateLabel}`;
 
             return (
-              <button className={`mission-phase ${state}`} key={label} type="button" aria-current={current ? "step" : undefined} disabled={locked} aria-disabled={!clickable} tabIndex={locked ? -1 : 0} onClick={() => clickable && onStepSelect(step)} title={!expanded ? tooltip : undefined}>
+              <button className={`mission-phase ${state}`} key={label} type="button" aria-current={current ? "step" : undefined} disabled={locked} aria-disabled={!clickable} tabIndex={locked ? -1 : 0} onClick={() => clickable && onStepSelect(step)} title={tooltip} aria-label={`${label} · ${stateLabel}`}>
                 <span className="mission-phase-rail" />
                 <span className="mission-phase-icon">
                   <PhaseIcon step={step} />

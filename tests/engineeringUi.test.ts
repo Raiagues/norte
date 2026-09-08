@@ -3,9 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AuthProvider } from "../src/lib/auth";
 import type { EngineeringEntity, EngineeringSystemModel } from "../src/lib/engineeringSystem";
-import { engineeringAncestors, engineeringCurve, engineeringInterfaceCurve, correctEngineeringEntity, correctEngineeringRequirement, editEngineeringRequirement, engineeringInitialScale, filterEngineeringRequirements, layoutEngineeringGraph, projectEngineeringScenario, removeEngineeringRelation, requirementTrace, systemVisibleEntities } from "../src/lib/engineeringUi";
+import { expandedSystemEntities, engineeringFocus, engineeringAncestors, engineeringCurve, engineeringInterfaceCurve, correctEngineeringEntity, correctEngineeringRequirement, editEngineeringRequirement, engineeringInitialScale, filterEngineeringRequirements, layoutEngineeringGraph, projectEngineeringScenario, removeEngineeringRelation, requirementTrace, systemVisibleEntities } from "../src/lib/engineeringUi";
 import { createEmptyProject } from "../src/lib/projectStore";
-import { SystemWorkspace, EngineeringScenario, EngineeringWhatIf } from "../src/pages/SystemWorkspace";
+import { SystemWorkspace, EngineeringScenario } from "../src/pages/SystemWorkspace";
 import { EngineeringEntityInfo, EngineeringRequirements } from "../src/components/EngineeringDetails";
 import { analyzeImpact } from "../src/lib/impactEngine";
 import { createEngineeringValidationModel, validationChange } from "../examples/engineering-validation.mjs";
@@ -27,13 +27,13 @@ const noop = () => undefined;
 function render(child: ReturnType<typeof createElement>) { return renderToStaticMarkup(createElement(AuthProvider, { children: child })); }
 
 describe("engineering architecture and traceability", () => {
-  it("starts mobile graphs at a readable scale while keeping deliberate fit and desktop overview available", () => {
+  it("keeps all graph text readable initially and lets Fit explicitly show a wider overview", () => {
     const dimensions = { width: 1280, height: 450 };
-    expect(engineeringInitialScale({ width: 316, height: 620 }, dimensions)).toBe(.72);
+    expect(engineeringInitialScale({ width: 316, height: 620 }, dimensions)).toBe(.8);
     expect(engineeringInitialScale({ width: 316, height: 620 }, dimensions, true)).toBeLessThan(.3);
-    expect(engineeringInitialScale({ width: 1320, height: 740 }, dimensions)).toBe(engineeringInitialScale({ width: 1320, height: 740 }, dimensions, true));
-    expect(engineeringInitialScale({ width: 1320, height: 740 }, { width: 900, height: 1600 }, false, true)).toBe(.72);
-    expect(engineeringInitialScale({ width: 1320, height: 740 }, { width: 900, height: 1600 }, true, true)).toBeLessThan(.5);
+    expect(engineeringInitialScale({ width: 1320, height: 740 }, dimensions)).toBeGreaterThan(.8);
+    expect(engineeringInitialScale({ width: 1320, height: 740 }, { width: 900, height: 1600 }, false)).toBe(.8);
+    expect(engineeringInitialScale({ width: 1320, height: 740 }, { width: 900, height: 1600 }, true)).toBeLessThan(.5);
   });
   it("keeps the macro view small and requirements outside every graph level", () => {
     expect(systemVisibleEntities(model, null).map((item) => item.id)).toEqual(["system", "power", "communications"]);
@@ -75,12 +75,22 @@ describe("engineering architecture and traceability", () => {
     expect(engineeringCurve({ x: 0, y: 0 }, { x: 0, y: 0 }).path).not.toContain("NaN");
   });
 
-  it("routes sibling interfaces above the row and gives relationship exploration a causal layout", () => {
+  it("routes peer arrows through side ports and detours around intervening cards", () => {
     const route = engineeringInterfaceCurve({ x: 0, y: 250 }, { x: 600, y: 250 });
-    expect(route.label.y).toBeLessThan(250);
-    expect(route.path).toMatch(/^M103,250 C.* 703,250$/);
-    const graph = layoutEngineeringGraph(model, model.entities.filter((item) => ["regulator", "radio"].includes(item.id)), null, "relationships");
-    expect(graph.nodes.find((node) => node.entity.id === "regulator")!.y).toBeLessThan(graph.nodes.find((node) => node.entity.id === "radio")!.y);
+    expect(route.label.y).toBe(313);
+    expect(route.path).toMatch(/^M206,313 C.* 600,313$/);
+    const detour = engineeringInterfaceCurve({ x: 0, y: 250 }, { x: 720, y: 250 }, 0, [{ x: 360, y: 250 }]);
+    expect(detour.label.y).toBeGreaterThan(376);
+    expect(detour.path).toMatch(/^M206,313 L.* L720,313$/);
+    const reverse = engineeringInterfaceCurve({ x: 720, y: 250 }, { x: 0, y: 250 }, 28, [{ x: 360, y: 250 }]);
+    expect(reverse.path).toMatch(/^M720,341 L.* L206,341$/);
+  });
+  it("expands children in place, retains siblings and focuses direct dependencies", () => {
+    expect(expandedSystemEntities(model, new Set()).map((item) => item.id)).toEqual(["system"]);
+    expect(expandedSystemEntities(model, new Set(["system", "communications"])).map((item) => item.id)).toEqual(["system", "power", "communications", "radio"]);
+    expect([...engineeringFocus(model, "radio")].sort()).toEqual(["communications", "power", "radio", "regulator", "system"]);
+    expect(engineeringFocus(model, "communications").has("regulator")).toBe(true);
+    expect(engineeringFocus({ ...model, entities: [...model.entities, entity("unrelated", "subsystem", "system")] }, "radio").has("unrelated")).toBe(false);
   });
 
   it("combines search and metadata facets and traces exact requirement relationships", () => {
@@ -203,12 +213,15 @@ describe("engineering architecture and traceability", () => {
 });
 
 describe("calm and explicit engineering controls", () => {
-  it("renders a graph with hierarchy and a docked requirements list without a modal", () => {
-    const project = { ...createEmptyProject("en"), engineeringSystem: model };
+  it("renders inline expansion and current project name without removed controls", () => {
+    const project = { ...createEmptyProject("en"), name: "Renamed mission", engineeringSystem: model };
     const html = render(createElement(SystemWorkspace, { language: "en", project, onProjectChange: noop, onBackSetup: noop }));
     expect(html).toContain('aria-label="Information about power"');
-    expect(html).toContain("Requirements");
-    expect(html).toContain("engineering-requirements-panel");
+    expect(html).toContain("Renamed mission");
+    expect(html).not.toContain(model.name);
+    expect(html).toContain('aria-label="Expand power"');
+    for (const removed of ["What if", "Review documents", "Element relationships", "Find in system"]) expect(html).not.toContain(removed);
+    expect(html).not.toContain("engineering-requirements-panel");
     expect(html).toContain("engineering-explorer");
     expect(html).not.toContain('role="dialog"');
     expect(html).not.toContain('data-entity-id="req-duration"');
@@ -226,14 +239,6 @@ describe("calm and explicit engineering controls", () => {
     expect(requirements).toContain("Filter");
     expect(requirements).toContain("Autonomy at least 90 minutes");
     expect(requirements).not.toContain('class="engineering-graph"');
-  });
-
-  it("preselects an engineering hypothesis and uses inline values without change-type/entity select forms", () => {
-    const html = render(createElement(EngineeringWhatIf, { language: "en", project: { ...createEmptyProject("en"), engineeringSystem: model }, suggestion: { targetEntityId: "radio", propertyKey: "peak_current", value: 1.2, unit: "A" }, onClose: noop, onAnalyzed: noop }));
-    expect(html).toContain("radio");
-    expect(html).toContain('value="1.2"');
-    expect(html).toContain("See consequences");
-    expect(html).not.toContain("<select");
   });
 
   it("shows only the relevant scenario graph and preserves its baseline", () => {

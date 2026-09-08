@@ -63,7 +63,7 @@ try {
   await page.locator(".pm-workspace").waitFor();
   await page.locator(".pm-loading").waitFor({ state: "hidden" });
   const initializationStart = performance.now();
-  const [initialized] = await Promise.all([page.waitForResponse((response) => response.url().endsWith("/api/system-ai/generate")), page.locator(".pm-footer > button").click()]);
+  const [initialized] = await Promise.all([page.waitForResponse((response) => response.url().endsWith("/api/system-ai/generate")), page.locator(".pm-open-conception").click()]);
   assert.equal(initialized.status(), 200, await initialized.text());
   await page.locator(".engineering-graph").waitFor();
   const initializationMs = performance.now() - initializationStart;
@@ -111,8 +111,9 @@ try {
   await page.setViewportSize({ width: 1440, height: 1200 });
   await page.screenshot({ path: "/tmp/norte-quetzal-impact.png", fullPage: true });
   await page.setViewportSize({ width: 1440, height: 960 });
+  const scenarioSaved = page.waitForResponse((response) => response.request().method() === "PUT" && response.url().endsWith(`/api/projects/${projectId}`) && JSON.parse(response.request().postData()).engineeringSystem?.scenarios?.length > 0);
   await page.getByRole("button", { name: "Save scenario", exact: true }).click();
-  await page.waitForTimeout(450);
+  assert.ok((await scenarioSaved).ok());
   const persisted = await saved();
   assert.equal(persisted.engineeringSystem.entities.find((entity) => entity.id === "radio").properties.find((property) => property.key === "tx_duty_cycle").value, 3.6);
   assert.equal(persisted.engineeringSystem.scenarios[0].change.newValues[0].value, 100);

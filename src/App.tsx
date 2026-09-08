@@ -60,6 +60,7 @@ export function App() {
   const [isDraft, setIsDraft] = useState(false);
   const projectRef = useRef(project);
   const saveTimerRef = useRef<number | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const cloudReadyRef = useRef(false);
   const persistableRef = useRef(false);
   const draftRef = useRef(false);
@@ -82,23 +83,29 @@ export function App() {
     return response.teams;
   }, [auth.api]);
 
-  const persistProject = useCallback(async (nextProject: MissionProject) => {
-    let response: { project: MissionProject };
-    try {
-      response = await auth.api<{ project: MissionProject }>("/projects/" + nextProject.id, { method: "PUT", body: JSON.stringify(nextProject) });
-    } catch (reason) {
-      if (!(reason instanceof ApiError) || reason.status !== 404) throw reason;
-      response = await auth.api<{ project: MissionProject }>("/projects", { method: "POST", body: JSON.stringify(nextProject) });
-    }
-    setProjects((current) => {
-      const next = current.filter((item) => item.id !== nextProject.id);
-      return [projectSummary(nextProject), ...next];
+  const persistProject = useCallback((nextProject: MissionProject) => {
+    // Preserve write order: an older autosave must never arrive after a rename
+    // or after saving progress while opening Conception. Failed saves do not block retries.
+    const operation = saveQueueRef.current.then(async () => {
+      let response: { project: MissionProject };
+      try {
+        response = await auth.api<{ project: MissionProject }>("/projects/" + nextProject.id, { method: "PUT", body: JSON.stringify(nextProject) });
+      } catch (reason) {
+        if (!(reason instanceof ApiError) || reason.status !== 404) throw reason;
+        response = await auth.api<{ project: MissionProject }>("/projects", { method: "POST", body: JSON.stringify(nextProject) });
+      }
+      setProjects((current) => {
+        const next = current.filter((item) => item.id !== nextProject.id);
+        return [projectSummary(nextProject), ...next];
+      });
+      if (projectRef.current.id === nextProject.id) {
+        setActiveProjectId(nextProject.id);
+        window.localStorage.setItem(ACTIVE_PROJECT_KEY, nextProject.id);
+      }
+      return normalizeProject(response.project);
     });
-    if (projectRef.current.id === nextProject.id) {
-      setActiveProjectId(nextProject.id);
-      window.localStorage.setItem(ACTIVE_PROJECT_KEY, nextProject.id);
-    }
-    return normalizeProject(response.project);
+    saveQueueRef.current = operation.then(() => undefined, () => undefined);
+    return operation;
   }, [auth.api]);
 
   const flushProject = useCallback(() => {

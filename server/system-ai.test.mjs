@@ -8,7 +8,7 @@ import { buildApp } from "./app.mjs";
 import { JsonDataStore } from "./data-store.mjs";
 import { buildSystemPrompt, createSystemAiService, geminiResponseSchema, prepareProjectArtifacts, projectArtifacts, validateExtractedSystem } from "./system-ai.mjs";
 import { engineeringSystemSchema } from "../shared/engineering-schema.mjs";
-import { createEngineeringValidationModel, validationChange, validationMemoryText } from "../examples/engineering-validation.mjs";
+import { createEngineeringValidationModel, validationMemoryText } from "../examples/engineering-validation.mjs";
 
 const dataUrl = (text, mime = "text/plain") => `data:${mime};base64,${Buffer.from(text).toString("base64")}`;
 const project = { id: "project-test", name: "Validation", memoryRevision: 3, context: { teamId: "team-test", teamArtifactIds: ["team-file"], projectArtifactIds: ["validation-memory"] } };
@@ -206,22 +206,7 @@ test("missing key, unread memory and failed generation are recoverable errors wi
   await assert.rejects(createSystemAiService({ apiKey: "" }).generate(project, []), { code: "SYSTEM_MEMORY_INSUFFICIENT" });
   await assert.rejects(createSystemAiService({ apiKey: "test", fetch: async () => new Response("failure", { status: 503 }) }).generate(project, [artifact]), { code: "SYSTEM_AI_UNAVAILABLE" });
 });
-test("optional AI inference is evidence-backed and cannot override deterministic critical verdicts", async () => {
-  const service = createSystemAiService({ apiKey: "test", fetch: async () => geminiResponse({ inferences: [
-    { entityId: "thermal", evidenceRefs: ["architecture"], shortExplanation: "Check enclosure dissipation before accepting this change.", confidence: 0.65, status: "critical" },
-    { entityId: "regulator", evidenceRefs: ["regulator"], shortExplanation: "Everything is fine.", confidence: 0.8 },
-    { entityId: "power-budget", evidenceRefs: ["invented"], shortExplanation: "Unsupported claim", confidence: 0.7 }
-  ] }) });
-  const result = await service.analyze(createEngineeringValidationModel(), validationChange());
-  const thermal = result.impacts.find((item) => item.entityId === "thermal");
-  assert.equal(thermal.status, "review");
-  assert.equal(thermal.reasoning.type, "inference");
-  assert.equal(thermal.reasoning.confidence, 0.65);
-  assert.ok(thermal.reasoning.model);
-  assert.ok(thermal.reasoning.createdAt);
-  assert.equal(result.impacts.find((item) => item.entityId === "regulator").status, "critical");
-  assert.notEqual(result.impacts.find((item) => item.entityId === "power-budget").shortExplanation, "Unsupported claim");
-});
+
 
 async function setupApi(t, fetchImpl) {
   const file = join(tmpdir(), `norte-system-ai-${randomUUID()}.json`);
@@ -259,10 +244,7 @@ test("API generation authenticates, enforces CSRF, persists baseline and unlock,
   const again = await app.inject({ method: "POST", url: "/api/system-ai/generate", headers, payload });
   assert.equal(again.statusCode, 200);
   assert.equal(calls, 1);
-  const analysis = await app.inject({ method: "POST", url: "/api/system-ai/analyze-change", headers, payload: { engineeringSystem: persisted.engineeringSystem, change: validationChange() } });
-  assert.equal(analysis.statusCode, 200, analysis.body);
-  assert.equal(analysis.json().impacts.find((item) => item.entityId === "regulator").status, "critical");
-  assert.deepEqual(store.read().workspace.projects[project.id].document.engineeringSystem, persisted.engineeringSystem);
+
 });
 test("API generation rejects cross-project access and forged client artifact content", async (t) => {
   const { app, store, headers } = await setupApi(t, async () => geminiResponse(createEngineeringValidationModel()));
@@ -314,34 +296,6 @@ test("artifact edits increment linked memory revisions while preserving the gene
   assert.equal(changed.memoryRevision, 4);
   assert.equal(changed.systemGeneratedFromRevision, 3);
   assert.deepEqual(changed.engineeringSystem, generated.json().engineeringSystem);
-});
-
-// A preview is an explicit provider call; accepting it is a separate project edit.
-test("API previews a new interpretation without replacing an existing baseline or progress", async (t) => {
-  let calls = 0;
-  const { app, store, headers } = await setupApi(t, async () => { calls++; return geminiResponse(createEngineeringValidationModel()); });
-  const payload = { projectId: project.id };
-  assert.equal((await app.inject({ method: "POST", url: "/api/system-ai/generate", headers, payload })).statusCode, 200);
-  const before = structuredClone(store.read().workspace.projects[project.id].document);
-  const preview = await app.inject({ method: "POST", url: "/api/system-ai/generate", headers, payload: { ...payload, preview: true } });
-  assert.equal(preview.statusCode, 200, preview.body);
-  assert.equal(calls, 2);
-  assert.equal(preview.json().engineeringSystem.generatedFromRevision, 3);
-  assert.deepEqual(store.read().workspace.projects[project.id].document, before);
-});
-
-test("API preview neither initializes a project nor unlocks it, and rejects changed memory", async (t) => {
-  let mutate = async () => {};
-  const { app, store, headers } = await setupApi(t, async () => { await mutate(); return geminiResponse(createEngineeringValidationModel()); });
-  const before = structuredClone(store.read().workspace.projects[project.id].document);
-  const options = { method: "POST", url: "/api/system-ai/generate", headers, payload: { projectId: project.id, preview: true } };
-  assert.equal((await app.inject(options)).statusCode, 200);
-  assert.deepEqual(store.read().workspace.projects[project.id].document, before);
-  mutate = () => store.update((data) => { data.artifacts[0].url = dataUrl(`${validationMemoryText}\nEdited during preview`); return null; });
-  const conflict = await app.inject(options);
-  assert.equal(conflict.statusCode, 409, conflict.body);
-  assert.equal(conflict.json().error, "PROJECT_MEMORY_CHANGED");
-  assert.equal(store.read().workspace.projects[project.id].document.engineeringSystem, undefined);
 });
 
 test("API hypothesis interpretation uses the saved model, authenticates and never writes it", async (t) => {

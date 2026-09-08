@@ -23,8 +23,7 @@ export const correctionSchema = obj({
   suggestedEvidence: list(evidenceSchema, 500), previousEvidence: list(evidenceSchema, 500), correctedEvidence: list(evidenceSchema, 500), createdAt: str(40, 1)
 });
 export const engineeringSystemSchema = obj({ schemaVersion: { type: "integer", enum: [1] }, id: str(100, 1), name: str(140, 1), entities: list(entitySchema), relations: list(relationSchema, 400), requirements: list(requirementSchema), evidence: list(evidenceSchema, 500), artifactSources: list(obj({ artifactId: str(140, 1), artifactLabel: str(160, 1), status: { type: "string", enum: ["parsed", "pdf", "metadata_only", "not_parsed"] }, reason: str(500) }, ["artifactId", "artifactLabel", "status"])), generatedAt: str(40, 1), generatedFromRevision: { type: "integer", minimum: 0 }, model: str(100), revision: { type: "integer", minimum: 0 }, scenarios: list(analysisSchema, 30), corrections: list(correctionSchema, 1000) }, ["schemaVersion", "id", "name", "entities", "relations", "requirements", "evidence", "artifactSources", "generatedAt", "generatedFromRevision"]);
-export const generationRequestSchema = obj({ projectId: str(100, 1), language: { type: "string", enum: ["pt", "en"] }, preview: { type: "boolean" } }, ["projectId"]);
-export const analysisRequestSchema = obj({ engineeringSystem: engineeringSystemSchema, change: changeSchema, language: { type: "string", enum: ["pt", "en"] } }, ["engineeringSystem", "change"]);
+export const generationRequestSchema = obj({ projectId: str(100, 1), language: { type: "string", enum: ["pt", "en"] } }, ["projectId"]);
 
 /** The same bounded JSON Schema is used at HTTP and provider response boundaries. */
 export function matchesSchema(value, schema) {

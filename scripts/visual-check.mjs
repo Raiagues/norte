@@ -62,11 +62,15 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 960 
 const split = cookie.indexOf("=");
 await context.addCookies([{ name: cookie.slice(0, split), value: cookie.slice(split + 1), url: new URL(baseUrl).origin }]);
 const errors = [];
-let failedMemoryReads = 0, memoryReads = 0;
+let failedMemoryReads = 0, memoryReads = 0, projectWrites = 0, deferredWrite = null;
 const page = await context.newPage();
 page.on("pageerror", (error) => errors.push(error.message));
 await context.route("**/api/**", async (route) => {
   const incoming = route.request();
+  if (incoming.method() === "PUT" && new URL(incoming.url()).pathname === `/api/projects/${projectId}`) {
+    projectWrites++;
+    if (deferredWrite) { const pending = deferredWrite; deferredWrite = null; pending.started(); await pending.gate; }
+  }
   if (incoming.method() === "GET" && new URL(incoming.url()).pathname === "/api/artifacts") {
     memoryReads++;
     if (failedMemoryReads > 0) {
@@ -107,13 +111,13 @@ try {
   failedMemoryReads = Number.POSITIVE_INFINITY;
   await page.locator(".home-project-open").click();
   await page.locator(".pm-memory-error").waitFor();
-  assert.ok(await page.locator(".pm-footer > button").isDisabled());
+  assert.ok(await page.locator(".pm-open-conception").isDisabled());
   assert.equal(await page.locator(".pm-readiness").innerText(), "Aguardando carregar a memória");
   assert.ok((await page.locator(".pm-memory-error").innerText()).includes("HTTP 503"));
   const beforeRetry = memoryReads;
   failedMemoryReads = 1;
   await page.locator(".pm-memory-error button").click();
-  await page.waitForFunction(() => document.querySelector(".pm-footer > button")?.disabled === false);
+  await page.waitForFunction(() => document.querySelector(".pm-open-conception")?.disabled === false);
   assert.equal(memoryReads - beforeRetry, 2);
   assert.equal(await page.locator(".pm-memory-error").count(), 0);
   assert.equal(await page.locator(".pm-readiness").innerText(), "");
@@ -134,19 +138,19 @@ try {
   await page.screenshot({ path: "/tmp/norte-memory-mobile.png", fullPage: true });
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.getByRole("button", { name: "PT", exact: true }).click();
-  await page.locator(".pm-footer > button").click();
+  await page.locator(".pm-open-conception").click();
   await page.locator(".pm-feedback").waitFor();
   assert.ok((await page.locator(".pm-feedback").innerText()).includes("temporariamente indisponível"));
   assert.equal((await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem, undefined);
   assert.ok(page.url().includes("study-setup"));
   failGeneration = false;
   failContract = true;
-  await page.locator(".pm-footer > button").click();
+  await page.locator(".pm-open-conception").click();
   await page.locator(".pm-feedback").waitFor();
   assert.ok((await page.locator(".pm-feedback").innerText()).includes("dependências dos cálculos"));
   assert.equal((await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem, undefined);
   failContract = false;
-  await page.locator(".pm-footer > button").click();
+  await page.locator(".pm-open-conception").click();
   await page.locator(".engineering-graph").waitFor();
   // Two transient attempts, two contract attempts (existing service policy),
   // then one successful generation. The API client never retries this POST.
@@ -169,13 +173,24 @@ try {
   await page.locator(".mission-sidebar-toggle").click();
   await page.waitForTimeout(220);
   await page.screenshot({ path: "/tmp/norte-system-macro.png", fullPage: true });
-  const graphBounds = await page.locator(".engineering-graph").boundingBox();
-  const requirementsBounds = await page.locator(".engineering-requirements-panel").boundingBox();
-  assert.ok(requirementsBounds.x >= graphBounds.x + graphBounds.width - 1);
-  await page.getByRole("button", { name: "Todos os níveis", exact: true }).click();
+  assert.equal(await page.locator(".engineering-requirements-panel").count(), 0);
+  for (const name of ["Requisitos", "Revisar documentos", "E se…", "Relações do elemento"]) assert.equal(await page.getByRole("button", { name, exact: true }).count(), 0);
+  assert.equal(await page.getByLabel("Buscar elemento").count(), 0);
+  assert.equal(await page.locator(".mission-phase").count(), 6);
+  for (let phase = 2; phase < 6; phase++) assert.ok(await page.locator(".mission-phase").nth(phase).isDisabled());
+  await node("communication").locator(".engineering-node-expand").click();
+  await node("radio").waitFor();
+  assert.equal(await node("communication").locator(".engineering-node-expand").getAttribute("aria-expanded"), "true");
+  assert.equal(await node("power").count(), 1); // Sibling stays on the same canvas.
+  assert.ok((await node("payload-system").getAttribute("class")).includes("dimmed"));
+  await page.screenshot({ path: "/tmp/norte-system-expanded.png", fullPage: true });
+  await node("communication").locator(".engineering-node-expand").click();
+  assert.equal(await node("radio").count(), 0);
+  await page.getByRole("button", { name: "Expandir tudo", exact: true }).click();
   assert.equal(await page.locator(".engineering-node").count(), baseline.engineeringSystem.entities.length);
-  assert.ok((await page.locator(".engineering-edge:not(.structural) > path").first().getAttribute("d")).includes(" C"));
-  await page.getByRole("button", { name: "Todos os níveis", exact: true }).click();
+  await page.getByRole("button", { name: "Recolher tudo", exact: true }).click();
+  assert.equal(await page.locator(".engineering-node").count(), 1);
+  await page.locator(".engineering-node-expand").click();
   const draggable = node("communication");
   const originalPosition = await draggable.evaluate((element) => ({ x: parseFloat(element.style.left), y: parseFloat(element.style.top) }));
   const bounds = await draggable.locator(".engineering-node-main").boundingBox();
@@ -185,89 +200,44 @@ try {
   await page.mouse.up();
   await waitSaved();
   const moved = (await request("GET", `/api/projects/${projectId}`)).project;
-  const savedPosition = moved.navigation.systemLayouts.overview.communication;
+  const savedPosition = moved.navigation.systemLayouts.architecture.communication;
   assert.ok(savedPosition.x > originalPosition.x + 40);
   assert.deepEqual(moved.engineeringSystem, baseline.engineeringSystem);
   assert.equal(moved.memoryRevision, baseline.memoryRevision);
   await page.reload({ waitUntil: "networkidle" });
   await draggable.waitFor();
   assert.ok(Math.abs(await draggable.evaluate((element) => parseFloat(element.style.left)) - savedPosition.x) < .01);
-  assert.equal(generations, 5);
-  await page.getByLabel("Buscar elemento").fill("Radio");
   await page.locator('.engineering-tree-row button[title="Radio R1"]').click();
   await node("radio").waitFor();
-  await page.getByLabel("Buscar elemento").fill("");
-  await page.locator(".engineering-overview-link").click();
-
-  await node("communication").locator(".engineering-node-enter").click();
-  await node("radio").waitFor();
-  await node("radio").locator(".engineering-node-main").click();
-  assert.equal(await page.getByRole("dialog").count(), 0);
-  await page.getByRole("button", { name: "Relações do elemento", exact: true }).click();
-  await node("regulator").waitFor();
-  assert.ok(await node("radio").count());
-  await page.screenshot({ path: "/tmp/norte-system-connections.png", fullPage: true });
-  await page.getByRole("button", { name: "Relações do elemento", exact: true }).click();
-  const graphWidth = await page.locator(".engineering-graph").evaluate((element) => element.clientWidth);
+  assert.ok((await node("radio").getAttribute("class")).includes("selected"));
   await node("radio").locator(".engineering-node-info").click();
-  await page.getByRole("dialog").waitFor();
   await page.getByRole("dialog").locator(".engineering-evidence summary").first().click();
   assert.ok((await page.getByRole("dialog").innerText()).includes("400 mA"));
   await closeDialog();
-  assert.equal(await page.locator(".engineering-graph").evaluate((element) => element.clientWidth), graphWidth);
-  await node("radio").getByRole("button", { name: "E se…", exact: true }).click();
-  await page.getByLabel("Novo valor", { exact: true }).fill("1.2");
-  await page.getByLabel("Unidade", { exact: true }).fill("A");
-  await page.getByRole("button", { name: "Ver consequências" }).click();
-  await page.locator(".engineering-scenario").waitFor();
-  assert.ok((await node("regulator").getAttribute("class")).includes("status-critical"));
-  assert.ok((await node("regulator").innerText()).includes("1.2 A > 0.8 A"));
-  await node("regulator").locator(".engineering-node-info").click();
-  assert.ok((await page.getByRole("dialog").innerText()).includes("1.2 A > 0.8 A"));
-  await page.getByRole("dialog").getByRole("button", { name: "Fechar", exact: true }).focus();
-  await page.keyboard.press("Tab");
-  assert.equal(await page.evaluate(() => document.activeElement.tagName), "SUMMARY");
-  await page.keyboard.press("Enter");
-  assert.ok(await page.getByRole("dialog").locator("details[open]").count());
-  await page.keyboard.press("Escape");
-  assert.equal(await node("regulator").locator(".engineering-node-info").evaluate((element) => document.activeElement === element), true);
-  await page.screenshot({ path: "/tmp/norte-impact-current.png", fullPage: true });
-  await page.getByRole("button", { name: "EN", exact: true }).click();
-  await page.getByRole("button", { name: "Save scenario", exact: true }).waitFor();
-  await page.screenshot({ path: "/tmp/norte-impact-current-en.png", fullPage: true });
-  await page.getByRole("button", { name: "PT", exact: true }).click();
-  await page.getByRole("button", { name: "Salvar cenário" }).click();
-  await waitSaved();
-  assert.equal((await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem.scenarios.length, 1);
-  assert.deepEqual((await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem.entities, baseline.engineeringSystem.entities);
-  await page.getByRole("button", { name: "Limpar análise" }).click();
-  await page.locator(".engineering-requirements-panel").waitFor();
-  assert.equal(await page.locator(".engineering-requirement-row").count(), 2);
-  await page.getByLabel("Buscar requisitos").fill("mass");
-  assert.equal(await page.locator(".engineering-requirement-row").count(), 1);
-  await page.getByLabel("Buscar requisitos").fill("");
-  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
-  await page.locator(".engineering-requirement-facets select").first().selectOption("Power");
-  assert.equal(await page.locator(".engineering-requirement-row").count(), 1);
-  await page.getByRole("button", { name: "Limpar filtros" }).click();
-  assert.equal(await page.locator(".engineering-requirement-row").count(), 2);
-  await page.locator(".engineering-requirement-row").first().locator("button").last().click();
-  await page.getByRole("button", { name: "Corrigir", exact: true }).click();
-  await page.getByLabel("Enunciado revisado").fill("Autonomy ≥ 90 min, reviewed by the team");
-  await page.getByLabel("Revisões (separadas por vírgula)").fill("PDR");
-  await page.getByRole("button", { name: "Salvar correção" }).click();
-  await waitSaved();
-  const revised = (await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem.requirements.find((item) => item.id === "REQ-07");
-  assert.equal(revised.statement, "Autonomy ≥ 90 min, reviewed by the team");
-  assert.equal(revised.originalStatement, "Autonomy ≥ 90 min");
-  assert.deepEqual(revised.originalSourceRefs, ["req-duration"]);
-  assert.deepEqual(revised.reviewTags, ["PDR"]);
-  await closeDialog();
-  // Requirements stay docked while editing or tracing the architecture.
-  await page.locator(".engineering-requirement-row").first().locator("button").first().click();
-  assert.equal(await page.getByRole("dialog").count(), 0);
-  await page.locator(".engineering-trace-bar").waitFor();
-  assert.equal(await page.locator(".engineering-requirements-panel").count(), 1);
+  await page.getByRole("button", { name: "Recolher hierarquia", exact: true }).click();
+  assert.equal(await page.locator(".engineering-explorer").count(), 0);
+  await page.getByRole("button", { name: "Expandir hierarquia", exact: true }).click();
+  assert.equal(await page.locator(".engineering-explorer").count(), 1);
+  // Rename and immediately navigate; ensure the latest name survives API persistence and reload.
+  await page.getByRole("button", { name: "Editar memória", exact: true }).click();
+  let releaseWrite;
+  const gate = new Promise((resolve) => { releaseWrite = resolve; });
+  const started = new Promise((resolve) => { deferredWrite = { gate, started: resolve }; });
+  await page.locator("#project-memory-name").fill("Earlier pending name");
+  await started;
+  const writesBeforeNavigation = projectWrites;
+  await page.locator("#project-memory-name").fill("Quetzal-1 · revised mission");
+  await page.locator(".pm-open-conception").click();
+  await page.waitForTimeout(100);
+  assert.equal(projectWrites, writesBeforeNavigation, "The new save waits for the earlier in-flight autosave");
+  releaseWrite();
+  await page.locator(".engineering-model-title strong").waitFor();
+  assert.equal(await page.locator(".engineering-model-title strong").innerText(), "Quetzal-1 · revised mission");
+  await page.reload({ waitUntil: "networkidle" });
+  assert.equal(await page.locator(".engineering-model-title strong").innerText(), "Quetzal-1 · revised mission");
+  assert.equal((await request("GET", `/api/projects/${projectId}`)).project.name, "Quetzal-1 · revised mission");
+  assert.equal(generations, 5);
+  assert.deepEqual((await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem, baseline.engineeringSystem);
   await page.getByRole("tab", { name: /Descoberta/u }).click();
   await page.locator(".lab-canvas").waitFor();
   for (const removed of ["Arrumar mapa", "Estruturar missão", "Organização automática"]) assert.equal(await page.getByRole("button", { name: removed, exact: true }).count(), 0);
@@ -301,7 +271,6 @@ try {
   await page.locator(".lab-composer textarea").press("Escape");
   await page.locator(".discovery-interpretation.clarification").waitFor();
   assert.equal(await page.getByRole("dialog").count(), 0);
-  assert.equal(await page.locator(".engineering-target-picker").count(), 0);
   assert.ok((await page.locator(".lab-node").last().innerText()).includes("O que mudaria"));
   await page.locator(".lab-node").last().getByRole("button", { name: "Completar ideia", exact: true }).click();
   await page.locator(".lab-composer textarea").waitFor();
@@ -324,25 +293,6 @@ try {
   await page.locator(".lab-node").waitFor();
   assert.equal(generations, 5);
   await page.getByRole("tab", { name: "Sistema", exact: true }).click();
-  const beforeReview = (await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem;
-  await page.getByRole("button", { name: "Revisar documentos", exact: true }).click();
-  assert.equal(generations, 5); // Merely opening the review never calls the provider.
-  await page.getByRole("button", { name: "Gerar nova interpretação", exact: true }).click();
-  await page.getByRole("button", { name: "Usar esta interpretação", exact: true }).waitFor();
-  assert.equal(generations, 6);
-  assert.deepEqual((await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem, beforeReview);
-  await page.getByRole("button", { name: "Usar esta interpretação", exact: true }).click();
-  await waitSaved();
-  const reviewedProject = (await request("GET", `/api/projects/${projectId}`)).project;
-  assert.deepEqual(reviewedProject.navigation.systemLayouts, {});
-  const afterReview = reviewedProject.engineeringSystem;
-  assert.ok(afterReview.corrections.length > beforeReview.corrections.length);
-  assert.deepEqual(afterReview.scenarios[0].baseline.entities, beforeReview.entities);
-  await page.locator(".engineering-history button").click();
-  await page.locator(".engineering-scenario-history button").first().click();
-  await node("regulator").waitFor();
-  assert.ok((await node("regulator").innerText()).includes("1.2 A > 0.8 A"));
-  await page.getByRole("button", { name: "Limpar análise" }).click();
   await page.getByRole("tab", { name: /Descoberta/u }).click();
   // Each selected project brings its own progress, team and workspace.
   const secondTeam = (await request("POST", "/api/teams", { name: "Independent test team", description: "Temporary acceptance fixture" })).team;
@@ -384,6 +334,6 @@ try {
   await page.locator(".home-project-dialog-empty button").dispatchEvent("keydown", { key: "Enter" });
   assert.equal(await page.locator(".pm-workspace").count(), 0);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ passed: true, generations, checks: ["disabled creation", "owning team", "persistent phases", "automatic initialization and recovery", "macro and drilldown", "persistent node dragging", "hierarchy search and all levels", "docked requirements", "automatic AI interpretation and inline clarification", "review preview and explicit apply", "archived scenario after reinterpretation", "contextual details", "provenance", "current conflict", "scenario save", "requirement filtering/editing/source preservation", "requirement trace", "project-specific progress and team switching", "Discovery mass conflict", "undo redo persistence", "two accessible conception tabs", "unified four-column artifacts", "responsive"], viewports: results }, null, 2));
+  console.log(JSON.stringify({ passed: true, generations, checks: ["persistent phases and upcoming phases", "automatic initialization and recovery", "inline expansion without drilldown", "selection dims unrelated branches", "persistent node dragging", "hierarchy edge toggle", "removed System controls", "rename immediately opens and survives reload", "automatic AI interpretation and inline clarification", "contextual details and provenance", "project-specific progress and team switching", "Discovery mass conflict", "undo redo persistence", "two accessible conception tabs", "unified four-column artifacts", "responsive"], viewports: results }, null, 2));
 } catch (error) { await page.screenshot({ path: "/tmp/norte-browser-failure.png", fullPage: true }).catch(() => undefined); throw error; }
 finally { await browser.close(); await app.close(); vite.kill("SIGTERM"); await rm(directory, { recursive: true, force: true }); }

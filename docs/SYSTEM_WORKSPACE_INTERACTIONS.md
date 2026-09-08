@@ -2,11 +2,13 @@
 
 ## System
 
-The searchable hierarchy exposes every extracted system, subsystem and component. Breadcrumbs and Explore open individual levels. All levels exposes the complete saved model; Element relationships follows direct technical neighbors across hierarchy boundaries. Containment determines the normal layout and remains visually distinct from technical interfaces.
+Children expand/collapse on the current map, keeping siblings visible. Expand all and Collapse all act on the hierarchy; selecting an explorer item reveals its ancestors. Selecting a card highlights descendants and direct technical interfaces, together with ancestor context; unrelated branches dim. Clicking empty canvas clears selection.
 
-Cards support dragging, pan/zoom, fit, reset and Alt + arrow keys. Positions persist per view in `navigation.systemLayouts`, independently of engineering facts and memory revision. Requirements occupy a dismissible sidebar on desktop, with search, facets, trace and edit. Tracing keeps the list open. Narrow screens stack the explorer, canvas and requirements.
+The hierarchy toggle lives on its left edge. System no longer has Requirements, Review documents, What if, Element relationships or hierarchy search. Their exclusive UI, source-preview option and What-if-only analysis endpoint have been removed. The shared deterministic impact engine, requirements/evidence data and Discovery scenario inspection remain active.
 
-Document review requests an explicit, nonpersisting preview from linked source artifacts. Applying it records corrections and archives the previous architecture for saved scenarios. Extraction quality is separate from interaction validation: this interface does not invent missing systems or guarantee complete source coverage.
+Containment determines vertical ranks and uses a thin dashed line. Adjacent peer interfaces use side ports; long peer connections detour under intervening cards. Parallel/reverse edges use separate port offsets. Wider gaps reserve room for labels. Restrained teal, blue and amber card accents distinguish systems, subsystems and components; scenario verdict colors remain separate.
+
+Cards support dragging, pan/zoom, fit, reset and Alt + arrow keys. Positions persist in `navigation.systemLayouts.architecture`, independently of engineering facts. Historical coordinates from older views are retained in storage but not applied to the new layout. The canvas title uses the current project name rather than the frozen extraction title. Saves are serialized so an older in-flight autosave cannot overwrite a rename during navigation. The browser regression deliberately delays that older save. Default zoom preserves legibility; selecting an offscreen tree item brings it into view, and Fit explicitly shows the entire map.
 
 ## Discovery
 
@@ -26,10 +28,12 @@ One uppercase title replaces the eyebrow/title/subtitle stack. The introductory 
 
 One artifact grid displays linked team references and project documents, with at most four columns and fewer columns on narrow screens. The workspace scrolls vertically so additional rows remain accessible. Team artifacts retain ownership and unlink behavior; project files retain their edit/delete behavior. No documents are deleted by the UI simplification.
 
+Project name is edited under the heading. Open conception / Abrir concepção is at the top right, with Edit memory in the corresponding Conception action area. Feedback occupies page space rather than covering that action. The sidebar previews four disabled future phases: preliminary design, detailed design, integration/verification, operations.
+
 ## Checks
 
 - Quality: 96 client tests, all 18 backend test files, typecheck, lint and production build.
-- Authenticated browser checks: automatic interpretation, inline clarification without a modal, card operations, two-tab keyboard navigation, uppercase heading, unified artifact grid, mobile scrolling, existing System interactions and scenario preservation. The external provider is simulated with explicit synthetic responses.
+- Authenticated browser checks: automatic interpretation, inline clarification without a modal, card operations, two-tab keyboard navigation, uppercase heading, unified artifact grid, mobile scrolling, inline expansion, branch focus, drag persistence, hierarchy toggle and immediate rename/reload. The external provider is simulated with explicit synthetic responses.
 - Quetzal browser checks: the existing positive-margin and continuous-transmission scenarios still work with an explicit provider fixture. This is not an extraction-quality result.
 - Dependency audit: zero vulnerabilities. Secret scanning and diff checks pass.
 
