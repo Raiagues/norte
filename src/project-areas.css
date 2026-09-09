@@ -1,15 +1,17 @@
 /* Discovery as a panel, and the project areas it can be opened from.
    Both borrow the palette and spacing already used by the engineering workspace. */
 
-/* One of the main tools, so it reads as one: a filled pill on the free
-   bottom-left corner, clear of the workspace controls at the bottom right. */
-.discovery-launcher { position: fixed; z-index: 900; left: calc(var(--mission-sidebar-collapsed) + 18px); bottom: 18px; display: inline-flex; align-items: center; gap: 11px; max-width: 320px; padding: 11px 17px 11px 14px; border: 1px solid #5aa9e2; border-radius: 10px; background: linear-gradient(180deg, #17558a, #113f68); color: #eaf5ff; text-align: left; cursor: pointer; box-shadow: 0 10px 26px #0007; transition: left 180ms ease, border-color 140ms ease, transform 120ms ease; }
-.app-shell.sidebar-expanded .discovery-launcher { left: calc(var(--mission-sidebar-expanded) + 18px); }
-.discovery-launcher:hover { border-color: #9ad0f7; transform: translateY(-1px); }
-.discovery-launcher > svg { width: 21px; height: 21px; flex-shrink: 0; color: #b6ddff; }
-.discovery-launcher span { display: grid; gap: 2px; min-width: 0; }
-.discovery-launcher strong { font-size: 13px; font-weight: 600; }
-.discovery-launcher small { color: #b7d6f2; font-size: 10.5px; line-height: 1.35; }
+/* One of the main tools, so it sits in the navigation as one: always visible,
+   never floating over the page it would otherwise cover. */
+.mission-discovery { display: flex; align-items: center; gap: 11px; width: calc(100% - 16px); margin: 4px 8px 2px; padding: 8px; border: 1px solid #3f7fb4; border-radius: 9px; background: linear-gradient(180deg, #14497a, #0e3557); color: #eaf5ff; text-align: left; cursor: pointer; }
+.mission-discovery:hover, .mission-discovery.open { border-color: #8ec8f4; }
+.mission-discovery-icon { flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 7px; background: #0c2f4f; color: #9fd2fb; }
+.mission-discovery-icon svg { width: 18px; height: 18px; }
+.mission-discovery-copy { display: grid; gap: 1px; min-width: 0; }
+.mission-discovery-copy strong { font-size: 12.5px; font-weight: 600; }
+.mission-discovery-copy small { color: #a9cbe8; font-size: 10px; line-height: 1.35; }
+.mission-sidebar.collapsed .mission-discovery { width: 46px; justify-content: center; margin: 4px auto 2px; padding: 4px; }
+.mission-sidebar.collapsed .mission-discovery-copy { display: none; }
 
 .discovery-panel { position: fixed; z-index: 901; top: 0; right: 0; bottom: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); background: #04182b; border-left: 1px solid #22415c; box-shadow: -14px 0 40px #0007; }
 .discovery-panel-grip { position: absolute; z-index: 2; top: 0; bottom: 0; left: -3px; width: 9px; cursor: col-resize; background: transparent; touch-action: none; }

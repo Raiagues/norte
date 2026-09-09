@@ -14,7 +14,19 @@
   --coral: #ef866d;
   --red: #e5767f;
   --violet: #a59cff;
+  --scroll-track: rgba(6, 24, 43, 0.9);
+  --scroll-thumb: #2f6389;
+  --scroll-thumb-hover: #4b8fbf;
 }
+
+/* One scrollbar for the whole product, in the project's own palette. Firefox
+   takes the two-colour form; WebKit is styled part by part below. */
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) var(--scroll-track); }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: var(--scroll-track); border-radius: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border: 2px solid var(--scroll-track); border-radius: 8px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+*::-webkit-scrollbar-corner { background: var(--scroll-track); }
 
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; min-height: 100%; }

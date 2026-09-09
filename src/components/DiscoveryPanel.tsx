@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Compass, PanelRightClose } from "lucide-react";
+import { PanelRightClose, Waypoints } from "lucide-react";
 import { BrainstormLab } from "../pages/BrainstormLab";
 import type { MissionProject } from "../lib/projectStore";
 import type { Language } from "../lib/types";
@@ -70,7 +70,7 @@ export function DiscoveryPanel({ language, project, width, contextLabel, onClose
         onResize(width + (event.key === "ArrowLeft" ? 40 : -40));
       }} />
     <header className="discovery-panel-bar">
-      <span className="discovery-panel-title"><Compass aria-hidden="true" />{pt ? "Explorar impacto" : "Explore impact"}<em>BETA</em></span>
+      <span className="discovery-panel-title"><Waypoints aria-hidden="true" />{pt ? "Explorar impacto" : "Explore impact"}<em>BETA</em></span>
       <span className="discovery-panel-context" title={contextLabel}>{contextLabel}</span>
       <button type="button" onClick={onClose} aria-label={pt ? "Fechar Explorar impacto" : "Close Explore impact"}><PanelRightClose aria-hidden="true" /></button>
     </header>
@@ -78,13 +78,4 @@ export function DiscoveryPanel({ language, project, width, contextLabel, onClose
       <BrainstormLab language={language} project={project} onProjectChange={onProjectChange} />
     </div>
   </aside>;
-}
-
-export function DiscoveryLauncher({ language, onOpen }: { language: Language; onOpen: () => void }) {
-  const pt = language === "pt";
-  const label = pt ? "Explorar impacto" : "Explore impact";
-  return <button type="button" className="discovery-launcher" onClick={onOpen} aria-label={label}>
-    <Compass aria-hidden="true" />
-    <span><strong>{label}</strong><small>{pt ? "Escreva uma mudança e veja o que ela afeta" : "Write a change and see what it affects"}</small></span>
-  </button>;
 }

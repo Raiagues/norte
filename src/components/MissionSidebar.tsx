@@ -1,6 +1,6 @@
 import { Brand } from "./Brand";
 import { UserBadge } from "./UserBadge";
-import { FolderKanban, Home, UsersRound, FileText, Compass, DraftingCompass, Boxes, TestTubeDiagonal, Satellite, ListChecks, Code2, ShieldCheck } from "lucide-react";
+import { FolderKanban, Home, UsersRound, FileText, Compass, DraftingCompass, Boxes, TestTubeDiagonal, Satellite, ListChecks, Code2, ShieldCheck, Waypoints } from "lucide-react";
 import type { ProjectSummary } from "../lib/team";
 import type { Language } from "../lib/types";
 
@@ -24,6 +24,9 @@ type Props = {
   onStepSelect: (step: number) => void;
   activeArea: string | null;
   onAreaSelect: (area: "requirements" | "software" | "verification") => void;
+  discoveryAvailable: boolean;
+  discoveryOpen: boolean;
+  onOpenDiscovery: () => void;
 };
 
 /** Areas cut across the phases: reachable at any point, in any order. */
@@ -44,7 +47,7 @@ function LockIcon() {
   return <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.2" y="5.1" width="7.6" height="5.1" rx="1" /><path d="M3.8 5.1V3.7a2.2 2.2 0 0 1 4.4 0v1.4" /></svg>;
 }
 
-export function MissionSidebar({ language, currentStep, expanded, connectedLabel, homeLabel, teamLabel, homeActive, teamActive, projects, projectTeamName, highestUnlockedStep, activeProjectId, onToggle, onHome, onTeam, onProjectSelect, onStepSelect, activeArea, onAreaSelect }: Props) {
+export function MissionSidebar({ language, currentStep, expanded, connectedLabel, homeLabel, teamLabel, homeActive, teamActive, projects, projectTeamName, highestUnlockedStep, activeProjectId, onToggle, onHome, onTeam, onProjectSelect, onStepSelect, activeArea, onAreaSelect, discoveryAvailable, discoveryOpen, onOpenDiscovery }: Props) {
   const phaseLabels = labels[language];
   const stateWords = language === "pt" ? { complete: "Concluída", current: "Fase atual", available: "Disponível", locked: "Ainda não disponível" } : { complete: "Complete", current: "Current phase", available: "Available", locked: "Not available yet" };
   const contextWords = language === "pt" ? { project: "Projeto ativo", team: "Equipe", noneProject: "Nenhum projeto", noneTeam: "Nenhuma equipe", switcher: "Trocar projeto" } : { project: "Active project", team: "Team", noneProject: "No project", noneTeam: "No team", switcher: "Switch project" };
@@ -68,6 +71,14 @@ export function MissionSidebar({ language, currentStep, expanded, connectedLabel
           <span className="mission-sidebar-home-icon"><UsersRound aria-hidden="true" /></span>
           <span className="mission-sidebar-home-label">{teamLabel}</span>
         </button>
+
+        {discoveryAvailable && <button type="button" className={discoveryOpen ? "mission-discovery open" : "mission-discovery"} aria-pressed={discoveryOpen} onClick={onOpenDiscovery} title={language === "pt" ? "Explorar impacto" : "Explore impact"}>
+          <span className="mission-discovery-icon"><Waypoints aria-hidden="true" /></span>
+          <span className="mission-discovery-copy">
+            <strong>{language === "pt" ? "Explorar impacto" : "Explore impact"}</strong>
+            <small>{language === "pt" ? "Escreva uma mudança e veja o que ela afeta" : "Write a change and see what it affects"}</small>
+          </span>
+        </button>}
 
         <div className="mission-sidebar-divider" />
 

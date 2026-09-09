@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Compass, Lock } from "lucide-react";
+import { ArrowLeft, ArrowRight, Lock, Waypoints } from "lucide-react";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { UserBadge } from "../components/UserBadge";
 import { SystemWorkspace } from "./SystemWorkspace";
@@ -34,7 +34,7 @@ export function BrainstormPage({ language, project, t, onLanguageChange, onProje
             <button type="button" className="phase-step" onClick={onBackSetup}><ArrowLeft aria-hidden="true" /><span><small>{c.previous}</small>{c.previousName}</span></button>
             <button type="button" className="phase-step disabled" disabled title={c.soon}><span><small>{c.next}</small>{c.nextName}</span><em>{c.soon}</em><Lock aria-hidden="true" /></button>
             <button type="button" className={`explore-impact-action${discoveryOpen ? " open" : ""}`} onClick={onOpenDiscovery} aria-pressed={discoveryOpen}>
-              <Compass aria-hidden="true" /><span><strong>{c.explore}</strong><small>{c.exploreHint}</small></span><ArrowRight aria-hidden="true" />
+              <Waypoints aria-hidden="true" /><span><strong>{c.explore}</strong><small>{c.exploreHint}</small></span><ArrowRight aria-hidden="true" />
             </button>
           </div>
         </div>

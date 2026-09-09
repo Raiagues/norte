@@ -1721,6 +1721,8 @@
 @media (max-width: 560px) { .pm-artifact-grid { grid-template-columns: minmax(0, 1fr); } }
 .pm-shell .pm-workspace { grid-template-rows: none; grid-auto-rows: max-content; align-content: start; overflow-y: auto; overflow-x: clip; }
 .pm-artifacts-board { overflow: visible; }
+.pm-artifact-grid { max-height: min(38vh, 430px); overflow-y: auto; overflow-x: hidden; padding-right: 6px; }
+.pm-artifact-grid::-webkit-scrollbar { width: 9px; }
 .pm-artifact-grid .pm-artifact-card { height: auto; min-height: 108px; }
 
 .pm-heading { grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 20px; }

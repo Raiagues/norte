@@ -274,7 +274,7 @@ try {
   assert.equal((await request("GET", `/api/projects/${projectId}`)).project.name, "Quetzal-1 · revised mission");
   assert.equal(generations, 5);
   assert.deepEqual((await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem, baseline.engineeringSystem);
-  await page.getByRole("button", { name: /Explorar impacto/u }).first().click();
+  await page.locator(".mission-discovery").click();
   await page.locator(".discovery-panel .lab-canvas").waitFor();
   for (const removed of ["Arrumar mapa", "Estruturar missão", "Organização automática"]) assert.equal(await page.getByRole("button", { name: removed, exact: true }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "Testar alteração", exact: true }).count(), 0);
@@ -411,7 +411,7 @@ try {
   await page.screenshot({ path: "/tmp/norte-area-software.png", fullPage: true });
 
   // Discovery follows the user onto any page, resizes and closes without losing the board.
-  if (await page.locator(".discovery-launcher").count()) await page.locator(".discovery-launcher").click();
+  if (!(await page.locator(".discovery-panel").count())) await page.locator(".mission-discovery").click();
   await page.locator(".discovery-panel .lab-node").first().waitFor();
   const startWidth = (await page.locator(".discovery-panel").boundingBox()).width;
   await page.locator(".discovery-panel-grip").focus();
@@ -433,13 +433,13 @@ try {
   await page.screenshot({ path: "/tmp/norte-discovery-panel.png" });
   await page.getByRole("button", { name: /Fechar Explorar impacto/u }).click();
   assert.equal(await page.locator(".discovery-panel").count(), 0);
-  await page.locator(".discovery-launcher").click();
+  await page.locator(".mission-discovery").click();
   assert.equal(await page.locator(".discovery-panel .lab-node").count(), 1);
   await page.getByRole("button", { name: /Fechar Explorar impacto/u }).click();
   // The tool is offered on every project page, the Conception Room included.
   await page.locator(".mission-phase").nth(1).click();
   await page.locator(".engineering-graph").waitFor();
-  assert.equal(await page.locator(".discovery-launcher").count(), 1);
+  assert.equal(await page.locator(".mission-discovery").count(), 1);
   await page.locator(".mission-sidebar-toggle").click();
   // Each selected project brings its own progress, team and workspace.
   const secondTeam = (await request("POST", "/api/teams", { name: "Independent test team", description: "Temporary acceptance fixture" })).team;
@@ -498,6 +498,22 @@ try {
   await page.getByRole("button", { name: /Fase anterior/u }).click();
   await page.locator(".pm-artifact-card").last().waitFor();
   assert.equal(await page.locator(".pm-artifact-card").count(), 9);
+  // Artifacts scroll inside their own band, in the project's scrollbar colours.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const artifactScroll = await page.locator(".pm-artifact-grid").evaluate((grid) => ({
+    scrolls: grid.scrollHeight > grid.clientHeight + 1,
+    thumb: getComputedStyle(grid).getPropertyValue("--scroll-thumb").trim(),
+    firefox: getComputedStyle(grid).scrollbarColor
+  }));
+  assert.ok(artifactScroll.scrolls, "the artifacts band should scroll on its own");
+  assert.equal(artifactScroll.thumb, "#2f6389");
+  assert.ok(/2f6389|47, 99, 137/u.test(artifactScroll.firefox), artifactScroll.firefox);
+  // Nothing the page owns may sit under the floating launcher.
+  // The tool lives in the navigation, so nothing floats over the page content.
+  assert.equal(await page.locator(".discovery-launcher").count(), 0);
+  assert.equal(await page.locator(".mission-discovery").count(), 1);
+  await page.locator(".pm-workspace").evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+  await page.screenshot({ path: "/tmp/norte-memory-artifacts-scroll.png" });
   for (const source of ["ADCS hardware", "ADM hardware", "ADCS software", "MISSION overview"]) assert.equal(await page.locator(".pm-artifact-card").filter({ hasText: source }).count(), 1);
   await page.screenshot({ path: "/tmp/norte-quetzal-whole-memory.png", fullPage: true });
   // Leaving Conception queues a project save; deleting before it lands recreates it.

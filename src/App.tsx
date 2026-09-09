@@ -8,7 +8,7 @@ import { BrainstormPage } from "./pages/BrainstormPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
 import { SoftwarePage } from "./pages/SoftwarePage";
 import { VerificationPage } from "./pages/VerificationPage";
-import { DiscoveryLauncher, DiscoveryPanel, useDiscoveryPanel } from "./components/DiscoveryPanel";
+import { DiscoveryPanel, useDiscoveryPanel } from "./components/DiscoveryPanel";
 import { ApiError, useAuth } from "./lib/auth";
 import { getStoredLanguage, resolveText, setStoredLanguage } from "./lib/i18n";
 import { createEmptyProject, loadProject, normalizeProject, completeConception, recordMemoryRevision, saveProject } from "./lib/projectStore";
@@ -427,11 +427,9 @@ export function App() {
 
   return (
     <div className={`${sidebarExpanded ? "app-shell sidebar-expanded" : "app-shell"} route-${route}${discovery.open && discoveryAvailable ? " discovery-open" : ""}`} style={discovery.open && discoveryAvailable ? { ["--discovery-width" as string]: `${discovery.width}px` } : undefined}>
-      <MissionSidebar language={language} currentStep={currentStep} expanded={sidebarExpanded} connectedLabel={t("common.connected")} homeLabel={t("home.start")} teamLabel={language === "pt" ? "Equipes" : "Teams"} homeActive={route === "home"} teamActive={route === "teams"} projects={projects} projectTeamName={teams.find((team) => team.id === project.context.teamId)?.name || project.context.teamName} highestUnlockedStep={activeProjectId ? project.phaseProgress.highestUnlockedStep : -1} activeProjectId={activeProjectId} onToggle={() => setSidebarExpanded((current) => !current)} onHome={openHome} onTeam={openTeams} onProjectSelect={(id) => void openProject(id)} onStepSelect={openPipelineStep} activeArea={route in PROJECT_AREAS ? route : null} onAreaSelect={openArea} />
+      <MissionSidebar language={language} currentStep={currentStep} expanded={sidebarExpanded} connectedLabel={t("common.connected")} homeLabel={t("home.start")} teamLabel={language === "pt" ? "Equipes" : "Teams"} homeActive={route === "home"} teamActive={route === "teams"} projects={projects} projectTeamName={teams.find((team) => team.id === project.context.teamId)?.name || project.context.teamName} highestUnlockedStep={activeProjectId ? project.phaseProgress.highestUnlockedStep : -1} activeProjectId={activeProjectId} onToggle={() => setSidebarExpanded((current) => !current)} onHome={openHome} onTeam={openTeams} onProjectSelect={(id) => void openProject(id)} onStepSelect={openPipelineStep} activeArea={route in PROJECT_AREAS ? route : null} onAreaSelect={openArea} discoveryAvailable={discoveryAvailable} discoveryOpen={discovery.open} onOpenDiscovery={discovery.toggle} />
       <div className="app-page">{page}</div>
-      {discoveryAvailable && (discovery.open
-        ? <DiscoveryPanel language={language} project={project} width={discovery.width} contextLabel={areaLabel} onClose={discovery.close} onResize={discovery.resize} onProjectChange={changeProject} />
-        : <DiscoveryLauncher language={language} onOpen={discovery.toggle} />)}
+      {discoveryAvailable && discovery.open && <DiscoveryPanel language={language} project={project} width={discovery.width} contextLabel={areaLabel} onClose={discovery.close} onResize={discovery.resize} onProjectChange={changeProject} />}
       {initializing && <div className="conception-initialization" role="status" aria-live="polite"><div><span className="initialization-orbit" aria-hidden="true" /><small>NORTE</small><h2>{language === "pt" ? "Lendo a memória do projeto" : "Reading project memory"}</h2><p>{language === "pt" ? "Identificando o sistema, suas dependências e requisitos." : "Identifying the system, its dependencies and requirements."}</p><strong>{project.name}</strong></div></div>}
       {initializationError && route !== "setup" && <div className="conception-error" role="alert"><p>{initializationError}</p><button type="button" onClick={() => { setInitializationError(""); openMemory(); }}>{language === "pt" ? "Voltar à memória do projeto" : "Back to project memory"}</button><button type="button" onClick={() => setInitializationError("")}>{language === "pt" ? "Fechar" : "Close"}</button></div>}
     </div>
