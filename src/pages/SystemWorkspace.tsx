@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, Bookmark, Check, FileCheck2, Network, X, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ArrowLeft, Bookmark, Check, FileCheck2, Network, X, PanelLeftClose, PanelLeftOpen, Pencil } from "lucide-react";
 import type { EngineeringAnalysis, EngineeringRelation, EngineeringRequirement, EngineeringSystemModel } from "../lib/engineeringSystem";
 import { engineeringAncestors, engineeringParentId, engineeringLabel, projectEngineeringScenario, requirementTrace, systemVisibleEntities, expandedSystemEntities, engineeringFocus } from "../lib/engineeringUi";
 import type { MissionProject } from "../lib/projectStore";
@@ -44,6 +44,7 @@ export function EngineeringScenario({ language, model, analysis, onClear, onSave
 export function SystemWorkspace({ language, project, onProjectChange, onBackSetup }: { language: Language; project: MissionProject; onProjectChange: (project: MissionProject) => void; onBackSetup: () => void }) {
   const model = project.engineeringSystem;
   const [treeOpen, setTreeOpen] = useState(true);
+  const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(model?.entities.filter((entity) => !engineeringParentId(model, entity)).map((entity) => entity.id)));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspection, setInspection] = useState<Inspection>(null);
@@ -64,7 +65,13 @@ export function SystemWorkspace({ language, project, onProjectChange, onBackSetu
   if (!model || !model.entities.length) return <section className="engineering-workspace engineering-empty"><Network aria-hidden="true" /><h2>{pt ? "O sistema começa na memória do projeto" : "The system starts with Project Memory"}</h2><p>{pt ? "Ainda não há informação suficiente para construir a arquitetura. Vincule fontes que descrevam componentes, interfaces ou requisitos." : "There is not enough information to build the architecture yet. Link sources describing components, interfaces or requirements."}</p>{model?.artifactSources.length ? <ul>{model.artifactSources.map((source) => <li key={source.artifactId}>{source.artifactLabel}{source.reason ? ` · ${source.reason}` : ""}</li>)}</ul> : <small>{project.context.projectArtifactIds.length + project.context.teamArtifactIds.length} {pt ? "artefatos vinculados" : "linked artifacts"}</small>}<button type="button" onClick={onBackSetup}><ArrowLeft aria-hidden="true" />{pt ? "Voltar à memória do projeto" : "Return to Project Memory"}</button></section>;
   return <section className="engineering-workspace">
     <header className="engineering-workspace-bar"><div className="engineering-model-title"><Network /><strong>{project.name}</strong><small>{entities.length} / {model.entities.length}</small></div>
-      <div className="engineering-bar-actions"><button type="button" onClick={() => { setExpanded(new Set(model.entities.map((item) => item.id))); setSelectedId(null); }}>{pt ? "Expandir tudo" : "Expand all"}</button><button type="button" onClick={() => { setExpanded(new Set()); setSelectedId(null); }}>{pt ? "Recolher tudo" : "Collapse all"}</button></div>
+      <div className="engineering-bar-actions">
+        <button type="button" onClick={() => { setExpanded(new Set(model.entities.map((item) => item.id))); setSelectedId(null); }}>{pt ? "Expandir tudo" : "Expand all"}</button>
+        <button type="button" onClick={() => { setExpanded(new Set()); setSelectedId(null); }}>{pt ? "Recolher tudo" : "Collapse all"}</button>
+        <button type="button" className={editing ? "engineering-edit-toggle editing" : "engineering-edit-toggle"} aria-pressed={editing} onClick={() => setEditing(!editing)}>
+          {editing ? <Check aria-hidden="true" /> : <Pencil aria-hidden="true" />}{editing ? pt ? "Concluir edição" : "Finish editing" : pt ? "Editar" : "Edit"}
+        </button>
+      </div>
     </header>
     <div className="engineering-workspace-body">
       <div className={`engineering-hierarchy-panel ${treeOpen ? "open" : "closed"}`}>
@@ -72,10 +79,11 @@ export function SystemWorkspace({ language, project, onProjectChange, onBackSetu
         {treeOpen && <EngineeringExplorer model={model} language={language} selectedId={selectedId} expandedIds={expanded} onToggle={toggle} onSelect={selectTree} onOverview={() => setSelectedId(null)} />}
       </div>
       <div className="engineering-canvas-shell">
-        <SystemGraph key={model.generatedAt} positions={project.navigation.systemLayouts?.architecture} onPositionsChange={(positions) => onProjectChange({ ...project, navigation: { ...project.navigation, systemLayouts: { ...project.navigation.systemLayouts, architecture: positions } } })} language={language} model={model} entities={entities} selectedId={selectedId} highlightIds={highlightIds} onSelect={(item) => setSelectedId(item.id)} onClearSelection={() => setSelectedId(null)} onInfo={(item) => setInspection({ kind: "entity", id: item.id })} expandedIds={expanded} onToggleChildren={(item) => toggle(item.id)} onRelation={(relation) => setInspection({ kind: "relation", relation })} />
+        <SystemGraph key={model.generatedAt} positions={project.navigation.systemLayouts?.architecture} onPositionsChange={(positions) => onProjectChange({ ...project, navigation: { ...project.navigation, systemLayouts: { ...project.navigation.systemLayouts, architecture: positions } } })} language={language} model={model} entities={entities} selectedId={selectedId} highlightIds={highlightIds} onSelect={(item) => setSelectedId(item.id)} onClearSelection={() => setSelectedId(null)} onInfo={(item) => setInspection({ kind: "entity", id: item.id })} expandedIds={expanded} onToggleChildren={(item) => toggle(item.id)} onRelation={(relation) => setInspection({ kind: "relation", relation })} editable={editing} />
+        {editing && <p className="engineering-edit-hint" role="status">{pt ? "Modo de edição: arraste os blocos e corrija os elementos. As alterações são salvas no projeto." : "Edit mode: drag blocks and correct elements. Changes are saved to the project."}</p>}
       </div>
     </div>
-    {entity && <EngineeringEntityInfo language={language} model={model} entity={entity} onClose={() => setInspection(null)} onModelChange={updateModel} onRelation={(relation) => setInspection({ kind: "relation", relation })} correctionContext={{ projectId: project.id, projectName: project.name }} />}
-    {inspection?.kind === "relation" && <EngineeringRelationInfo language={language} model={model} relation={inspection.relation} onClose={() => setInspection(null)} onModelChange={updateModel} correctionContext={{ projectId: project.id, projectName: project.name }} />}
+    {entity && <EngineeringEntityInfo language={language} model={model} entity={entity} onClose={() => setInspection(null)} {...(editing ? { onModelChange: updateModel } : {})} onRelation={(relation) => setInspection({ kind: "relation", relation })} correctionContext={{ projectId: project.id, projectName: project.name }} />}
+    {inspection?.kind === "relation" && <EngineeringRelationInfo language={language} model={model} relation={inspection.relation} onClose={() => setInspection(null)} {...(editing ? { onModelChange: updateModel } : {})} correctionContext={{ projectId: project.id, projectName: project.name }} />}
   </section>;
 }

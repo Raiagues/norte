@@ -17,7 +17,7 @@ import type { ProjectSummary, TeamRecord } from "./lib/team";
 import type { Language } from "./lib/types";
 import "./mission-sidebar.css";
 
-type Route = "home" | "setup" | "teams" | "projectTeam" | "brainstorm" | "preliminary" | "requirements" | "software" | "verification";
+type Route = "home" | "setup" | "teams" | "projectTeam" | "brainstorm" | "requirements" | "software" | "verification";
 /** Areas are reached freely, in any order, and never gate one another. */
 export const PROJECT_AREAS = { requirements: "#/requirements", software: "#/software", verification: "#/verification" } as const;
 
@@ -28,7 +28,7 @@ function storedPreference(key: string): string {
 }
 
 function getRoute(): Route {
-  if (window.location.hash === "#/preliminary-design") return "preliminary";
+  if (window.location.hash === "#/preliminary-design") return "brainstorm";
   if (window.location.hash === "#/brainstorming") return "brainstorm";
   if (window.location.hash === "#/study-setup" || window.location.hash === "#/project-setup") return "setup";
   if (window.location.hash === "#/project-team") return "projectTeam";
@@ -256,7 +256,7 @@ export function App() {
   }, [route]);
 
   const t = useMemo(() => (path: string) => resolveText(language, path), [language]);
-  const currentStep = ["setup", "projectTeam"].includes(route) ? 0 : route === "brainstorm" ? 1 : route === "preliminary" ? 2 : null;
+  const currentStep = ["setup", "projectTeam"].includes(route) ? 0 : route === "brainstorm" ? 1 : null;
 
   function changeLanguage(nextLanguage: Language) {
     setLanguage(nextLanguage);
@@ -276,16 +276,16 @@ export function App() {
       setIsDraft(false);
       setActiveProjectId(next.id);
       window.localStorage.setItem(ACTIVE_PROJECT_KEY, next.id);
-      const nextRoute = next.navigation.lastRoute === "preliminary" ? "preliminary" : next.navigation.lastRoute === "brainstorm" ? "brainstorm" : "setup";
+      const nextRoute = ["preliminary", "brainstorm"].includes(next.navigation.lastRoute ?? "") ? "brainstorm" : "setup";
       const url = new URL(window.location.href);
       if (nextRoute === "brainstorm") url.searchParams.set("view", next.navigation.lastConceptionWorkspace ?? "system");
       else url.searchParams.delete("view");
-      url.hash = nextRoute === "preliminary" ? "/preliminary-design" : nextRoute === "brainstorm" ? "/brainstorming" : "/study-setup";
+      url.hash = nextRoute === "brainstorm" ? "/brainstorming" : "/study-setup";
       window.history.pushState(window.history.state, "", url);
       setRoute(nextRoute);
     } catch {
       const local = projects.find((item) => item.id === projectId);
-      if (local && projectRef.current.id === projectId) window.location.hash = projectRef.current.navigation.lastRoute === "preliminary" ? "#/preliminary-design" : projectRef.current.navigation.lastRoute === "brainstorm" ? "#/brainstorming" : "#/study-setup";
+      if (local && projectRef.current.id === projectId) window.location.hash = ["preliminary", "brainstorm"].includes(projectRef.current.navigation.lastRoute ?? "") ? "#/brainstorming" : "#/study-setup";
     }
   }
 
@@ -406,16 +406,8 @@ export function App() {
     window.location.hash = "#/";
   }
 
-  function openPreliminary() {
-    const current = projectRef.current;
-    if (!current.engineeringSystem) return;
-    changeProject({ ...current, phaseProgress: { highestUnlockedStep: 2 }, navigation: { ...current.navigation, lastRoute: "preliminary" } });
-    window.location.hash = "#/preliminary-design";
-  }
-
   function openPipelineStep(step: number) {
     if (step === 0) openMemory();
-    if (step === 2 && projectRef.current.phaseProgress.highestUnlockedStep >= 2) openPreliminary();
     if (step === 1 && projectRef.current.phaseProgress.highestUnlockedStep >= 1) void openBrainstorm().catch(() => undefined);
   }
 
@@ -428,11 +420,10 @@ export function App() {
   if (route === "requirements") page = <RequirementsPage language={language} project={project} onOpenConception={() => void openBrainstorm().catch(() => undefined)} />;
   if (route === "software") page = <SoftwarePage language={language} project={project} onOpenRequirements={() => openArea("requirements")} />;
   if (route === "verification") page = <VerificationPage language={language} project={project} onOpenRequirements={() => openArea("requirements")} />;
-  if (route === "brainstorm" || route === "preliminary") page = <BrainstormPage key={`${project.id}:${route}`} preliminary={route === "preliminary"} onNextPhase={openPreliminary} onConception={() => void openBrainstorm().catch(() => undefined)} language={language} project={project} t={t} onLanguageChange={changeLanguage} onProjectChange={changeProject} onHome={openHome} onBackSetup={openMemory} />;
+  if (route === "brainstorm") page = <BrainstormPage key={`${project.id}:${route}`} language={language} project={project} t={t} onLanguageChange={changeLanguage} onProjectChange={changeProject} onHome={openHome} onBackSetup={openMemory} onOpenDiscovery={discovery.toggle} discoveryOpen={discovery.open} />;
 
-  const conceptionDiscovery = route === "brainstorm" && project.navigation.lastConceptionWorkspace === "discovery";
-  const discoveryAvailable = Boolean(activeProjectId) && !conceptionDiscovery && !["home", "teams"].includes(route);
-  const areaLabel = { setup: language === "pt" ? "Memória do projeto" : "Project memory", projectTeam: language === "pt" ? "Equipe do projeto" : "Project team", brainstorm: language === "pt" ? "Concepção" : "Conception", preliminary: language === "pt" ? "Projeto preliminar" : "Preliminary design", requirements: language === "pt" ? "Requisitos" : "Requirements", software: "Software", verification: language === "pt" ? "Verificação" : "Verification", home: "", teams: "" }[route];
+  const discoveryAvailable = Boolean(activeProjectId) && !["home", "teams"].includes(route);
+  const areaLabel = { setup: language === "pt" ? "Memória do projeto" : "Project memory", projectTeam: language === "pt" ? "Equipe do projeto" : "Project team", brainstorm: language === "pt" ? "Concepção" : "Conception", requirements: language === "pt" ? "Requisitos" : "Requirements", software: "Software", verification: language === "pt" ? "Verificação" : "Verification", home: "", teams: "" }[route];
 
   return (
     <div className={`${sidebarExpanded ? "app-shell sidebar-expanded" : "app-shell"} route-${route}${discovery.open && discoveryAvailable ? " discovery-open" : ""}`} style={discovery.open && discoveryAvailable ? { ["--discovery-width" as string]: `${discovery.width}px` } : undefined}>

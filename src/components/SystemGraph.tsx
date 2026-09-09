@@ -14,11 +14,13 @@ type Props = {
   onSelect: (entity: EngineeringEntity) => void; onInfo: (entity: EngineeringEntity) => void;
   onToggleChildren?: (entity: EngineeringEntity) => void; expandedIds?: Set<string>; onClearSelection?: () => void;
   positions?: GraphPositions; onPositionsChange?: (positions: GraphPositions) => void;
+  /** Layout is only rearranged in edit mode; reading the map never moves it. */
+  editable?: boolean;
 
   onRelation: (relation: EngineeringRelation) => void;
 };
 
-export function SystemGraph({ language, model, entities, selectedId, highlightIds, highlightRelationIds, analysis, onSelect, onInfo, onToggleChildren, expandedIds, onClearSelection, onRelation, positions = {}, onPositionsChange }: Props) {
+export function SystemGraph({ language, model, entities, selectedId, highlightIds, highlightRelationIds, analysis, onSelect, onInfo, onToggleChildren, expandedIds, onClearSelection, onRelation, positions = {}, onPositionsChange, editable = false }: Props) {
   const graph = useMemo(() => layoutEngineeringGraph(model, entities, analysis), [model, entities, analysis]);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ width: 1000, height: 600 });
@@ -159,9 +161,9 @@ export function SystemGraph({ language, model, entities, selectedId, highlightId
         const childCount = model.entities.filter((child) => engineeringParentId(model, child) === entity.id).length;
         const hasChildren = childCount > 0;
         const name = changed && analysis.change.replacementName ? analysis.change.replacementName : entity.name;
-        return <article className={`engineering-node kind-${entity.kind} ${selectedId === entity.id ? "selected" : selectedId && !analysis ? "context-node" : ""} ${impact ? `status-${impact.status}` : ""} ${highlightIds && !highlightIds.has(entity.id) ? "dimmed" : ""}`} key={entity.id} style={{ left: nodeX, top: nodeY, width: ENGINEERING_NODE_WIDTH, height: ENGINEERING_NODE_HEIGHT }} data-entity-id={entity.id}
+        return <article className={`engineering-node kind-${entity.kind} ${editable ? "editable" : ""} ${selectedId === entity.id ? "selected" : selectedId && !analysis ? "context-node" : ""} ${impact ? `status-${impact.status}` : ""} ${highlightIds && !highlightIds.has(entity.id) ? "dimmed" : ""}`} key={entity.id} style={{ left: nodeX, top: nodeY, width: ENGINEERING_NODE_WIDTH, height: ENGINEERING_NODE_HEIGHT }} data-entity-id={entity.id}
           onPointerDown={(event) => {
-            if (event.button !== 0 || (event.target as HTMLElement).closest(".engineering-node-info,.engineering-node-expand")) return;
+            if (!editable || event.button !== 0 || (event.target as HTMLElement).closest(".engineering-node-info,.engineering-node-expand")) return;
             event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
             dragRef.current = { pointer: event.pointerId, id: entity.id, x: event.clientX, y: event.clientY, originX: nodeX, originY: nodeY, moved: false };
           }}
@@ -180,12 +182,12 @@ export function SystemGraph({ language, model, entities, selectedId, highlightId
           }}
           onPointerCancel={() => { if (dragRef.current?.moved) onPositionsChange?.(manualRef.current); dragRef.current = null; }}
           onKeyDown={(event) => {
-            if (!event.altKey || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+            if (!editable || !event.altKey || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
             event.preventDefault();
             const next = { ...manualRef.current, [entity.id]: { x: Math.max(0, nodeX + (event.key === "ArrowRight" ? 20 : event.key === "ArrowLeft" ? -20 : 0)), y: Math.max(0, nodeY + (event.key === "ArrowDown" ? 20 : event.key === "ArrowUp" ? -20 : 0)) } };
             setManual(next); onPositionsChange?.(next);
           }} onFocusCapture={(event) => revealKeyboardFocus(event.target as HTMLElement, { x: nodeX, y: nodeY, width: ENGINEERING_NODE_WIDTH, height: ENGINEERING_NODE_HEIGHT })}>
-          <button className="engineering-node-main" type="button" aria-pressed={selectedId === entity.id} onClick={() => { if (!dragRef.current?.moved) onSelect(entity); }} title={pt ? "Arraste para mover. Alt + setas também move." : "Drag to move. Alt + arrows also moves."}>
+          <button className="engineering-node-main" type="button" aria-pressed={selectedId === entity.id} onClick={() => { if (!dragRef.current?.moved) onSelect(entity); }} title={editable ? pt ? "Arraste para mover. Alt + setas também move." : "Drag to move. Alt + arrows also moves." : undefined}>
             <span className="engineering-node-kind">{engineeringLabel(entity.kind, language)}{impact && <em>{engineeringLabel(impact.status, language)}</em>}</span>
             <strong>{name}</strong>
             <span className="engineering-node-values">{properties.slice(0, impact?.calculation ? 1 : 2).map((property) => <span key={property.key} title={`${property.name}: ${formatEngineeringValue(property)}`}>{!property.unit && typeof property.value === "number" ? `${property.name}: ` : ""}{formatEngineeringValue({ ...property, value: typeof property.value === "number" ? Number(property.value.toPrecision(5)) : property.value })}</span>)}{!properties.length && !hasChildren && <span>{entity.properties.some((property) => property.key === "formula") ? pt ? "Cálculo a avaliar" : "Calculation to evaluate" : pt ? "Dados a confirmar" : "Data to confirm"}</span>}</span>
@@ -209,7 +211,7 @@ export function SystemGraph({ language, model, entities, selectedId, highlightId
       <output>{Math.round(scale * 100)}%</output>
       <button type="button" aria-label={pt ? "Aproximar" : "Zoom in"} onClick={() => zoom(1.2)}><Plus aria-hidden="true" /></button>
       <button type="button" aria-label={pt ? "Enquadrar sistema" : "Fit system"} onClick={() => fit()}><Maximize2 aria-hidden="true" /></button>
-      <button type="button" aria-label={pt ? "Restaurar organização" : "Reset layout"} onClick={() => { setManual({}); manualRef.current = {}; onPositionsChange?.({}); fit(graph.nodes); }}><RotateCcw aria-hidden="true" /></button>
+      {editable && <button type="button" aria-label={pt ? "Restaurar organização" : "Reset layout"} onClick={() => { setManual({}); manualRef.current = {}; onPositionsChange?.({}); fit(graph.nodes); }}><RotateCcw aria-hidden="true" /></button>}
     </div>
     {analysis && <div className="engineering-legend" aria-label={pt ? "Legenda de impacto" : "Impact legend"}>{["changed", "valid", "review", "critical"].map((status) => <span key={status} className={`status-${status}`}><i />{engineeringLabel(status, language)}</span>)}</div>}
   </div>;

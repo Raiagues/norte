@@ -45,13 +45,21 @@ export function DiscoveryPanel({ language, project, width, contextLabel, onClose
   const dragRef = useRef<{ pointer: number; x: number; width: number } | null>(null);
   const pt = language === "pt";
 
+  // Escape belongs to whatever is open inside the panel first — a composer, a
+  // dialog — and only closes the panel when the work itself is not focused.
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !document.querySelector(".lab-composer")) onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (event.key !== "Escape" || target?.closest(".discovery-panel-body")) return;
+      onClose();
+    };
+    // Capture phase: by the time React has handled the key, the element that
+    // received it may already be detached and no longer answer `closest`.
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [onClose]);
 
-  return <aside className="discovery-panel" style={{ width }} aria-label={pt ? "Descoberta" : "Discovery"}>
+  return <aside className="discovery-panel" style={{ width }} aria-label={pt ? "Explorar impacto" : "Explore impact"}>
     <div className="discovery-panel-grip" role="separator" aria-label={pt ? "Ajustar largura do painel" : "Adjust panel width"} aria-orientation="vertical" aria-valuenow={width} aria-valuemin={DISCOVERY_MIN_WIDTH} aria-valuemax={DISCOVERY_MAX_WIDTH} tabIndex={0}
       onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); dragRef.current = { pointer: event.pointerId, x: event.clientX, width }; }}
       onPointerMove={(event) => { const drag = dragRef.current; if (drag?.pointer === event.pointerId) onResize(drag.width + drag.x - event.clientX); }}
@@ -62,9 +70,9 @@ export function DiscoveryPanel({ language, project, width, contextLabel, onClose
         onResize(width + (event.key === "ArrowLeft" ? 40 : -40));
       }} />
     <header className="discovery-panel-bar">
-      <span className="discovery-panel-title"><Compass aria-hidden="true" />{pt ? "Descoberta" : "Discovery"}<em>BETA</em></span>
+      <span className="discovery-panel-title"><Compass aria-hidden="true" />{pt ? "Explorar impacto" : "Explore impact"}<em>BETA</em></span>
       <span className="discovery-panel-context" title={contextLabel}>{contextLabel}</span>
-      <button type="button" onClick={onClose} aria-label={pt ? "Fechar Descoberta" : "Close Discovery"}><PanelRightClose aria-hidden="true" /></button>
+      <button type="button" onClick={onClose} aria-label={pt ? "Fechar Explorar impacto" : "Close Explore impact"}><PanelRightClose aria-hidden="true" /></button>
     </header>
     <div className="discovery-panel-body">
       <BrainstormLab language={language} project={project} onProjectChange={onProjectChange} />
@@ -73,8 +81,10 @@ export function DiscoveryPanel({ language, project, width, contextLabel, onClose
 }
 
 export function DiscoveryLauncher({ language, onOpen }: { language: Language; onOpen: () => void }) {
-  const label = language === "pt" ? "Abrir Descoberta" : "Open Discovery";
-  return <button type="button" className="discovery-launcher" onClick={onOpen} title={label} aria-label={label}>
-    <Compass aria-hidden="true" /><span>{language === "pt" ? "Descoberta" : "Discovery"}</span>
+  const pt = language === "pt";
+  const label = pt ? "Explorar impacto" : "Explore impact";
+  return <button type="button" className="discovery-launcher" onClick={onOpen} aria-label={label}>
+    <Compass aria-hidden="true" />
+    <span><strong>{label}</strong><small>{pt ? "Escreva uma mudança e veja o que ela afeta" : "Write a change and see what it affects"}</small></span>
   </button>;
 }

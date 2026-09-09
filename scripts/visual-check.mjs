@@ -169,7 +169,7 @@ try {
   // Two transient attempts, two contract attempts (existing service policy),
   // then one successful generation. The API client never retries this POST.
   assert.equal(generations, 5);
-  assert.equal(await page.getByRole("tab", { selected: true }).innerText(), "Sistema");
+  assert.equal(await page.getByRole("tab").count(), 0);
   assert.equal(await page.getByRole("button", { name: /Gerar arquitetura|Generate initial/u }).count(), 0);
   const baseline = (await request("GET", `/api/projects/${projectId}`)).project;
   assert.ok(baseline.engineeringSystem);
@@ -208,11 +208,20 @@ try {
   await page.locator(".engineering-node-expand").click();
   const draggable = node("communication");
   const originalPosition = await draggable.evaluate((element) => ({ x: parseFloat(element.style.left), y: parseFloat(element.style.top) }));
-  const bounds = await draggable.locator(".engineering-node-main").boundingBox();
-  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + 25);
-  await page.mouse.down();
-  await page.mouse.move(bounds.x + bounds.width / 2 + 50, bounds.y + 55, { steps: 8 });
-  await page.mouse.up();
+  const dragBy = async (dx, dy) => {
+    const bounds = await draggable.locator(".engineering-node-main").boundingBox();
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + 25);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + bounds.width / 2 + dx, bounds.y + 25 + dy, { steps: 8 });
+    await page.mouse.up();
+  };
+  // Reading the map must never rearrange it.
+  await dragBy(50, 30);
+  assert.deepEqual(await draggable.evaluate((element) => ({ x: parseFloat(element.style.left), y: parseFloat(element.style.top) })), originalPosition);
+  assert.equal((await request("GET", `/api/projects/${projectId}`)).project.navigation.systemLayouts?.architecture, undefined);
+  await page.getByRole("button", { name: "Editar", exact: true }).click();
+  assert.equal(await page.locator(".engineering-edit-hint").count(), 1);
+  await dragBy(50, 30);
   await waitSaved();
   const moved = (await request("GET", `/api/projects/${projectId}`)).project;
   const savedPosition = moved.navigation.systemLayouts.architecture.communication;
@@ -222,6 +231,10 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   await draggable.waitFor();
   assert.ok(Math.abs(await draggable.evaluate((element) => parseFloat(element.style.left)) - savedPosition.x) < .01);
+  assert.equal(await page.locator(".engineering-edit-hint").count(), 0, "edit mode must not survive a reload");
+  await page.getByRole("button", { name: "Editar", exact: true }).click();
+  await page.getByRole("button", { name: "Concluir edição", exact: true }).click();
+  assert.equal(await page.locator(".engineering-edit-hint").count(), 0);
   const communicationToggle = page.getByRole("button", { name: "Expandir ou recolher Communication", exact: true });
   await communicationToggle.click();
   await node("radio").waitFor();
@@ -242,7 +255,7 @@ try {
   await page.getByRole("button", { name: "Expandir hierarquia", exact: true }).click();
   assert.equal(await page.locator(".engineering-explorer").count(), 1);
   // Rename and immediately navigate; ensure the latest name survives API persistence and reload.
-  await page.getByRole("button", { name: "Editar memória", exact: true }).click();
+  await page.getByRole("button", { name: /Fase anterior/u }).click();
   let releaseWrite;
   const gate = new Promise((resolve) => { releaseWrite = resolve; });
   const started = new Promise((resolve) => { deferredWrite = { gate, started: resolve }; });
@@ -261,12 +274,11 @@ try {
   assert.equal((await request("GET", `/api/projects/${projectId}`)).project.name, "Quetzal-1 · revised mission");
   assert.equal(generations, 5);
   assert.deepEqual((await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem, baseline.engineeringSystem);
-  await page.getByRole("tab", { name: /Descoberta/u }).click();
-  await page.locator(".lab-canvas").waitFor();
+  await page.getByRole("button", { name: /Explorar impacto/u }).first().click();
+  await page.locator(".discovery-panel .lab-canvas").waitFor();
   for (const removed of ["Arrumar mapa", "Estruturar missão", "Organização automática"]) assert.equal(await page.getByRole("button", { name: removed, exact: true }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "Testar alteração", exact: true }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "Elementos do sistema", exact: true }).count(), 0);
-  assert.equal(await page.getByRole("tab").count(), 2);
   await page.getByRole("button", { name: "Nova ideia", exact: true }).first().click();
   // A writer types everyday words; the composer offers the names the architecture carries.
   await page.locator(".lab-composer textarea").fill("radio mais forte");
@@ -319,12 +331,10 @@ try {
   assert.ok((await node("payload").innerText({ timeout: 2000 }).catch(() => "")) === "");
   await page.getByRole("button", { name: "Aplicar ao sistema", exact: true }).click();
   assert.equal(await page.locator(".discovery-suggestion").count(), 0);
-  await page.getByRole("tab", { name: "Sistema", exact: true }).click();
   await page.getByRole("button", { name: "Expandir tudo", exact: true }).click();
   await node("payload").waitFor();
   assert.ok((await node("payload").innerText()).includes("280"), await node("payload").innerText());
   await page.screenshot({ path: "/tmp/norte-discovery-applied.png", fullPage: true });
-  await page.getByRole("tab", { name: /Descoberta/u }).click();
   await page.locator(".lab-node").last().locator(".discovery-node-text").click();
   await page.getByRole("button", { name: "Excluir", exact: true }).click();
   await page.getByRole("button", { name: "Nova ideia", exact: true }).first().click();
@@ -354,16 +364,14 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   await page.locator(".lab-node").waitFor();
   assert.equal(generations, 5);
-  await page.getByRole("tab", { name: "Sistema", exact: true }).click();
-  await page.getByRole("tab", { name: /Descoberta/u }).click();
-  await page.getByRole("button", { name: "Próxima fase", exact: true }).click();
-  await page.locator(".preliminary-preview").waitFor();
+  // The preliminary phase has no workspace: it is named as the next step and locked.
+  const nextPhase = page.getByRole("button", { name: /Próxima fase/u });
+  assert.ok(await nextPhase.isDisabled());
+  assert.ok((await nextPhase.innerText()).includes("Projeto preliminar"));
   await waitSaved();
   await page.reload({ waitUntil: "networkidle" });
-  assert.equal(await page.locator(".mission-phase").nth(2).getAttribute("aria-current"), "step");
-  await page.getByRole("button", { name: "Voltar à concepção", exact: true }).click();
-  await page.locator(".lab-canvas").waitFor();
-  assert.equal(await page.locator(".mission-phase").nth(2).isDisabled(), false);
+  await page.locator(".engineering-graph").waitFor();
+  assert.ok(await page.locator(".mission-phase").nth(2).isDisabled());
 
   // Areas are reachable in any order and each keeps the project's own data.
   await page.locator(".mission-sidebar-toggle").click();
@@ -403,7 +411,7 @@ try {
   await page.screenshot({ path: "/tmp/norte-area-software.png", fullPage: true });
 
   // Discovery follows the user onto any page, resizes and closes without losing the board.
-  await page.locator(".discovery-launcher").click();
+  if (await page.locator(".discovery-launcher").count()) await page.locator(".discovery-launcher").click();
   await page.locator(".discovery-panel .lab-node").first().waitFor();
   const startWidth = (await page.locator(".discovery-panel").boundingBox()).width;
   await page.locator(".discovery-panel-grip").focus();
@@ -423,15 +431,15 @@ try {
   });
   assert.ok(overflow <= 1, `a card runs ${overflow}px past the panel edge`);
   await page.screenshot({ path: "/tmp/norte-discovery-panel.png" });
-  await page.getByRole("button", { name: "Fechar Descoberta", exact: true }).click();
+  await page.getByRole("button", { name: /Fechar Explorar impacto/u }).click();
   assert.equal(await page.locator(".discovery-panel").count(), 0);
   await page.locator(".discovery-launcher").click();
   assert.equal(await page.locator(".discovery-panel .lab-node").count(), 1);
-  await page.getByRole("button", { name: "Fechar Descoberta", exact: true }).click();
-  // The Conception Room already owns Discovery; the launcher never duplicates it there.
+  await page.getByRole("button", { name: /Fechar Explorar impacto/u }).click();
+  // The tool is offered on every project page, the Conception Room included.
   await page.locator(".mission-phase").nth(1).click();
-  await page.locator(".lab-canvas").waitFor();
-  assert.equal(await page.locator(".discovery-launcher").count(), 0);
+  await page.locator(".engineering-graph").waitFor();
+  assert.equal(await page.locator(".discovery-launcher").count(), 1);
   await page.locator(".mission-sidebar-toggle").click();
   // Each selected project brings its own progress, team and workspace.
   const secondTeam = (await request("POST", "/api/teams", { name: "Independent test team", description: "Temporary acceptance fixture" })).team;
@@ -444,21 +452,15 @@ try {
   assert.ok(await page.locator(".mission-phase").nth(1).isDisabled());
   assert.equal(await page.locator(".mission-project-team strong").innerText(), secondTeam.name);
   await page.locator(".mission-context-switcher select").selectOption(projectId);
-  await page.locator(".lab-canvas").waitFor();
+  await page.locator(".engineering-graph").waitFor();
   // The current phase is aria-disabled because it is already selected, but remains unlocked.
   assert.equal(await page.locator(".mission-phase").nth(1).getAttribute("disabled"), null);
   assert.equal(await page.locator(".mission-phase").nth(1).getAttribute("aria-current"), "step");
   assert.equal(await page.locator(".mission-project-team strong").innerText(), "Norte Validation Team");
   await page.locator(".mission-sidebar-toggle").click();
-  assert.equal(await page.getByRole("tab", { name: /Cronograma|Timeline/u }).count(), 0);
-  await page.getByRole("tab", { name: "Sistema", exact: true }).focus();
-  await page.keyboard.press("ArrowRight");
-  assert.equal(await page.getByRole("tab", { selected: true }).innerText(), "Descoberta\nBETA");
-  await page.keyboard.press("Home");
-  assert.equal(await page.getByRole("tab", { selected: true }).innerText(), "Sistema");
+  assert.equal(await page.getByRole("tab").count(), 0);
   for (const [width, height] of [[1366, 768], [390, 844]]) {
     await page.setViewportSize({ width, height });
-    await page.getByRole("tab", { name: "Sistema", exact: true }).click();
     await page.locator(".engineering-graph").waitFor();
     assert.ok(await page.evaluate(() => document.body.scrollWidth <= window.innerWidth + 1), `Horizontal overflow at ${width}`);
     await page.screenshot({ path: `/tmp/norte-system-${width}.png`, fullPage: true });
@@ -493,11 +495,13 @@ try {
   assert.equal(await page.locator(".engineering-node").count(), expandedProject.engineeringSystem.entities.length);
   await page.getByRole("button", { name: "Enquadrar sistema", exact: true }).click();
   await page.screenshot({ path: "/tmp/norte-quetzal-whole-expanded.png", fullPage: true });
-  await page.getByRole("button", { name: "Editar memória", exact: true }).click();
+  await page.getByRole("button", { name: /Fase anterior/u }).click();
   await page.locator(".pm-artifact-card").last().waitFor();
   assert.equal(await page.locator(".pm-artifact-card").count(), 9);
   for (const source of ["ADCS hardware", "ADM hardware", "ADCS software", "MISSION overview"]) assert.equal(await page.locator(".pm-artifact-card").filter({ hasText: source }).count(), 1);
   await page.screenshot({ path: "/tmp/norte-quetzal-whole-memory.png", fullPage: true });
+  // Leaving Conception queues a project save; deleting before it lands recreates it.
+  await waitSaved();
   await request("DELETE", `/api/projects/${projectId}`);
   await request("DELETE", "/api/projects/independent-browser-project");
   await page.goto(baseUrl, { waitUntil: "networkidle" });

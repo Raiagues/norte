@@ -1,64 +1,46 @@
-import { useState } from "react";
-import { Lightbulb, Network, FileText, ArrowRight, DraftingCompass } from "lucide-react";
+import { ArrowLeft, ArrowRight, Compass, Lock } from "lucide-react";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { UserBadge } from "../components/UserBadge";
-import { BrainstormLab } from "./BrainstormLab";
 import { SystemWorkspace } from "./SystemWorkspace";
 import type { MissionProject } from "../lib/projectStore";
 import type { Language } from "../lib/types";
 import { ux } from "../lib/uxCopy";
 
 type Props = {
-  preliminary?: boolean; onNextPhase: () => void; onConception: () => void;
   language: Language; project: MissionProject; t: (path: string) => string;
   onLanguageChange: (language: Language) => void;
   onProjectChange: (project: MissionProject) => void; onHome: () => void; onBackSetup: () => void;
+  onOpenDiscovery: () => void; discoveryOpen: boolean;
 };
-type Workspace = "system" | "discovery";
 
-export function BrainstormPage({ preliminary = false, onNextPhase, onConception, language, project, t, onLanguageChange, onProjectChange, onBackSetup }: Props) {
-  const [workspace, setWorkspace] = useState<Workspace>(() => {
-    const requested = new URLSearchParams(window.location.search).get("view");
-    if (requested === "discovery") return requested;
-    if (requested === "system" || requested === "map") return "system";
-    return project.navigation.lastConceptionWorkspace === "discovery" ? "discovery" : "system";
-  });
-  function selectWorkspace(next: Workspace) {
-    setWorkspace(next);
-    onProjectChange({ ...project, navigation: { ...project.navigation, lastConceptionWorkspace: next } });
-    const url = new URL(window.location.href);
-    url.searchParams.set("view", next);
-    window.history.replaceState(window.history.state, "", url);
-  }
-  const title = preliminary ? language === "pt" ? "PROJETO PRELIMINAR" : "PRELIMINARY DESIGN" : ux(language, "conceptionRoom");
-  const tabs = [
-    { id: "system" as const, label: language === "pt" ? "Sistema" : "System", Icon: Network },
-    { id: "discovery" as const, label: language === "pt" ? "Descoberta" : "Discovery", Icon: Lightbulb }
-  ];
+export function BrainstormPage({ language, project, t, onLanguageChange, onProjectChange, onBackSetup, onOpenDiscovery, discoveryOpen }: Props) {
+  const pt = language === "pt";
+  const c = pt
+    ? { previous: "Fase anterior", previousName: "Memória do projeto", next: "Próxima fase", nextName: "Projeto preliminar", soon: "Em breve", explore: "Explorar impacto", exploreHint: "Escreva uma mudança e veja o que ela afeta" }
+    : { previous: "Previous phase", previousName: "Project memory", next: "Next phase", nextName: "Preliminary design", soon: "Coming soon", explore: "Explore impact", exploreHint: "Write a change and see what it affects" };
+
   return <div className="brain-shell brain-v2 engineering-conception">
     <main className="brain-main">
       <header className="brain-topbar">
-        <div className="brain-top-left"><div className="brain-breadcrumb"><span>{project.name}</span><span>›</span><strong>{preliminary ? language === "pt" ? "Projeto preliminar" : "Preliminary design" : language === "pt" ? "Concepção" : "Conception"}</strong></div></div>
+        <div className="brain-top-left"><div className="brain-breadcrumb"><span>{project.name}</span><span>›</span><strong>{pt ? "Concepção" : "Conception"}</strong></div></div>
         <div className="brain-top-actions"><LanguageToggle language={language} onChange={onLanguageChange} /><UserBadge connectedLabel={t("common.connected")} /></div>
       </header>
       <section className="brain-workspace">
         <div className="brain-title-row">
           <div className="brain-title-stack">
-            <div className="brain-title"><h1>{title}</h1></div>
-            {!preliminary && <div className="brain-mode-tabs" role="tablist" aria-label={ux(language, "conceptionRoom")}>
-              {tabs.map(({ id, label, Icon }, index) => <button key={id} id={`workspace-tab-${id}`} type="button" role="tab" aria-controls="conception-workspace" aria-selected={workspace === id} tabIndex={workspace === id ? 0 : -1} className={workspace === id ? "active" : ""} onClick={() => selectWorkspace(id)} onKeyDown={(event) => {
-                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-                event.preventDefault();
-                const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
-                selectWorkspace(tabs[next].id);
-                document.getElementById(`workspace-tab-${tabs[next].id}`)?.focus();
-              }}><Icon aria-hidden="true" />{label}{id === "discovery" && <em>BETA</em>}</button>)}
-            </div>}
+            <div className="brain-title"><h1>{ux(language, "conceptionRoom")}</h1></div>
           </div>
-          <div className="conception-actions"><button type="button" className="conception-memory-action" onClick={onBackSetup}><FileText />{language === "pt" ? "Editar memória" : "Edit memory"}</button>{!preliminary && <button type="button" className="conception-memory-action conception-next-action" onClick={onNextPhase}>{language === "pt" ? "Próxima fase" : "Next phase"}<ArrowRight /></button>}</div>
+          <div className="conception-actions">
+            <button type="button" className="phase-step" onClick={onBackSetup}><ArrowLeft aria-hidden="true" /><span><small>{c.previous}</small>{c.previousName}</span></button>
+            <button type="button" className="phase-step disabled" disabled title={c.soon}><span><small>{c.next}</small>{c.nextName}</span><em>{c.soon}</em><Lock aria-hidden="true" /></button>
+            <button type="button" className={`explore-impact-action${discoveryOpen ? " open" : ""}`} onClick={onOpenDiscovery} aria-pressed={discoveryOpen}>
+              <Compass aria-hidden="true" /><span><strong>{c.explore}</strong><small>{c.exploreHint}</small></span><ArrowRight aria-hidden="true" />
+            </button>
+          </div>
         </div>
-        <div id="conception-workspace" className="conception-workspace-content" role={preliminary ? undefined : "tabpanel"} aria-labelledby={preliminary ? undefined : `workspace-tab-${workspace}`}>
-          {preliminary ? <section className="preliminary-preview"><DraftingCompass /><h2>{language === "pt" ? "Detalhar o conceito escolhido" : "Develop the chosen concept"}</h2><p>{language === "pt" ? "Esta fase reunirá o dimensionamento dos subsistemas, as interfaces e as decisões de projeto. O espaço está em preparação; sua memória e arquitetura continuam disponíveis na concepção." : "This phase will bring together subsystem sizing, interfaces and design decisions. This workspace is in preparation; your memory and architecture remain available in Conception."}</p><button type="button" className="conception-memory-action" onClick={onConception}>{language === "pt" ? "Voltar à concepção" : "Return to conception"}</button></section> : workspace === "system" ? <SystemWorkspace key={project.engineeringSystem?.entities.map((item) => `${item.id}:${item.parentId ?? ""}`).join("|")} language={language} project={project} onProjectChange={onProjectChange} onBackSetup={onBackSetup} /> : <BrainstormLab language={language} project={project} onProjectChange={onProjectChange} />}
+        <div className="conception-workspace-content">
+          {/* Remounting on a changed architecture re-derives which branches are open. */}
+          <SystemWorkspace key={project.engineeringSystem?.entities.map((item) => `${item.id}:${item.parentId ?? ""}`).join("|")} language={language} project={project} onProjectChange={onProjectChange} onBackSetup={onBackSetup} />
         </div>
       </section>
     </main>
