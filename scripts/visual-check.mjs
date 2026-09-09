@@ -20,7 +20,8 @@ const app = await buildApp({ storeFile: join(directory, "state.json"), logger: f
   if (prompt.startsWith("Interpret the engineering hypothesis")) {
     interpretations++;
     const text = JSON.parse(prompt.slice(prompt.indexOf("\n") + 1)).hypothesis;
-    const result = text === "Payload 280 g" ? { kind: "parameter", targetId: "payload", summary: "A massa do payload passa a 280 g.", question: "", replacementName: "", updates: [{ propertyKey: "mass", operation: "set", value: 280, unit: "g", quote: "280 g" }] } : { kind: "clarification", targetId: "", summary: "", question: "O que mudaria nessa alternativa?", replacementName: "", updates: [] };
+    const mass = (confirmation) => ({ kind: "parameter", targetId: "payload", summary: "A massa do payload passa a 280 g.", question: "", confirmation, replacementName: "", updates: [{ propertyKey: "mass", operation: "set", value: 280, unit: "g", quote: "280 g" }] });
+    const result = text === "Payload 280 g" ? mass("") : text === "Payload mais leve, 280 g" ? mass("Você quer aplicar essa massa ao Payload?") : { kind: "clarification", targetId: "", summary: "", question: "O que mudaria nessa alternativa?", confirmation: "", replacementName: "", updates: [] };
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(result) }] } }] }), { status: 200 });
   }
   if (JSON.parse(options.body).contents[0].parts[0].text.startsWith("Give concise")) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"inferences":[]}' }] } }] }), { status: 200 });
@@ -274,6 +275,14 @@ try {
   assert.equal(await page.getByRole("dialog").count(), 0);
   await page.screenshot({ path: "/tmp/norte-discovery-interpreted.png", fullPage: true });
   await page.locator(".lab-node").getByRole("button", { name: "Ver impacto" }).click();
+  await page.locator(".discovery-suggestion").first().waitFor();
+  const suggestions = await page.locator(".discovery-suggestion").allInnerTexts();
+  assert.ok(suggestions.length > 1, `expected an impact flow, got ${suggestions.length}`);
+  assert.ok(suggestions.some((block) => block.includes("Payload")), suggestions.join(" | "));
+  assert.equal(await page.locator(".discovery-suggestion.status-changed").count(), 1);
+  assert.equal(await page.locator(".discovery-suggestion.status-critical").count(), 1);
+  await page.screenshot({ path: "/tmp/norte-discovery-suggestions.png", fullPage: true });
+  await page.getByRole("button", { name: "Abrir mapa completo", exact: true }).click();
   await page.locator(".engineering-scenario").waitFor();
   assert.equal(await page.getByRole("dialog").count(), 0);
   assert.ok((await node("payload").innerText()).includes("280"));
@@ -281,11 +290,34 @@ try {
   assert.ok((await page.locator(".engineering-requirement-impact").innerText()).includes("Conflito"));
   await page.screenshot({ path: "/tmp/norte-discovery-impact.png", fullPage: true });
   await page.getByRole("button", { name: "Limpar análise" }).click();
+  await page.getByRole("button", { name: "Descartar sugestões", exact: true }).click();
+  assert.equal(await page.locator(".discovery-suggestion").count(), 0);
   assert.equal(await page.locator(".lab-node").count(), 1);
   await page.getByRole("button", { name: "Desfazer", exact: true }).click();
   assert.equal(await page.locator(".lab-node").count(), 0);
   await page.getByRole("button", { name: "Refazer", exact: true }).click();
   assert.equal(await page.locator(".lab-node").count(), 1);
+  await page.getByRole("button", { name: "Nova ideia", exact: true }).first().click();
+  await page.locator(".lab-composer textarea").fill("Payload mais leve, 280 g");
+  await page.locator(".lab-composer textarea").press("Enter");
+  await page.locator(".lab-composer textarea").press("Escape");
+  await page.locator(".discovery-interpretation.confirmation").waitFor();
+  assert.ok((await page.locator(".lab-node").last().innerText()).includes("Você quer aplicar essa massa ao Payload?"));
+  await page.locator(".lab-node").last().getByRole("button", { name: "Sim, ver impacto", exact: true }).click();
+  await page.locator(".discovery-suggestion").first().waitFor();
+  await page.screenshot({ path: "/tmp/norte-discovery-confirmation.png", fullPage: true });
+  // Accepting is the only step that writes: the architecture must actually carry the value afterwards.
+  assert.ok((await node("payload").innerText({ timeout: 2000 }).catch(() => "")) === "");
+  await page.getByRole("button", { name: "Aplicar ao sistema", exact: true }).click();
+  assert.equal(await page.locator(".discovery-suggestion").count(), 0);
+  await page.getByRole("tab", { name: "Sistema", exact: true }).click();
+  await page.getByRole("button", { name: "Expandir tudo", exact: true }).click();
+  await node("payload").waitFor();
+  assert.ok((await node("payload").innerText()).includes("280"), await node("payload").innerText());
+  await page.screenshot({ path: "/tmp/norte-discovery-applied.png", fullPage: true });
+  await page.getByRole("tab", { name: /Descoberta/u }).click();
+  await page.locator(".lab-node").last().locator(".discovery-node-text").click();
+  await page.getByRole("button", { name: "Excluir", exact: true }).click();
   await page.getByRole("button", { name: "Nova ideia", exact: true }).first().click();
   await page.locator(".lab-composer textarea").fill("Investigar uma alternativa");
   await page.locator(".lab-composer textarea").press("Enter");

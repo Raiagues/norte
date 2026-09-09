@@ -6,7 +6,7 @@ import { analyzeImpact } from "../shared/impact-engine.mjs";
 import { createSystemAiService } from "./system-ai.mjs";
 
 const model = createEngineeringValidationModel();
-const output = (update = {}) => ({ kind: "parameter", targetId: "radio", replacementName: "", question: "", summary: "Radio current becomes 1.2 A", updates: [{ propertyKey: "peak_current", operation: "set", value: 1.2, unit: "A", quote: "radio 1.2 A", ...update }] });
+const output = (update = {}) => ({ kind: "parameter", targetId: "radio", replacementName: "", question: "", confirmation: "", summary: "Radio current becomes 1.2 A", updates: [{ propertyKey: "peak_current", operation: "set", value: 1.2, unit: "A", quote: "radio 1.2 A", ...update }] });
 test("AI interpretation is a grounded temporary change, not a baseline edit", () => {
   const before = structuredClone(model);
   const result = resolveInterpretation(model, "What if radio 1.2 A?", output());
@@ -95,4 +95,28 @@ test("clarification never asks users for internal IDs or property keys", () => {
     assert.equal(result.status, "clarification");
     assert.doesNotMatch(result.question, /ID|identificador|propertyKey/iu);
   }
+});
+
+test("a target the model can name is confirmed in one step, carrying the change it would apply", () => {
+  const question = "Você quer aplicar esse peso à Câmera?";
+  const result = resolveInterpretation(model, "What if radio 1.2 A?", { ...output(), confirmation: question }, "pt");
+  assert.equal(result.status, "confirmation");
+  assert.equal(result.question, question);
+  assert.equal(result.change.targetEntityId, "radio");
+  assert.deepEqual(result.change.newValues[0].value, 1.2);
+});
+test("a confirmation that leaks internal identifiers stays a plain resolved change", () => {
+  const result = resolveInterpretation(model, "What if radio 1.2 A?", { ...output(), confirmation: "Apply to targetId radio?" }, "pt");
+  assert.equal(result.status, "resolved");
+  assert.equal(result.question, undefined);
+});
+test("an unresolvable interpretation is never dressed up as a confirmation", () => {
+  const result = resolveInterpretation(model, "radio 1.2 A", { ...output(), targetId: "invented", confirmation: "Você quer aplicar ao rádio?" }, "pt");
+  assert.equal(result.status, "clarification");
+  assert.equal(result.change, undefined);
+});
+test("the prompt tells the model to resolve a confirmable target instead of spending a clarification", () => {
+  const prompt = interpretationPrompt(model, "mudar peso da camera para 1kg", "pt");
+  assert.match(prompt, /put a short yes\/no question in confirmation/u);
+  assert.match(prompt, /clarification is only for a piece the text genuinely does not contain/u);
 });

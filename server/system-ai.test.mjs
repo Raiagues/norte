@@ -299,7 +299,7 @@ test("artifact edits increment linked memory revisions while preserving the gene
 });
 
 test("API hypothesis interpretation uses the saved model, authenticates and never writes it", async (t) => {
-  const { app, store, headers } = await setupApi(t, async () => geminiResponse({ kind: "parameter", targetId: "radio", summary: "Radio current becomes 1.2 A", question: "", replacementName: "", updates: [{ propertyKey: "peak_current", operation: "set", value: 1.2, unit: "A", quote: "1.2 A" }] }));
+  const { app, store, headers } = await setupApi(t, async () => geminiResponse({ kind: "parameter", targetId: "radio", summary: "Radio current becomes 1.2 A", question: "", confirmation: "", replacementName: "", updates: [{ propertyKey: "peak_current", operation: "set", value: 1.2, unit: "A", quote: "1.2 A" }] }));
   await store.update((data) => { data.workspace.projects[project.id].document.engineeringSystem = createEngineeringValidationModel(); return null; });
   const before = structuredClone(store.read().workspace.projects[project.id].document);
   const options = { method: "POST", url: "/api/system-ai/interpret-hypothesis", payload: { projectId: project.id, text: "radio 1.2 A" } };
