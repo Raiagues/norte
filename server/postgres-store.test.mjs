@@ -35,7 +35,7 @@ test("the PostgreSQL adapter persists accounts, sessions and workspace data", as
   assert.equal(saved.statusCode, 200);
 
   const health = await app.inject({ method: "GET", url: "/api/health" });
-  assert.deepEqual(health.json(), { status: "ok", version: "1.0.0", storage: "postgresql" });
+  assert.deepEqual(health.json(), { status: "ok", version: "1.0.0", storage: "postgresql", engineering: { configured: false, model: "gemini-3.5-flash-lite" } });
   const row = await pool.query("SELECT data FROM norte_state WHERE id = $1", ["primary"]);
   assert.equal(row.rows[0].data.users.length, 1);
   assert.equal(row.rows[0].data.sessions.length, 1);

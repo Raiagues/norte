@@ -539,7 +539,10 @@ export async function buildApp(options = {}) {
     schema: { tags: ["System"], summary: "Check API health" }
   }, async () => {
     await store.health?.();
-    return { status: "ok", version: "1.0.0", storage: databaseUrl ? "postgresql" : "local" };
+    // `engineering` reports only whether a key is present, never the key itself,
+    // so a deployment can be verified with one unauthenticated request.
+    const engineering = systemAi.status();
+    return { status: "ok", version: "1.0.0", storage: databaseUrl ? "postgresql" : "local", engineering: { configured: engineering.configured, model: engineering.model } };
   });
 
   app.get("/api/auth/session", {

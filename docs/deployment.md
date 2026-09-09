@@ -30,6 +30,14 @@ Não coloque essa URL no GitHub, em arquivos `.env` versionados ou em capturas d
 
 O arquivo [render.yaml](../render.yaml) fixa Node 24.20 LTS, verifica `/api/health` e só faz CD quando os checks do GitHub passam. O Render injeta os segredos no servidor; eles não entram no bundle do navegador.
 
+Depois do deploy, confirme numa requisição que a extração de engenharia está configurada:
+
+```
+curl https://<seu-servico>.onrender.com/api/health
+```
+
+A resposta traz `"engineering": { "configured": true, "model": "..." }`. Se vier `false`, a variável `GEMINI_API_KEY` não chegou ao serviço: preencha em **Render > Environment** e refaça o deploy. O campo informa apenas a presença da chave, nunca o valor.
+
 ## 3. Primeiro acesso
 
 Abra a URL HTTPS entregue pelo Render e crie a primeira conta. Ela se torna proprietária/admin. Depois use **Memória do projeto > Adicionar pessoa** para gerar convites individuais.

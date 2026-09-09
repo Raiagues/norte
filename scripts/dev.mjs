@@ -2,11 +2,10 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { loadLocalEnvironment } from "../server/local-environment.mjs";
 
 // Keep Gemini configuration server-side while supporting the documented local setup.
-for (const envFile of [".env", ".env.local"]) {
-  try { process.loadEnvFile?.(envFile); } catch (error) { if (error.code !== "ENOENT") throw error; }
-}
+loadLocalEnvironment();
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const node = process.execPath;
@@ -15,7 +14,8 @@ const vite = resolve(root, "node_modules/vite/bin/vite.js");
 const [nodeMajor, nodeMinor] = process.versions.node.split(".").map(Number);
 if (nodeMajor < 24 || (nodeMajor === 24 && nodeMinor < 20)) {
   console.error(`Norte requires Node.js 24.20 or newer. Current version: ${process.versions.node}.`);
-  console.error("Install the version declared in .node-version, then run npm ci and npm run dev again.");
+  console.error("Older runtimes crash on the argon2 native binding before the API can start.");
+  console.error("Run:  source ~/.nvm/nvm.sh && nvm install && npm ci && npm run dev");
   process.exit(1);
 }
 

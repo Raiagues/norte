@@ -55,18 +55,20 @@ See [architecture](docs/architecture.md), [product research and UX decisions](do
 
 ## Running locally
 
-Use **Node.js 24.20.0 or newer**, as declared in `.node-version` and `package.json`.
+Use **Node.js 24.20.0 or newer**, as declared in `.node-version` and `package.json`. Older
+runtimes crash on the `argon2` native binding before the API can start, so `nvm use` first:
 
 ```bash
 git clone https://github.com/Raiagues/norte.git
 cd norte
+nvm install   # reads .node-version
 npm ci
 cp .env.example .env
 # Set GEMINI_API_KEY in .env to enable server-side extraction.
 npm run dev
 ```
 
-The launcher loads `.env` and `.env.local`, starts the client and API, and prints their addresses. It chooses the next available port when a preferred port is occupied.
+Every entry point loads `.env` and `.env.local`, so `npm start` and `npm run dev:api` see the same configuration as `npm run dev`; hosted environments keep the variables their platform injects. The launcher starts the client and API and prints their addresses. It chooses the next available port when a preferred port is occupied.
 
 | Service | Default URL |
 | --- | --- |

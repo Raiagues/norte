@@ -1,5 +1,11 @@
 import { attachQuetzalArchitectureSources } from "./quetzal-source-extension.mjs";
-import { buildApp } from "./app.mjs";
+import { loadLocalEnvironment } from "./local-environment.mjs";
+
+// Local secrets must reach every entry point, not only `npm run dev`. Hosted
+// deployments inject their own environment and are left untouched.
+loadLocalEnvironment();
+
+const { buildApp } = await import("./app.mjs");
 
 const port = Number(process.env.PORT || process.env.NORTE_API_PORT || process.env.MISSION_API_PORT || 8787);
 const host = process.env.NORTE_API_HOST || process.env.MISSION_API_HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
