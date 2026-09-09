@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ListChecks, Network } from "lucide-react";
+import { Network } from "lucide-react";
 import { ProjectAreaShell, AreaPreviewNote } from "../components/ProjectAreaShell";
 import { RequirementTable } from "../components/RequirementTable";
 import type { RequirementColumn } from "../components/RequirementTable";
@@ -11,14 +11,14 @@ export function RequirementsPage({ language, project, onOpenConception }: { lang
   const pt = language === "pt";
   const requirements = useMemo(() => projectRequirements(project, language), [project, language]);
   const c = pt ? {
-    eyebrow: "Área do projeto", title: "Requisitos", subtitle: "Requisitos do sistema e do programa numa lista só, com o que cada um exige e onde é verificado.",
+    title: "Requisitos",
     empty: "Nenhum requisito ainda. Gere a arquitetura na Concepção ou escolha um programa de referência na Memória do projeto.",
     noMatch: "Nenhum requisito corresponde aos filtros.", open: "Ir para a Concepção",
     id: "ID", requirement: "Requisito", subsystem: "Subsistema", method: "Verificação", origin: "Origem", linked: "Arquitetura", tests: "Testes",
     none: "—", planned: "A planejar", review: "Revisar",
     count: (value: number) => `${value} ${value === 1 ? "requisito" : "requisitos"}`
   } : {
-    eyebrow: "Project area", title: "Requirements", subtitle: "System and programme requirements in one list, with what each demands and where it is verified.",
+    title: "Requirements",
     empty: "No requirements yet. Generate the architecture in Conception, or pick a reference programme in Project Memory.",
     noMatch: "No requirement matches the filters.", open: "Go to Conception",
     id: "ID", requirement: "Requirement", subsystem: "Subsystem", method: "Verification", origin: "Source", linked: "Architecture", tests: "Tests",
@@ -36,7 +36,7 @@ export function RequirementsPage({ language, project, onOpenConception }: { lang
     { id: "tests", head: c.tests, cell: (requirement) => requirement.changed.length ? <span className="requirement-review">{c.review}</span> : <span className="requirement-muted">{c.planned}</span> }
   ];
 
-  return <ProjectAreaShell language={language} project={project} icon={<ListChecks aria-hidden="true" />} eyebrow={c.eyebrow} title={c.title} subtitle={c.subtitle} counter={c.count(requirements.length)}>
+  return <ProjectAreaShell language={language} project={project} title={c.title} counter={c.count(requirements.length)}>
     {!requirements.length
       ? <div className="area-empty"><Network aria-hidden="true" /><p>{c.empty}</p><button type="button" onClick={onOpenConception}>{c.open}</button></div>
       : <>

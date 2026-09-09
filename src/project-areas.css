@@ -51,11 +51,11 @@
 /* Shared area page chrome. */
 .project-area { display: flex; flex-direction: column; height: 100%; min-height: 0; background: #051a2c; color: #d7e7f5; }
 .project-area-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 20px 26px 16px; border-bottom: 1px solid #1b3450; }
-.project-area-heading { display: flex; gap: 14px; min-width: 0; }
+.project-area-heading { display: grid; gap: 4px; min-width: 0; }
 .project-area-icon { display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; border: 1px solid #2c5678; border-radius: 9px; background: #0a2438; color: #78bde9; }
 .project-area-icon svg { width: 19px; height: 19px; }
 .project-area-heading small { display: block; color: #7fa0ba; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
-.project-area-heading h1 { margin: 4px 0 5px; font-size: 25px; font-weight: 500; letter-spacing: .01em; }
+.project-area-heading h1 { margin: 0; font-size: 27px; font-weight: 400; letter-spacing: .06em; text-transform: uppercase; }
 .project-area-heading p { margin: 0; max-width: 70ch; color: #9db8cf; font-size: 12px; line-height: 1.6; }
 .project-area-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .project-area-counter { color: #90aec6; font-size: 11px; white-space: nowrap; }
@@ -129,28 +129,47 @@
 .verification-why { display: inline-flex; align-items: flex-start; gap: 6px; color: #d5b779; font-size: 11px; line-height: 1.45; }
 .verification-why svg { width: 12px; height: 12px; flex-shrink: 0; margin-top: 2px; }
 
-/* Software reads as an architecture: blocks in lanes, with their links named. */
-.software-diagram { display: grid; gap: 12px; min-width: 0; padding: 16px; border: 1px solid #22415c; border-radius: 9px; background: #071f33; }
-.software-lane { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; }
-.software-lane-label { display: inline-flex; align-items: center; gap: 7px; color: #8ba6bd; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
-.software-lane-label svg { width: 13px; height: 13px; }
-.software-lane-blocks { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 10px; }
-.software-block { display: grid; align-content: start; gap: 5px; min-width: 0; padding: 12px 13px; border: 1px solid var(--lane-accent, #3f6f97); border-top-width: 3px; border-radius: 8px; background: #0a2439; }
-.software-block.lane-0 { --lane-accent: #d9bd7f; }
-.software-block.lane-1 { --lane-accent: #6fb6e8; }
-.software-block.lane-2 { --lane-accent: #86d9bb; }
-.software-block.lane-3 { --lane-accent: #b7a9e0; }
-.software-block strong { color: #e4f0fb; font-size: 13px; font-weight: 550; }
-.software-block > small { color: #93aec5; font-size: 11px; line-height: 1.45; }
-.software-block-ports { display: grid; gap: 4px; margin-top: 4px; padding-top: 7px; border-top: 1px solid #1c344c; }
-.software-port { display: grid; gap: 2px; color: #bed5e8; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
-.software-port em { color: #7fa0ba; font-style: normal; font-size: 9px; text-transform: uppercase; letter-spacing: .07em; }
-.software-port.req { color: #8fd9bd; }
-.software-diagram { position: relative; }
-.software-edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-.software-edges path { fill: none; stroke: #3f6685; stroke-width: 1.3; stroke-dasharray: 4 5; }
-.software-lane, .software-block { position: relative; z-index: 1; }
-.software-legend { margin: 2px 0 0; color: #7e97ad; font-size: 10.5px; line-height: 1.6; }
+/* Software reads like a flight-software architecture: small named blocks the
+   user can rearrange, a core panel underneath, and details on demand. */
+.project-area .software-edit { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border: 1px solid #2f567a; border-radius: 7px; background: #0a2337; color: #cadff1; font-size: 11px; cursor: pointer; }
+.project-area .software-edit.editing { border-color: #6bd3b3; background: #0b3230; color: #9fe6cd; }
+.project-area .software-edit svg { width: 14px; height: 14px; }
+
+.software-canvas { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 230px); grid-template-areas: "apps inspector" "core inspector"; gap: 12px; align-items: start; }
+.software-canvas > .software-panel:first-of-type { grid-area: apps; }
+.software-canvas > .software-panel:nth-of-type(2) { grid-area: core; }
+.software-inspector { grid-area: inspector; }
+.software-panel { min-width: 0; padding: 12px 14px 14px; border: 1px solid #22415c; border-radius: 9px; background: #071f33; }
+.software-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; color: #8ba6bd; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .09em; }
+.software-reset { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid #35597a; border-radius: 5px; background: #0b2438; color: #b9d8f2; font-size: 10px; text-transform: none; letter-spacing: 0; cursor: pointer; }
+.software-reset svg { width: 12px; height: 12px; }
+
+.software-apps { position: relative; min-height: 62px; overflow: hidden; }
+.software-app { position: absolute; display: grid; align-content: center; gap: 3px; padding: 8px 11px; border: 1px solid #4d8fc4; border-radius: 7px; background: #123a5c; color: #e6f2fd; text-align: left; cursor: pointer; }
+.software-app:hover { border-color: #8ec8f4; }
+.software-app.selected { z-index: 2; border-color: #a8dcff; background: #1b527d; box-shadow: 0 0 0 2px #4d8fc455; }
+.software-app.editable:active { z-index: 3; }
+.software-app.editable { cursor: grab; touch-action: none; }
+.software-app.editable:active { cursor: grabbing; z-index: 3; }
+.software-app strong { font-size: 14px; font-weight: 650; letter-spacing: .03em; }
+.software-app small { color: #a9cbe8; font-size: 10px; }
+
+.software-core { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.software-service { display: grid; align-content: center; gap: 3px; min-height: 54px; padding: 9px 12px; border: 1px solid #6a5fa8; border-radius: 7px; background: #2a2748; color: #e7e3fb; }
+.software-service.bus { grid-column: 1 / -1; border-color: #8f7fd6; background: #3b3470; text-align: center; }
+.software-service strong { font-size: 12.5px; font-weight: 600; }
+.software-service small { color: #b7aee2; font-size: 10px; }
+
+.software-inspector { display: grid; align-content: start; gap: 10px; padding: 12px 14px; border: 1px solid #22415c; border-radius: 9px; background: #071f33; min-height: 120px; }
+.software-inspector > strong { color: #e4f0fb; font-size: 15px; font-weight: 650; letter-spacing: .03em; }
+.software-inspector > p { margin: 0; color: #8ba6bd; font-size: 11px; line-height: 1.5; }
+.software-inspector div { display: grid; gap: 4px; }
+.software-inspector small { color: #7fa0ba; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.software-inspector ul { margin: 0; padding-left: 15px; display: grid; gap: 2px; color: #cfe4f4; font-size: 11.5px; }
+.software-inspector em { color: #7e97ad; font-style: normal; font-size: 11px; }
+
+.project-area-breadcrumb { display: flex; align-items: center; gap: 8px; color: #7fa0ba; font-size: 11px; }
+.project-area-breadcrumb strong { color: #b9d3e9; font-weight: 550; }
 
 @media (max-width: 900px) {
   .project-area-head { flex-direction: column; gap: 12px; padding: 16px; }

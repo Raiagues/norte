@@ -418,7 +418,7 @@ export function App() {
   if (route === "teams") page = <TeamsHubPage language={language} t={t} onLanguageChange={changeLanguage} onBack={openHome} initialTeamId={project.context.teamId ?? ""} onTeamsChanged={() => void refreshTeams()} />;
   if (route === "projectTeam") page = <TeamPage language={language} project={project} t={t} onLanguageChange={changeLanguage} onBack={openMemory} onProjectSetup={openMemory} />;
   if (route === "requirements") page = <RequirementsPage language={language} project={project} onOpenConception={() => void openBrainstorm().catch(() => undefined)} />;
-  if (route === "software") page = <SoftwarePage language={language} project={project} onOpenRequirements={() => openArea("requirements")} />;
+  if (route === "software") page = <SoftwarePage language={language} project={project} onProjectChange={changeProject} />;
   if (route === "verification") page = <VerificationPage language={language} project={project} onOpenRequirements={() => openArea("requirements")} />;
   if (route === "brainstorm") page = <BrainstormPage key={`${project.id}:${route}`} language={language} project={project} t={t} onLanguageChange={changeLanguage} onProjectChange={changeProject} onHome={openHome} onBackSetup={openMemory} onOpenDiscovery={discovery.toggle} discoveryOpen={discovery.open} />;
 

@@ -4,20 +4,17 @@ import type { MissionProject } from "../lib/projectStore";
 import type { Language } from "../lib/types";
 
 type Props = {
-  language: Language; project: MissionProject; icon: ReactNode;
-  eyebrow: string; title: string; subtitle: string; counter?: string; actions?: ReactNode; children: ReactNode;
+  language: Language; project: MissionProject;
+  title: string; counter?: string; actions?: ReactNode; children: ReactNode;
 };
 
-export function ProjectAreaShell({ language, project, icon, eyebrow, title, subtitle, counter, actions, children }: Props) {
+/** Same heading as Project Memory and Conception: the name, in caps, and nothing else. */
+export function ProjectAreaShell({ language, project, title, counter, actions, children }: Props) {
   return <section className="project-area">
     <header className="project-area-head">
       <div className="project-area-heading">
-        <span className="project-area-icon">{icon}</span>
-        <div>
-          <small>{eyebrow} · {project.name}</small>
-          <h1>{title}</h1>
-          <p>{subtitle}</p>
-        </div>
+        <div className="project-area-breadcrumb"><span>{project.name}</span><span>›</span><strong>{title}</strong></div>
+        <h1>{title}</h1>
       </div>
       <div className="project-area-actions">
         {counter && <span className="project-area-counter">{counter}</span>}

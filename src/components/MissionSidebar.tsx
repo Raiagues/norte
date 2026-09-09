@@ -1,6 +1,6 @@
 import { Brand } from "./Brand";
 import { UserBadge } from "./UserBadge";
-import { FolderKanban, Home, UsersRound, FileText, Compass, DraftingCompass, Boxes, TestTubeDiagonal, Satellite, ListChecks, Code2, ShieldCheck, Waypoints } from "lucide-react";
+import { FolderKanban, Home, UsersRound, FileText, Compass, Satellite, ListChecks, Code2, ShieldCheck, Waypoints } from "lucide-react";
 import type { ProjectSummary } from "../lib/team";
 import type { Language } from "../lib/types";
 
@@ -29,26 +29,21 @@ type Props = {
   onOpenDiscovery: () => void;
 };
 
-/** Areas cut across the phases: reachable at any point, in any order. */
-const AREAS = [
-  { id: "requirements" as const, pt: "Requisitos", en: "Requirements", Icon: ListChecks },
-  { id: "software" as const, pt: "Software", en: "Software", Icon: Code2 },
-  { id: "verification" as const, pt: "Verificação", en: "Verification", Icon: ShieldCheck }
-];
-
-const labels = {
-  pt: ["Memória do projeto", "Concepção", "Projeto preliminar", "Projeto detalhado", "Integração e verificação", "Operações"],
-  en: ["Project memory", "Conception", "Preliminary design", "Detailed design", "Integration & verification", "Operations"]
-};
-const phaseIcons = [FileText, Compass, DraftingCompass, Boxes, TestTubeDiagonal, Satellite];
-function PhaseIcon({ step }: { step: number }) { const Icon = phaseIcons[step]; return <Icon aria-hidden="true" />; }
+/** One rail: the phases that exist, the areas that cut across them, and what is still to come. */
+const RAIL = [
+  { key: "memory", pt: "Memória do projeto", en: "Project memory", Icon: FileText, step: 0 },
+  { key: "conception", pt: "Concepção", en: "Conception", Icon: Compass, step: 1 },
+  { key: "requirements", pt: "Requisitos", en: "Requirements", Icon: ListChecks, area: "requirements" },
+  { key: "software", pt: "Software", en: "Software", Icon: Code2, area: "software" },
+  { key: "verification", pt: "Verificação", en: "Verification", Icon: ShieldCheck, area: "verification" },
+  { key: "operations", pt: "Operações", en: "Operations", Icon: Satellite, upcoming: true }
+] as const;
 
 function LockIcon() {
   return <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.2" y="5.1" width="7.6" height="5.1" rx="1" /><path d="M3.8 5.1V3.7a2.2 2.2 0 0 1 4.4 0v1.4" /></svg>;
 }
 
 export function MissionSidebar({ language, currentStep, expanded, connectedLabel, homeLabel, teamLabel, homeActive, teamActive, projects, projectTeamName, highestUnlockedStep, activeProjectId, onToggle, onHome, onTeam, onProjectSelect, onStepSelect, activeArea, onAreaSelect, discoveryAvailable, discoveryOpen, onOpenDiscovery }: Props) {
-  const phaseLabels = labels[language];
   const stateWords = language === "pt" ? { complete: "Concluída", current: "Fase atual", available: "Disponível", locked: "Ainda não disponível" } : { complete: "Complete", current: "Current phase", available: "Available", locked: "Not available yet" };
   const contextWords = language === "pt" ? { project: "Projeto ativo", team: "Equipe", noneProject: "Nenhum projeto", noneTeam: "Nenhuma equipe", switcher: "Trocar projeto" } : { project: "Active project", team: "Team", noneProject: "No project", noneTeam: "No team", switcher: "Switch project" };
 
@@ -89,45 +84,31 @@ export function MissionSidebar({ language, currentStep, expanded, connectedLabel
 
         <div className="mission-sidebar-divider context-divider" />
 
-        <nav className="mission-pipeline" aria-label={language === "pt" ? "Pipeline da missão" : "Mission pipeline"}>
-          {phaseLabels.map((label, step) => {
-            const upcoming = step > 2 || step === 2 && highestUnlockedStep < 2;
-            const complete = !upcoming && step < highestUnlockedStep;
-            const current = currentStep === step;
-            const locked = upcoming || step > highestUnlockedStep;
+        <nav className="mission-pipeline" aria-label={language === "pt" ? "Navegação do projeto" : "Project navigation"}>
+          {RAIL.map((item, index) => {
+            const label = language === "pt" ? item.pt : item.en;
+            const isArea = "area" in item;
+            const locked = "upcoming" in item || (!isArea && "step" in item && item.step > highestUnlockedStep) || (isArea && !activeProjectId);
+            const current = isArea ? activeArea === item.area : "step" in item && currentStep === item.step;
+            const complete = !locked && !isArea && "step" in item && item.step < highestUnlockedStep;
             const state = current ? "current" : locked ? "locked" : complete ? "complete" : "available";
-            const clickable = !locked && !current;
-            const stateLabel = upcoming ? language === "pt" ? "Fase futura" : "Upcoming phase" : stateWords[state];
-            const tooltip = `${String(step + 1).padStart(2, "0")} · ${label} · ${stateLabel}`;
-
+            const stateLabel = "upcoming" in item ? language === "pt" ? "Fase futura" : "Upcoming phase" : stateWords[state];
             return (
-              <button className={`mission-phase ${state}`} key={label} type="button" aria-current={current ? "step" : undefined} disabled={locked} aria-disabled={!clickable} tabIndex={locked ? -1 : 0} onClick={() => clickable && onStepSelect(step)} title={tooltip} aria-label={`${label} · ${stateLabel}`}>
+              <button className={`mission-phase ${state}`} key={item.key} type="button" aria-current={current ? isArea ? "page" : "step" : undefined} disabled={locked} aria-disabled={locked || current} tabIndex={locked ? -1 : 0}
+                onClick={() => { if (locked || current) return; if (isArea) onAreaSelect(item.area); else if ("step" in item) onStepSelect(item.step); }}
+                title={`${String(index + 1).padStart(2, "0")} · ${label} · ${stateLabel}`} aria-label={`${label} · ${stateLabel}`}>
                 <span className="mission-phase-rail" />
                 <span className="mission-phase-icon">
-                  <PhaseIcon step={step} />
+                  <item.Icon aria-hidden="true" />
                   {complete && <span className="mission-phase-check">✓</span>}
                   {locked && <span className="mission-phase-lock"><LockIcon /></span>}
                 </span>
                 <span className="mission-phase-copy">
-                  <small>{String(step + 1).padStart(2, "0")}</small>
+                  <small>{String(index + 1).padStart(2, "0")}</small>
                   <span>{label}</span>
                 </span>
               </button>
             );
-          })}
-        </nav>
-
-        <div className="mission-sidebar-divider" />
-
-        <nav className="mission-areas" aria-label={language === "pt" ? "Áreas do projeto" : "Project areas"}>
-          {expanded && <small className="mission-areas-title">{language === "pt" ? "Áreas do projeto" : "Project areas"}</small>}
-          {AREAS.map(({ id, pt, en, Icon }) => {
-            const label = language === "pt" ? pt : en;
-            const available = Boolean(activeProjectId);
-            return <button key={id} type="button" className={`mission-area${activeArea === id ? " active" : ""}`} disabled={!available} aria-current={activeArea === id ? "page" : undefined} onClick={() => onAreaSelect(id)} title={available ? label : language === "pt" ? "Abra um projeto primeiro" : "Open a project first"}>
-              <span className="mission-area-icon"><Icon aria-hidden="true" /></span>
-              <span className="mission-area-label">{label}</span>
-            </button>;
           })}
         </nav>
 

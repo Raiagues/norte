@@ -12,14 +12,14 @@ export function VerificationPage({ language, project, onOpenRequirements }: { la
   const requirements = useMemo(() => projectRequirements(project, language), [project, language]);
   const staleCount = requirements.filter((requirement) => requirement.changed.length).length;
   const c = pt ? {
-    eyebrow: "Área do projeto", title: "Verificação", subtitle: "Como cada requisito é comprovado, e o que deixa de valer quando o projeto muda.",
+    title: "Verificação",
     empty: "A verificação se organiza em torno dos requisitos. Gere a arquitetura na Concepção para começar.",
     noMatch: "Nenhuma verificação corresponde aos filtros.", open: "Ver requisitos",
     id: "ID", requirement: "Requisito", method: "Método", evidence: "Evidência", state: "Situação", why: "Mudou desde a verificação",
     planned: "Planejada", review: "Revisar", current: "Sem pendência", stateFilter: "Situação", none: "—",
     counter: (total: number) => `${total} ${total === 1 ? "verificação" : "verificações"}${staleCount ? ` · ${staleCount} a revisar` : ""}`
   } : {
-    eyebrow: "Project area", title: "Verification", subtitle: "How each requirement is proven, and what stops holding when the project changes.",
+    title: "Verification",
     empty: "Verification is organised around requirements. Generate the architecture in Conception to begin.",
     noMatch: "No verification matches the filters.", open: "See requirements",
     id: "ID", requirement: "Requirement", method: "Method", evidence: "Evidence", state: "State", why: "Changed since verification",
@@ -41,7 +41,7 @@ export function VerificationPage({ language, project, onOpenRequirements }: { la
       : <span className="requirement-muted">{c.none}</span> }
   ];
 
-  return <ProjectAreaShell language={language} project={project} icon={<ShieldCheck aria-hidden="true" />} eyebrow={c.eyebrow} title={c.title} subtitle={c.subtitle} counter={c.counter(requirements.length)}>
+  return <ProjectAreaShell language={language} project={project} title={c.title} counter={c.counter(requirements.length)}>
     {!requirements.length
       ? <div className="area-empty"><ShieldCheck aria-hidden="true" /><p>{c.empty}</p><button type="button" onClick={onOpenRequirements}>{c.open}</button></div>
       : <>

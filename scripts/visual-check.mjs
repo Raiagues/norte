@@ -192,7 +192,9 @@ try {
   for (const name of ["Requisitos", "Revisar documentos", "E se…", "Relações do elemento"]) assert.equal(await page.locator(".app-page").getByRole("button", { name, exact: true }).count(), 0);
   assert.equal(await page.getByLabel("Buscar elemento").count(), 0);
   assert.equal(await page.locator(".mission-phase").count(), 6);
-  for (let phase = 2; phase < 6; phase++) assert.ok(await page.locator(".mission-phase").nth(phase).isDisabled());
+  // Areas are reachable from the start; only Operations is still to come.
+  for (let phase = 2; phase < 5; phase++) assert.equal(await page.locator(".mission-phase").nth(phase).isDisabled(), false);
+  assert.ok(await page.locator(".mission-phase").nth(5).isDisabled());
   await node("communication").locator(".engineering-node-expand").click();
   await node("radio").waitFor();
   assert.equal(await node("communication").locator(".engineering-node-expand").getAttribute("aria-expanded"), "true");
@@ -371,16 +373,20 @@ try {
   await waitSaved();
   await page.reload({ waitUntil: "networkidle" });
   await page.locator(".engineering-graph").waitFor();
-  assert.ok(await page.locator(".mission-phase").nth(2).isDisabled());
+  assert.ok(await page.locator(".mission-phase").nth(5).isDisabled());
 
   // Areas are reachable in any order and each keeps the project's own data.
   await page.locator(".mission-sidebar-toggle").click();
-  for (const [area, heading] of [["Requisitos", "Requisitos"], ["Software", "Software"], ["Verificação", "Verificação"]]) {
-    await page.locator(".mission-area").filter({ hasText: area }).click();
+  assert.equal(await page.locator(".mission-area").count(), 0);
+  assert.equal(await page.locator(".mission-phase").count(), 6);
+  assert.ok(await page.locator(".mission-phase").nth(5).isDisabled(), "Operations stays locked");
+  const rail = page.locator(".mission-phase");
+  for (const [index, heading] of [[2, "REQUISITOS"], [3, "SOFTWARE"], [4, "VERIFICAÇÃO"]]) {
+    await rail.nth(index).click();
     assert.equal(await page.locator(".project-area-heading h1").innerText(), heading);
     assert.equal((await page.locator(".project-area-preview").innerText()).toLocaleLowerCase("pt"), "prévia");
   }
-  await page.locator(".mission-area").filter({ hasText: "Requisitos" }).click();
+  await rail.nth(2).click();
   // System requirements and the reference programme's own rules share one list.
   const rows = () => page.locator(".requirement-table tbody tr");
   assert.ok(await rows().count() > 2, `expected system and programme rows, got ${await rows().count()}`);
@@ -395,7 +401,7 @@ try {
   assert.equal(await page.locator(".requirement-empty").count(), 1);
   await page.locator(".requirement-clear").click();
   assert.equal(await rows().count(), total);
-  await page.locator(".mission-area").filter({ hasText: "Verificação" }).click();
+  await rail.nth(4).click();
   // A change explored and saved earlier marks the verification that depended on it.
   assert.equal(await page.locator(".requirement-table tbody tr.changed").count(), 1);
   assert.ok((await page.locator(".requirement-table tbody tr.changed").innerText()).includes("Total mass"), await page.locator(".requirement-table tbody tr.changed").innerText());
@@ -403,11 +409,35 @@ try {
   assert.equal(await page.locator(".requirement-table tbody tr").count(), 1);
   await page.locator(".requirement-clear").click();
   await page.screenshot({ path: "/tmp/norte-area-verification.png", fullPage: true });
-  await page.locator(".mission-area").filter({ hasText: "Software" }).click();
+  await rail.nth(3).click();
   assert.ok(await page.locator(".area-repo-action").isDisabled());
-  assert.equal(await page.locator(".software-block").count(), 7);
-  assert.equal(await page.locator(".software-lane").count(), 4);
-  assert.ok((await page.locator("#software-power").innerText()).includes("Battery"), await page.locator("#software-power").innerText());
+  // Apps are named after real parts of this project; the core panel is always there.
+  assert.ok(await page.locator(".software-app").count() >= 3, `apps: ${await page.locator(".software-app").count()}`);
+  assert.equal(await page.locator(".software-service").count(), 5);
+  const power = page.locator(".software-app").filter({ hasText: "EPS" });
+  await power.click();
+  assert.ok((await page.locator(".software-inspector").innerText()).includes("Battery"), await page.locator(".software-inspector").innerText());
+  // The canvas only moves in edit mode, and a move is kept.
+  const before = await power.evaluate((element) => element.style.left);
+  const box = await power.boundingBox();
+  const drag = async () => { await page.mouse.move(box.x + 20, box.y + 20); await page.mouse.down(); await page.mouse.move(box.x + 120, box.y + 90, { steps: 8 }); await page.mouse.up(); };
+  await drag();
+  assert.equal(await power.evaluate((element) => element.style.left), before);
+  await page.getByRole("button", { name: "Editar", exact: true }).click();
+  await drag();
+  assert.notEqual(await power.evaluate((element) => element.style.left), before);
+  await waitSaved();
+  assert.ok((await request("GET", `/api/projects/${projectId}`)).project.navigation.systemLayouts.software.eps);
+  // Nothing may escape the panel it belongs to.
+  const escaped = await page.evaluate(() => {
+    const frame = document.querySelector(".software-apps").getBoundingClientRect();
+    return [...document.querySelectorAll(".software-app")].some((app) => {
+      const box = app.getBoundingClientRect();
+      return box.left < frame.left - 1 || box.right > frame.right + 1 || box.top < frame.top - 1 || box.bottom > frame.bottom + 1;
+    });
+  });
+  assert.equal(escaped, false, "a software block escaped its panel");
+  await page.getByRole("button", { name: "Concluir edição", exact: true }).click();
   await page.screenshot({ path: "/tmp/norte-area-software.png", fullPage: true });
 
   // Discovery follows the user onto any page, resizes and closes without losing the board.
@@ -427,7 +457,7 @@ try {
   });
   const overflow = await page.evaluate(() => {
     const panel = document.querySelector(".discovery-panel").getBoundingClientRect().left;
-    return Math.max(...[...document.querySelectorAll(".software-block")].map((card) => card.getBoundingClientRect().right)) - panel;
+    return Math.max(...[...document.querySelectorAll(".software-panel")].map((card) => card.getBoundingClientRect().right)) - panel;
   });
   assert.ok(overflow <= 1, `a card runs ${overflow}px past the panel edge`);
   await page.screenshot({ path: "/tmp/norte-discovery-panel.png" });
