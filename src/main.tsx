@@ -12,6 +12,7 @@ import "./brainstorm-readability.css";
 import "./brainstorm-controls.css";
 import "./brainstorm-lab.css";
 import "./conception-workspace.css";
+import "./project-areas.css";
 import "./auth.css";
 
 function Root() {

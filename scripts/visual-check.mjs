@@ -188,7 +188,8 @@ try {
   await page.waitForTimeout(220);
   await page.screenshot({ path: "/tmp/norte-system-macro.png", fullPage: true });
   assert.equal(await page.locator(".engineering-requirements-panel").count(), 0);
-  for (const name of ["Requisitos", "Revisar documentos", "E se…", "Relações do elemento"]) assert.equal(await page.getByRole("button", { name, exact: true }).count(), 0);
+  // Scoped to the page: "Requisitos" is also a project area in the sidebar.
+  for (const name of ["Requisitos", "Revisar documentos", "E se…", "Relações do elemento"]) assert.equal(await page.locator(".app-page").getByRole("button", { name, exact: true }).count(), 0);
   assert.equal(await page.getByLabel("Buscar elemento").count(), 0);
   assert.equal(await page.locator(".mission-phase").count(), 6);
   for (let phase = 2; phase < 6; phase++) assert.ok(await page.locator(".mission-phase").nth(phase).isDisabled());
@@ -296,6 +297,7 @@ try {
   assert.equal(await node("radio").count(), 0);
   assert.ok((await page.locator(".engineering-requirement-impact").innerText()).includes("Conflito"));
   await page.screenshot({ path: "/tmp/norte-discovery-impact.png", fullPage: true });
+  await page.getByRole("button", { name: "Salvar cenário", exact: true }).click();
   await page.getByRole("button", { name: "Limpar análise" }).click();
   await page.getByRole("button", { name: "Descartar sugestões", exact: true }).click();
   assert.equal(await page.locator(".discovery-suggestion").count(), 0);
@@ -362,6 +364,61 @@ try {
   await page.getByRole("button", { name: "Voltar à concepção", exact: true }).click();
   await page.locator(".lab-canvas").waitFor();
   assert.equal(await page.locator(".mission-phase").nth(2).isDisabled(), false);
+
+  // Areas are reachable in any order and each keeps the project's own data.
+  await page.locator(".mission-sidebar-toggle").click();
+  for (const [area, heading] of [["Requisitos", "Requisitos"], ["Software", "Software"], ["Verificação", "Verificação"]]) {
+    await page.locator(".mission-area").filter({ hasText: area }).click();
+    assert.equal(await page.locator(".project-area-heading h1").innerText(), heading);
+    assert.equal((await page.locator(".project-area-preview").innerText()).toLocaleLowerCase("pt"), "prévia");
+  }
+  await page.locator(".mission-area").filter({ hasText: "Requisitos" }).click();
+  assert.equal(await page.locator(".area-list-item").count(), 2);
+  await page.locator(".area-list-item").last().click();
+  assert.ok((await page.locator(".area-link-card.live").innerText()).includes("Total mass"), await page.locator(".area-link-card.live").innerText());
+  await page.screenshot({ path: "/tmp/norte-area-requirements.png", fullPage: true });
+  await page.locator(".mission-area").filter({ hasText: "Verificação" }).click();
+  assert.equal(await page.locator(".verification-card").count(), 2);
+  // A change explored and saved earlier marks the verification that depended on it.
+  assert.equal(await page.locator(".verification-card.stale").count(), 1);
+  assert.ok((await page.locator(".verification-card.stale").innerText()).includes("Total mass"), await page.locator(".verification-card.stale").innerText());
+  await page.screenshot({ path: "/tmp/norte-area-verification.png", fullPage: true });
+  await page.locator(".mission-area").filter({ hasText: "Software" }).click();
+  assert.ok(await page.locator(".area-repo-action").isDisabled());
+  assert.equal(await page.locator(".area-card").count(), 6);
+  await page.screenshot({ path: "/tmp/norte-area-software.png", fullPage: true });
+
+  // Discovery follows the user onto any page, resizes and closes without losing the board.
+  await page.locator(".discovery-launcher").click();
+  await page.locator(".discovery-panel .lab-node").first().waitFor();
+  const startWidth = (await page.locator(".discovery-panel").boundingBox()).width;
+  await page.locator(".discovery-panel-grip").focus();
+  await page.locator(".discovery-panel-grip").press("ArrowLeft");
+  const widened = (await page.locator(".discovery-panel").boundingBox()).width;
+  assert.ok(widened > startWidth, `${startWidth} -> ${widened}`);
+  assert.ok((await page.locator(".discovery-panel-context").innerText()).includes("Software"));
+  // The page must give way to the panel, not hide underneath it.
+  // The page yields to the panel through a transition; measure once it settles.
+  await page.waitForFunction(() => {
+    const shell = document.querySelector(".app-page"), panel = document.querySelector(".discovery-panel");
+    return shell && panel && Math.abs(parseFloat(getComputedStyle(shell).paddingRight) - panel.getBoundingClientRect().width) < 1;
+  });
+  const overflow = await page.evaluate(() => {
+    const panel = document.querySelector(".discovery-panel").getBoundingClientRect().left;
+    return Math.max(...[...document.querySelectorAll(".area-card")].map((card) => card.getBoundingClientRect().right)) - panel;
+  });
+  assert.ok(overflow <= 1, `a card runs ${overflow}px past the panel edge`);
+  await page.screenshot({ path: "/tmp/norte-discovery-panel.png" });
+  await page.getByRole("button", { name: "Fechar Descoberta", exact: true }).click();
+  assert.equal(await page.locator(".discovery-panel").count(), 0);
+  await page.locator(".discovery-launcher").click();
+  assert.equal(await page.locator(".discovery-panel .lab-node").count(), 1);
+  await page.getByRole("button", { name: "Fechar Descoberta", exact: true }).click();
+  // The Conception Room already owns Discovery; the launcher never duplicates it there.
+  await page.locator(".mission-phase").nth(1).click();
+  await page.locator(".lab-canvas").waitFor();
+  assert.equal(await page.locator(".discovery-launcher").count(), 0);
+  await page.locator(".mission-sidebar-toggle").click();
   // Each selected project brings its own progress, team and workspace.
   const secondTeam = (await request("POST", "/api/teams", { name: "Independent test team", description: "Temporary acceptance fixture" })).team;
   const secondProject = { ...project, id: "independent-browser-project", name: "Independent project", phaseProgress: { highestUnlockedStep: 0 }, navigation: { lastRoute: "setup" }, context: { ...project.context, teamId: secondTeam.id, teamName: secondTeam.name, projectArtifactIds: [] } };

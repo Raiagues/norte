@@ -1,6 +1,6 @@
 import { Brand } from "./Brand";
 import { UserBadge } from "./UserBadge";
-import { FolderKanban, Home, UsersRound, FileText, Compass, DraftingCompass, Boxes, TestTubeDiagonal, Satellite } from "lucide-react";
+import { FolderKanban, Home, UsersRound, FileText, Compass, DraftingCompass, Boxes, TestTubeDiagonal, Satellite, ListChecks, Code2, ShieldCheck } from "lucide-react";
 import type { ProjectSummary } from "../lib/team";
 import type { Language } from "../lib/types";
 
@@ -22,7 +22,16 @@ type Props = {
   onTeam: () => void;
   onProjectSelect: (projectId: string) => void;
   onStepSelect: (step: number) => void;
+  activeArea: string | null;
+  onAreaSelect: (area: "requirements" | "software" | "verification") => void;
 };
+
+/** Areas cut across the phases: reachable at any point, in any order. */
+const AREAS = [
+  { id: "requirements" as const, pt: "Requisitos", en: "Requirements", Icon: ListChecks },
+  { id: "software" as const, pt: "Software", en: "Software", Icon: Code2 },
+  { id: "verification" as const, pt: "Verificação", en: "Verification", Icon: ShieldCheck }
+];
 
 const labels = {
   pt: ["Memória do projeto", "Concepção", "Projeto preliminar", "Projeto detalhado", "Integração e verificação", "Operações"],
@@ -35,7 +44,7 @@ function LockIcon() {
   return <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.2" y="5.1" width="7.6" height="5.1" rx="1" /><path d="M3.8 5.1V3.7a2.2 2.2 0 0 1 4.4 0v1.4" /></svg>;
 }
 
-export function MissionSidebar({ language, currentStep, expanded, connectedLabel, homeLabel, teamLabel, homeActive, teamActive, projects, projectTeamName, highestUnlockedStep, activeProjectId, onToggle, onHome, onTeam, onProjectSelect, onStepSelect }: Props) {
+export function MissionSidebar({ language, currentStep, expanded, connectedLabel, homeLabel, teamLabel, homeActive, teamActive, projects, projectTeamName, highestUnlockedStep, activeProjectId, onToggle, onHome, onTeam, onProjectSelect, onStepSelect, activeArea, onAreaSelect }: Props) {
   const phaseLabels = labels[language];
   const stateWords = language === "pt" ? { complete: "Concluída", current: "Fase atual", available: "Disponível", locked: "Ainda não disponível" } : { complete: "Complete", current: "Current phase", available: "Available", locked: "Not available yet" };
   const contextWords = language === "pt" ? { project: "Projeto ativo", team: "Equipe", noneProject: "Nenhum projeto", noneTeam: "Nenhuma equipe", switcher: "Trocar projeto" } : { project: "Active project", team: "Team", noneProject: "No project", noneTeam: "No team", switcher: "Switch project" };
@@ -94,6 +103,20 @@ export function MissionSidebar({ language, currentStep, expanded, connectedLabel
                 </span>
               </button>
             );
+          })}
+        </nav>
+
+        <div className="mission-sidebar-divider" />
+
+        <nav className="mission-areas" aria-label={language === "pt" ? "Áreas do projeto" : "Project areas"}>
+          {expanded && <small className="mission-areas-title">{language === "pt" ? "Áreas do projeto" : "Project areas"}</small>}
+          {AREAS.map(({ id, pt, en, Icon }) => {
+            const label = language === "pt" ? pt : en;
+            const available = Boolean(activeProjectId);
+            return <button key={id} type="button" className={`mission-area${activeArea === id ? " active" : ""}`} disabled={!available} aria-current={activeArea === id ? "page" : undefined} onClick={() => onAreaSelect(id)} title={available ? label : language === "pt" ? "Abra um projeto primeiro" : "Open a project first"}>
+              <span className="mission-area-icon"><Icon aria-hidden="true" /></span>
+              <span className="mission-area-label">{label}</span>
+            </button>;
           })}
         </nav>
 
