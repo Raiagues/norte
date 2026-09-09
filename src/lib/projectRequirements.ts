@@ -62,7 +62,9 @@ export function projectRequirements(project: MissionProject, language: Language)
   }));
 
   const program = referenceProgram(project.context.programId);
-  const modality = programModality(program, project.context.modalityId);
+  // A project that picked a programme but not a modality still answers to the
+  // programme's rules; fall back to its first modality rather than showing none.
+  const modality = programModality(program, project.context.modalityId) ?? program?.modalities[0] ?? null;
   const programRequirements = (modality?.requirements ?? []).map((requirement, index) => ({
     id: `${(program?.id ?? "prog").toUpperCase()}-${String(index + 1).padStart(2, "0")}`,
     title: requirement[language],

@@ -40,3 +40,25 @@ describe("naming a hypothesis after the architecture", () => {
     expect(nameCompletions("camera", undefined)).toEqual([]);
   });
 });
+
+describe("requirements gathered from the project and its programme", () => {
+  it("keeps the programme's rules when only the programme was chosen", async () => {
+    const { projectRequirements } = await import("../src/lib/projectRequirements");
+    const { loadProject } = await import("../src/lib/projectStore");
+    const base = loadProject("pt");
+    const withProgram = { ...base, context: { ...base.context, programId: "obsat", modalityId: null } };
+    const rows = projectRequirements(withProgram, "pt");
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => row.source === "program")).toBe(true);
+    expect(rows[0].origin).toContain("OBSAT");
+  });
+
+  it("lists the architecture's requirements before the programme's", async () => {
+    const { projectRequirements } = await import("../src/lib/projectRequirements");
+    const { loadProject } = await import("../src/lib/projectStore");
+    const base = loadProject("pt");
+    const rows = projectRequirements({ ...base, engineeringSystem: model, context: { ...base.context, programId: "obsat", modalityId: null } }, "pt");
+    expect(rows[0].source).toBe("system");
+    expect(rows.some((row) => row.source === "program")).toBe(true);
+  });
+});

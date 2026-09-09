@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FolderGit2, Pencil, Check, RotateCcw } from "lucide-react";
 import { ProjectAreaShell } from "../components/ProjectAreaShell";
+import type { RailNavigation } from "../components/ProjectHeader";
 import type { MissionProject } from "../lib/projectStore";
 import type { Language } from "../lib/types";
 
@@ -29,7 +30,7 @@ const APP_HINTS: Array<{ id: string; pt: string; en: string; hints: string[] }> 
   { id: "gnd", pt: "GND", en: "GND", hints: [] }
 ];
 
-export function SoftwarePage({ language, project, onProjectChange }: { language: Language; project: MissionProject; onProjectChange: (project: MissionProject) => void }) {
+export function SoftwarePage({ language, project, onProjectChange, navigation }: { language: Language; project: MissionProject; onProjectChange: (project: MissionProject) => void; navigation: RailNavigation }) {
   const pt = language === "pt";
   const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -80,7 +81,7 @@ export function SoftwarePage({ language, project, onProjectChange }: { language:
     ? { title: "Software", repo: "Conectar repositório GitHub", soon: "Em breve", apps: "Apps do projeto", core: "Núcleo de voo", edit: "Editar", done: "Concluir edição", reset: "Restaurar posições", hint: "Arraste os blocos para organizar.", pick: "Clique num bloco para ver o que ele controla.", controls: "Controla", requirements: "Requisitos", none: "Sem elemento vinculado" }
     : { title: "Software", repo: "Connect GitHub repository", soon: "Coming soon", apps: "Project apps", core: "Flight core", edit: "Edit", done: "Finish editing", reset: "Reset positions", hint: "Drag the blocks to arrange them.", pick: "Click a block to see what it controls.", controls: "Controls", requirements: "Requirements", none: "No linked element" };
 
-  return <ProjectAreaShell language={language} project={project} title={c.title} counter={`${apps.length} apps`}
+  return <ProjectAreaShell language={language} project={project} area="software" navigation={navigation} counter={`${apps.length} apps`}
     actions={<>
       <button type="button" className={editing ? "software-edit editing" : "software-edit"} aria-pressed={editing} onClick={() => setEditing(!editing)}>{editing ? <Check aria-hidden="true" /> : <Pencil aria-hidden="true" />}{editing ? c.done : c.edit}</button>
       <button type="button" className="area-repo-action" disabled title={c.soon}><FolderGit2 aria-hidden="true" />{c.repo}<small>{c.soon}</small></button>

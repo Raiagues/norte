@@ -15,7 +15,7 @@ const model: EngineeringSystemModel = { schemaVersion: 1, id: "test-system", nam
 ] };
 const noop = () => undefined;
 function sidebar(highestUnlockedStep: number, currentStep: number | null, projectTeamName = "Team one") {
-  return renderToStaticMarkup(createElement(AuthProvider, { children: createElement(MissionSidebar, { language: "en", highestUnlockedStep, currentStep, expanded: true, connectedLabel: "Connected", homeLabel: "Home", teamLabel: "Teams", homeActive: false, teamActive: false, projects: [], activeProjectId: "p", projectTeamName, onToggle: noop, onHome: noop, onTeam: noop, onProjectSelect: noop, onStepSelect: noop, activeArea: null, onAreaSelect: noop, discoveryAvailable: true, discoveryOpen: false, onOpenDiscovery: noop }) }));
+  return renderToStaticMarkup(createElement(AuthProvider, { children: createElement(MissionSidebar, { language: "en", highestUnlockedStep, currentStep, expanded: true, connectedLabel: "Connected", homeLabel: "Home", teamLabel: "Teams", homeActive: false, teamActive: false, projects: [], activeProjectId: "p", projectTeamName, onToggle: noop, onHome: noop, onTeam: noop, onProjectSelect: noop, onStepSelect: noop, activeArea: null, onAreaSelect: noop }) }));
 }
 
 describe("project-owned conception progression", () => {

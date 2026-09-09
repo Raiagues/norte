@@ -19,6 +19,7 @@ import {
   Trash2,
   Unlink2,
   UsersRound,
+  Waypoints,
   X
 } from "lucide-react";
 import { LanguageToggle } from "../components/LanguageToggle";
@@ -44,6 +45,8 @@ type Props = {
   onProjectChange: (project: MissionProject) => void;
   onContinue: () => Promise<void> | void;
   onHome: () => void;
+  onOpenDiscovery: () => void;
+  discoveryOpen: boolean;
   onTeams: () => void;
   onManageTeam: () => void;
 };
@@ -94,7 +97,7 @@ function MemoryDialog({ title, eyebrow, children, onClose, className = "" }: { t
   </div>;
 }
 
-export function StudySetupPage({ language, project, isDraft = false, t, onLanguageChange, onProjectChange, onContinue, onHome, onTeams }: Props) {
+export function StudySetupPage({ language, project, isDraft = false, t, onLanguageChange, onProjectChange, onContinue, onHome, onTeams, onOpenDiscovery, discoveryOpen }: Props) {
   const auth = useAuth();
   const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -563,7 +566,10 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
         <header className="pm-heading">
           <div><h1>{c.title}</h1>
           <label className="pm-project-name"><span>{c.projectName}</span><div><Pencil aria-hidden="true" /><input id="project-memory-name" name="projectName" value={project.name} onChange={(event) => updateProject({ name: event.target.value })} placeholder={c.projectPlaceholder} maxLength={120} /></div></label></div>
+          <div className="pm-heading-actions">
+          <button type="button" className={`explore-impact-action${discoveryOpen ? " open" : ""}`} onClick={onOpenDiscovery} aria-pressed={discoveryOpen} title={language === "pt" ? "Explorar impacto" : "Explore impact"}><Waypoints aria-hidden="true" />{language === "pt" ? "Explorar impacto" : "Explore impact"}</button>
           <button className="pm-open-conception" type="button" onClick={() => void continueToConception()} disabled={!canContinue || busy}>{loading || busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : null}{isDraft ? c.createAndContinue : c.continue}<ArrowRight aria-hidden="true" /></button>
+          </div>
         </header>
 
         {programToast && <div className="pm-program-toast" role="status">{programToast}<button type="button" onClick={() => setProgramToast("")} aria-label={language === "pt" ? "Fechar notificação" : "Dismiss notification"}><X /></button></div>}

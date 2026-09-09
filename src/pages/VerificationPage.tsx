@@ -1,13 +1,14 @@
 import { useMemo } from "react";
 import { ShieldCheck, History, ArrowRight, FileText } from "lucide-react";
-import { ProjectAreaShell, AreaPreviewNote } from "../components/ProjectAreaShell";
+import { ProjectAreaShell } from "../components/ProjectAreaShell";
+import type { RailNavigation } from "../components/ProjectHeader";
 import { RequirementTable } from "../components/RequirementTable";
 import type { RequirementColumn } from "../components/RequirementTable";
 import { METHOD_LABELS, projectRequirements } from "../lib/projectRequirements";
 import type { MissionProject } from "../lib/projectStore";
 import type { Language } from "../lib/types";
 
-export function VerificationPage({ language, project, onOpenRequirements }: { language: Language; project: MissionProject; onOpenRequirements: () => void }) {
+export function VerificationPage({ language, project, navigation }: { language: Language; project: MissionProject; navigation: RailNavigation }) {
   const pt = language === "pt";
   const requirements = useMemo(() => projectRequirements(project, language), [project, language]);
   const staleCount = requirements.filter((requirement) => requirement.changed.length).length;
@@ -41,15 +42,12 @@ export function VerificationPage({ language, project, onOpenRequirements }: { la
       : <span className="requirement-muted">{c.none}</span> }
   ];
 
-  return <ProjectAreaShell language={language} project={project} title={c.title} counter={c.counter(requirements.length)}>
+  return <ProjectAreaShell language={language} project={project} area="verification" navigation={navigation} counter={c.counter(requirements.length)}>
     {!requirements.length
-      ? <div className="area-empty"><ShieldCheck aria-hidden="true" /><p>{c.empty}</p><button type="button" onClick={onOpenRequirements}>{c.open}</button></div>
+      ? <div className="area-empty"><ShieldCheck aria-hidden="true" /><p>{c.empty}</p><button type="button" onClick={() => navigation.onOpen("requirements")}>{c.open}</button></div>
       : <>
         <RequirementTable language={language} requirements={requirements} columns={columns} empty={c.noMatch}
           extraFilter={{ label: c.stateFilter, options: [{ value: "review", label: c.review }, { value: "current", label: c.current }], match: (requirement, value) => value === "review" ? requirement.changed.length > 0 : requirement.changed.length === 0 }} />
-        <AreaPreviewNote text={pt
-          ? "A situação vem deste projeto: um cenário salvo ou uma correção na Concepção marca para revisão a verificação que dependia daquele elemento. Ensaios, relatórios e evidências anexadas entram nas próximas etapas."
-          : "The state comes from this project: a saved scenario or a correction in Conception marks for review the verification that depended on that element. Tests, reports and attached evidence arrive in the next steps."} />
       </>}
   </ProjectAreaShell>;
 }

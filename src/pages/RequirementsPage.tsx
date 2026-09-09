@@ -1,13 +1,14 @@
 import { useMemo } from "react";
 import { Network } from "lucide-react";
-import { ProjectAreaShell, AreaPreviewNote } from "../components/ProjectAreaShell";
+import { ProjectAreaShell } from "../components/ProjectAreaShell";
+import type { RailNavigation } from "../components/ProjectHeader";
 import { RequirementTable } from "../components/RequirementTable";
 import type { RequirementColumn } from "../components/RequirementTable";
 import { METHOD_LABELS, projectRequirements } from "../lib/projectRequirements";
 import type { MissionProject } from "../lib/projectStore";
 import type { Language } from "../lib/types";
 
-export function RequirementsPage({ language, project, onOpenConception }: { language: Language; project: MissionProject; onOpenConception: () => void }) {
+export function RequirementsPage({ language, project, navigation }: { language: Language; project: MissionProject; navigation: RailNavigation }) {
   const pt = language === "pt";
   const requirements = useMemo(() => projectRequirements(project, language), [project, language]);
   const c = pt ? {
@@ -36,14 +37,11 @@ export function RequirementsPage({ language, project, onOpenConception }: { lang
     { id: "tests", head: c.tests, cell: (requirement) => requirement.changed.length ? <span className="requirement-review">{c.review}</span> : <span className="requirement-muted">{c.planned}</span> }
   ];
 
-  return <ProjectAreaShell language={language} project={project} title={c.title} counter={c.count(requirements.length)}>
+  return <ProjectAreaShell language={language} project={project} area="requirements" navigation={navigation} counter={c.count(requirements.length)}>
     {!requirements.length
-      ? <div className="area-empty"><Network aria-hidden="true" /><p>{c.empty}</p><button type="button" onClick={onOpenConception}>{c.open}</button></div>
+      ? <div className="area-empty"><Network aria-hidden="true" /><p>{c.empty}</p><button type="button" onClick={() => navigation.onOpen("conception")}>{c.open}</button></div>
       : <>
         <RequirementTable language={language} requirements={requirements} columns={columns} empty={c.noMatch} />
-        <AreaPreviewNote text={pt
-          ? "Os requisitos e os vínculos com a arquitetura vêm deste projeto; os do programa vêm do edital selecionado. Testes, evidências e alocação a software entram nas próximas etapas."
-          : "Requirements and architecture links come from this project; programme rows come from the selected rules. Tests, evidence and software allocation arrive in the next steps."} />
       </>}
   </ProjectAreaShell>;
 }

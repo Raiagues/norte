@@ -276,7 +276,7 @@ try {
   assert.equal((await request("GET", `/api/projects/${projectId}`)).project.name, "Quetzal-1 · revised mission");
   assert.equal(generations, 5);
   assert.deepEqual((await request("GET", `/api/projects/${projectId}`)).project.engineeringSystem, baseline.engineeringSystem);
-  await page.locator(".mission-discovery").click();
+  await page.locator(".explore-impact-action").click();
   await page.locator(".discovery-panel .lab-canvas").waitFor();
   for (const removed of ["Arrumar mapa", "Estruturar missão", "Organização automática"]) assert.equal(await page.getByRole("button", { name: removed, exact: true }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "Testar alteração", exact: true }).count(), 0);
@@ -366,10 +366,11 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   await page.locator(".lab-node").waitFor();
   assert.equal(generations, 5);
-  // The preliminary phase has no workspace: it is named as the next step and locked.
+  // Conception hands straight to Requirements, in the rail's own order.
   const nextPhase = page.getByRole("button", { name: /Próxima fase/u });
-  assert.ok(await nextPhase.isDisabled());
-  assert.ok((await nextPhase.innerText()).includes("Projeto preliminar"));
+  assert.equal(await nextPhase.isDisabled(), false);
+  assert.ok((await nextPhase.innerText()).includes("Requisitos"), await nextPhase.innerText());
+  assert.ok((await page.getByRole("button", { name: /Fase anterior/u }).innerText()).includes("Memória do projeto"));
   await waitSaved();
   await page.reload({ waitUntil: "networkidle" });
   await page.locator(".engineering-graph").waitFor();
@@ -381,11 +382,17 @@ try {
   assert.equal(await page.locator(".mission-phase").count(), 6);
   assert.ok(await page.locator(".mission-phase").nth(5).isDisabled(), "Operations stays locked");
   const rail = page.locator(".mission-phase");
-  for (const [index, heading] of [[2, "REQUISITOS"], [3, "SOFTWARE"], [4, "VERIFICAÇÃO"]]) {
+  for (const [index, heading, previous, next] of [[2, "REQUISITOS", "Concepção", "Software"], [3, "SOFTWARE", "Requisitos", "Verificação"], [4, "VERIFICAÇÃO", "Software", "Operações"]]) {
     await rail.nth(index).click();
-    assert.equal(await page.locator(".project-area-heading h1").innerText(), heading);
-    assert.equal((await page.locator(".project-area-preview").innerText()).toLocaleLowerCase("pt"), "prévia");
+    assert.equal(await page.locator(".project-head h1").innerText(), heading);
+    assert.ok((await page.getByRole("button", { name: /Fase anterior/u }).innerText()).includes(previous), heading);
+    assert.ok((await page.getByRole("button", { name: /Próxima fase/u }).innerText()).includes(next), heading);
+    assert.equal(await page.locator(".explore-impact-action").count(), 1);
   }
+  // Only the last stop is still to come, so only it is offered as locked.
+  assert.ok(await page.getByRole("button", { name: /Próxima fase/u }).isDisabled());
+  await page.getByRole("button", { name: /Fase anterior/u }).click();
+  assert.equal(await page.locator(".project-head h1").innerText(), "SOFTWARE");
   await rail.nth(2).click();
   // System requirements and the reference programme's own rules share one list.
   const rows = () => page.locator(".requirement-table tbody tr");
@@ -441,7 +448,7 @@ try {
   await page.screenshot({ path: "/tmp/norte-area-software.png", fullPage: true });
 
   // Discovery follows the user onto any page, resizes and closes without losing the board.
-  if (!(await page.locator(".discovery-panel").count())) await page.locator(".mission-discovery").click();
+  if (!(await page.locator(".discovery-panel").count())) await page.locator(".explore-impact-action").click();
   await page.locator(".discovery-panel .lab-node").first().waitFor();
   const startWidth = (await page.locator(".discovery-panel").boundingBox()).width;
   await page.locator(".discovery-panel-grip").focus();
@@ -463,13 +470,13 @@ try {
   await page.screenshot({ path: "/tmp/norte-discovery-panel.png" });
   await page.getByRole("button", { name: /Fechar Explorar impacto/u }).click();
   assert.equal(await page.locator(".discovery-panel").count(), 0);
-  await page.locator(".mission-discovery").click();
+  await page.locator(".explore-impact-action").click();
   assert.equal(await page.locator(".discovery-panel .lab-node").count(), 1);
   await page.getByRole("button", { name: /Fechar Explorar impacto/u }).click();
   // The tool is offered on every project page, the Conception Room included.
   await page.locator(".mission-phase").nth(1).click();
   await page.locator(".engineering-graph").waitFor();
-  assert.equal(await page.locator(".mission-discovery").count(), 1);
+  assert.equal(await page.locator(".explore-impact-action").count(), 1);
   await page.locator(".mission-sidebar-toggle").click();
   // Each selected project brings its own progress, team and workspace.
   const secondTeam = (await request("POST", "/api/teams", { name: "Independent test team", description: "Temporary acceptance fixture" })).team;
@@ -541,7 +548,7 @@ try {
   // Nothing the page owns may sit under the floating launcher.
   // The tool lives in the navigation, so nothing floats over the page content.
   assert.equal(await page.locator(".discovery-launcher").count(), 0);
-  assert.equal(await page.locator(".mission-discovery").count(), 1);
+  assert.equal(await page.locator(".explore-impact-action").count(), 1);
   await page.locator(".pm-workspace").evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
   await page.screenshot({ path: "/tmp/norte-memory-artifacts-scroll.png" });
   for (const source of ["ADCS hardware", "ADM hardware", "ADCS software", "MISSION overview"]) assert.equal(await page.locator(".pm-artifact-card").filter({ hasText: source }).count(), 1);

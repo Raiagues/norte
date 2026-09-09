@@ -1,6 +1,7 @@
 import { Brand } from "./Brand";
 import { UserBadge } from "./UserBadge";
-import { FolderKanban, Home, UsersRound, FileText, Compass, Satellite, ListChecks, Code2, ShieldCheck, Waypoints } from "lucide-react";
+import { FolderKanban, Home, UsersRound } from "lucide-react";
+import { PROJECT_RAIL, railLabel } from "../lib/projectRail";
 import type { ProjectSummary } from "../lib/team";
 import type { Language } from "../lib/types";
 
@@ -24,26 +25,13 @@ type Props = {
   onStepSelect: (step: number) => void;
   activeArea: string | null;
   onAreaSelect: (area: "requirements" | "software" | "verification") => void;
-  discoveryAvailable: boolean;
-  discoveryOpen: boolean;
-  onOpenDiscovery: () => void;
 };
-
-/** One rail: the phases that exist, the areas that cut across them, and what is still to come. */
-const RAIL = [
-  { key: "memory", pt: "Memória do projeto", en: "Project memory", Icon: FileText, step: 0 },
-  { key: "conception", pt: "Concepção", en: "Conception", Icon: Compass, step: 1 },
-  { key: "requirements", pt: "Requisitos", en: "Requirements", Icon: ListChecks, area: "requirements" },
-  { key: "software", pt: "Software", en: "Software", Icon: Code2, area: "software" },
-  { key: "verification", pt: "Verificação", en: "Verification", Icon: ShieldCheck, area: "verification" },
-  { key: "operations", pt: "Operações", en: "Operations", Icon: Satellite, upcoming: true }
-] as const;
 
 function LockIcon() {
   return <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.2" y="5.1" width="7.6" height="5.1" rx="1" /><path d="M3.8 5.1V3.7a2.2 2.2 0 0 1 4.4 0v1.4" /></svg>;
 }
 
-export function MissionSidebar({ language, currentStep, expanded, connectedLabel, homeLabel, teamLabel, homeActive, teamActive, projects, projectTeamName, highestUnlockedStep, activeProjectId, onToggle, onHome, onTeam, onProjectSelect, onStepSelect, activeArea, onAreaSelect, discoveryAvailable, discoveryOpen, onOpenDiscovery }: Props) {
+export function MissionSidebar({ language, currentStep, expanded, connectedLabel, homeLabel, teamLabel, homeActive, teamActive, projects, projectTeamName, highestUnlockedStep, activeProjectId, onToggle, onHome, onTeam, onProjectSelect, onStepSelect, activeArea, onAreaSelect }: Props) {
   const stateWords = language === "pt" ? { complete: "Concluída", current: "Fase atual", available: "Disponível", locked: "Ainda não disponível" } : { complete: "Complete", current: "Current phase", available: "Available", locked: "Not available yet" };
   const contextWords = language === "pt" ? { project: "Projeto ativo", team: "Equipe", noneProject: "Nenhum projeto", noneTeam: "Nenhuma equipe", switcher: "Trocar projeto" } : { project: "Active project", team: "Team", noneProject: "No project", noneTeam: "No team", switcher: "Switch project" };
 
@@ -67,14 +55,6 @@ export function MissionSidebar({ language, currentStep, expanded, connectedLabel
           <span className="mission-sidebar-home-label">{teamLabel}</span>
         </button>
 
-        {discoveryAvailable && <button type="button" className={discoveryOpen ? "mission-discovery open" : "mission-discovery"} aria-pressed={discoveryOpen} onClick={onOpenDiscovery} title={language === "pt" ? "Explorar impacto" : "Explore impact"}>
-          <span className="mission-discovery-icon"><Waypoints aria-hidden="true" /></span>
-          <span className="mission-discovery-copy">
-            <strong>{language === "pt" ? "Explorar impacto" : "Explore impact"}</strong>
-            <small>{language === "pt" ? "Escreva uma mudança e veja o que ela afeta" : "Write a change and see what it affects"}</small>
-          </span>
-        </button>}
-
         <div className="mission-sidebar-divider" />
 
         {expanded ? <section className="mission-context-switcher" aria-label={contextWords.switcher}>
@@ -85,17 +65,17 @@ export function MissionSidebar({ language, currentStep, expanded, connectedLabel
         <div className="mission-sidebar-divider context-divider" />
 
         <nav className="mission-pipeline" aria-label={language === "pt" ? "Navegação do projeto" : "Project navigation"}>
-          {RAIL.map((item, index) => {
-            const label = language === "pt" ? item.pt : item.en;
-            const isArea = "area" in item;
-            const locked = "upcoming" in item || (!isArea && "step" in item && item.step > highestUnlockedStep) || (isArea && !activeProjectId);
-            const current = isArea ? activeArea === item.area : "step" in item && currentStep === item.step;
-            const complete = !locked && !isArea && "step" in item && item.step < highestUnlockedStep;
+          {PROJECT_RAIL.map((item, index) => {
+            const label = railLabel(item, language);
+            const isArea = Boolean(item.area);
+            const locked = Boolean(item.upcoming) || (item.step !== undefined && item.step > highestUnlockedStep) || (isArea && !activeProjectId);
+            const current = isArea ? activeArea === item.area : item.step !== undefined && currentStep === item.step;
+            const complete = !locked && !isArea && item.step !== undefined && item.step < highestUnlockedStep;
             const state = current ? "current" : locked ? "locked" : complete ? "complete" : "available";
-            const stateLabel = "upcoming" in item ? language === "pt" ? "Fase futura" : "Upcoming phase" : stateWords[state];
+            const stateLabel = item.upcoming ? language === "pt" ? "Fase futura" : "Upcoming phase" : stateWords[state];
             return (
               <button className={`mission-phase ${state}`} key={item.key} type="button" aria-current={current ? isArea ? "page" : "step" : undefined} disabled={locked} aria-disabled={locked || current} tabIndex={locked ? -1 : 0}
-                onClick={() => { if (locked || current) return; if (isArea) onAreaSelect(item.area); else if ("step" in item) onStepSelect(item.step); }}
+                onClick={() => { if (locked || current) return; if (item.area) onAreaSelect(item.area); else if (item.step !== undefined) onStepSelect(item.step); }}
                 title={`${String(index + 1).padStart(2, "0")} · ${label} · ${stateLabel}`} aria-label={`${label} · ${stateLabel}`}>
                 <span className="mission-phase-rail" />
                 <span className="mission-phase-icon">

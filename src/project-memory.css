@@ -1734,3 +1734,5 @@
 .pm-program-toast { position: fixed; z-index: 150; right: 24px; bottom: 24px; max-width: min(420px, calc(100vw - 32px)); display: flex; align-items: center; gap: 16px; padding: 14px 16px; border: 1px solid #4e9788; border-radius: 8px; background: #153b3b; color: #d9f1eb; box-shadow: 0 8px 28px #0005; font-size: 13px; }
 .pm-program-toast button { display: grid; place-items: center; border: 0; background: transparent; color: inherit; cursor: pointer; padding: 4px; }
 .pm-program-toast svg { width: 16px; height: 16px; }
+
+.pm-heading-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
