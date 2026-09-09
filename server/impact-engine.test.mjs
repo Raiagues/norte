@@ -3,6 +3,7 @@ import test from "node:test";
 import { analyzeImpact, impactEdges, normalizeQuantity } from "../shared/impact-engine.mjs";
 import { validateEngineeringSystem } from "../shared/engineering-schema.mjs";
 import { createEngineeringValidationModel, validationChange } from "../examples/engineering-validation.mjs";
+import { createCubesatReferenceModel } from "../examples/cubesat-reference.mjs";
 
 const impact = (result, id) => result.impacts.find((item) => item.entityId === id);
 test("1.2 A against 800 mA produces an auditable critical and preserves baseline", () => {
@@ -101,4 +102,20 @@ test("a stricter autonomy requirement evaluates its explicitly traced performanc
   assert.equal(impact(result, "autonomy").calculation.expression, "100 min < 120 min");
   assert.equal(impact(result, requirement.id).status, "changed");
   assert.equal(impact(result, requirement.id).calculation.expression, "100 min < 120 min");
+});
+
+test("thickness is a length: it sums into a stack height and is checked against its limit", () => {
+  const model = createCubesatReferenceModel();
+  const change = { id: "thicker", targetEntityId: "optics", kind: "parameter", oldValues: model.entities.find((item) => item.id === "optics").properties.filter((item) => item.key === "thickness"), newValues: [{ key: "thickness", name: "thickness", value: 7.6, unit: "cm", source: "user", evidenceRefs: [] }], description: "optics 7.6 cm", createdAt: "2026-01-01T00:00:00.000Z" };
+  const analysis = analyzeImpact(model, change, "en");
+  // A centimetre answer must convert into the millimetres the budget is written in.
+  assert.match(analysis.impacts.find((impact) => impact.entityId === "stack-height").shortExplanation, /22 mm \+ 76 mm \+ 8 mm = 106 mm/u);
+  assert.equal(analysis.impacts.find((impact) => impact.entityId === "REQ-S01").status, "critical");
+});
+
+test("a length answer in the wrong dimension never reaches a thickness budget", () => {
+  const model = createCubesatReferenceModel();
+  const change = { id: "wrong", targetEntityId: "optics", kind: "parameter", oldValues: [], newValues: [{ key: "thickness", name: "thickness", value: 76, unit: "g", source: "user", evidenceRefs: [] }], description: "optics 76 g", createdAt: "2026-01-01T00:00:00.000Z" };
+  const analysis = analyzeImpact(model, change, "en");
+  assert.equal(analysis.impacts.find((impact) => impact.entityId === "REQ-S01")?.status, "review");
 });

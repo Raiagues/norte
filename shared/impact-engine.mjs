@@ -5,6 +5,7 @@ const UNITS = {
   V: ["voltage", 1, "V"], mV: ["voltage", 0.001, "V"],
   W: ["power", 1, "W"], mW: ["power", 0.001, "W"], kW: ["power", 1000, "W"],
   g: ["mass", 1, "g"], kg: ["mass", 1000, "g"], mg: ["mass", 0.001, "g"],
+  mm: ["length", 1, "mm"], cm: ["length", 10, "mm"], m: ["length", 1000, "mm"],
   min: ["time", 1, "min"], h: ["time", 60, "min"], s: ["time", 1 / 60, "min"],
   Wh: ["energy", 1, "Wh"], mWh: ["energy", 0.001, "Wh"], kWh: ["energy", 1000, "Wh"], J: ["energy", 1 / 3600, "Wh"],
   "%": ["ratio", 0.01, "1"], "1": ["ratio", 1, "1"], "×": ["multiplier", 1, "1"]
@@ -12,6 +13,7 @@ const UNITS = {
 const REQUIREMENT_RULES = [
   ["time", ["estimated_autonomy", "autonomy"], ["minimum_autonomy", "min_autonomy"], true],
   ["mass", ["total_mass", "mass"], ["maximum_mass", "max_mass"], false],
+  ["length", ["total_thickness", "stack_height", "thickness"], ["maximum_thickness", "max_thickness", "maximum_stack_height"], false],
   ["power", ["total_power", "power"], ["maximum_power", "max_power"], false],
   ["power", ["power_margin"], ["minimum_power_margin"], true, true],
   ["energy", ["energy_margin"], ["minimum_energy_margin"], true, true]
@@ -96,7 +98,7 @@ export function analyzeImpact(model, change, language = "en") {
   const paths = reachable(model, target.id, { powers: dutyOnly ? "none" : "both" });
   const changedDimensions = new Set(change.newValues.flatMap((property) => {
     const propertyKey = key(property.key);
-    return [...["current", "voltage", "power", "mass", "autonomy", "energy"].filter((dimension) => propertyKey.includes(dimension)), ...(["tx_duty_cycle", "duty_cycle"].includes(propertyKey) ? ["power"] : [])];
+    return [...["current", "voltage", "power", "mass", "autonomy", "energy"].filter((dimension) => propertyKey.includes(dimension)), ...(/thickness|stack_height/u.test(propertyKey) ? ["length"] : []), ...(["tx_duty_cycle", "duty_cycle"].includes(propertyKey) ? ["power"] : [])];
   }));
   const relevantElectrical = (dimension) => change.kind === "replace_component" || changedDimensions.has(dimension);
 
@@ -173,14 +175,17 @@ export function analyzeImpact(model, change, language = "en") {
         resultKey = "average_power";
         unit = "W";
         expression = `${displayNumber(transmit.value)} W × ${displayNumber(duty.value * 100)}% + ${displayNumber(receive.value)} W × ${displayNumber((1 - duty.value) * 100)}% = ${displayNumber(result)} W`;
-      } else if (formula === "sum_power" || formula === "sum_mass") {
-        const mass = formula === "sum_mass";
-        inputs = sources.map((source) => input(source, mass ? ["mass", "total_mass"] : ["average_power", "total_power", "operating_power", "required_power", "power"], mass ? "mass" : "power"));
+      } else if (formula === "sum_power" || formula === "sum_mass" || formula === "sum_thickness") {
+        // Every sum reads its own dimension; a stack height adds up exactly as a mass budget does.
+        const [keys, dimension, sumUnit, sumKey] = formula === "sum_mass" ? [["mass", "total_mass"], "mass", "g", "total_mass"]
+          : formula === "sum_thickness" ? [["thickness", "total_thickness", "stack_height"], "length", "mm", "total_thickness"]
+          : [["average_power", "total_power", "operating_power", "required_power", "power"], "power", "W", "total_power"];
+        inputs = sources.map((source) => input(source, keys, dimension));
         if (inputs.some((item) => !item)) continue;
         result = inputs.reduce((total, item) => total + item.value, 0);
-        if (mass) result = tidy(result);
-        resultKey = mass ? "total_mass" : "total_power";
-        unit = mass ? "g" : "W";
+        if (dimension !== "power") result = tidy(result);
+        resultKey = sumKey;
+        unit = sumUnit;
       } else if (formula === "energy_over_power") {
         const energies = sources.map((source) => input(source, ["available_energy", "energy"], "energy")).filter(Boolean);
         const powers = sources.map((source) => input(source, ["total_power", "required_power", "power"], "power")).filter(Boolean);

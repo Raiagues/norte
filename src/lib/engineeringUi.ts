@@ -168,7 +168,7 @@ export function projectEngineeringScenario(model: EngineeringSystemModel, analys
     }
     const impact = analysis.impacts.find((item) => item.entityId === id);
     const calculation = impact?.calculation;
-    const resultKey = calculation && ({ sum_power: "total_power", sum_mass: "total_mass", energy_over_power: "estimated_autonomy", duty_cycle_power: "average_power", duty_cycle_load: "average_power", energy_balance: calculation.unit === "Wh" ? "energy_margin" : "power_margin", energy_over_interval: "energy_margin" } as Record<string, string>)[calculation.ruleId];
+    const resultKey = calculation && ({ sum_power: "total_power", sum_mass: "total_mass", sum_thickness: "total_thickness", energy_over_power: "estimated_autonomy", duty_cycle_power: "average_power", duty_cycle_load: "average_power", energy_balance: calculation.unit === "Wh" ? "energy_margin" : "power_margin", energy_over_interval: "energy_margin" } as Record<string, string>)[calculation.ruleId];
     const hasOwnResult = Boolean(resultKey && calculation && typeof calculation.result === "number" && projected.some((property) => property.key === "formula" && property.value === calculation.ruleId));
     if (hasOwnResult && resultKey && calculation && typeof calculation.result === "number") projected = [...projected.filter((property) => property.key !== resultKey), { key: resultKey, name: resultKey.replaceAll("_", " "), value: calculation.result, unit: calculation.unit, source: "calculated", evidenceRefs: calculation.evidenceRefs }];
     if (impact?.status === "review" && !hasOwnResult && projected.some((property) => property.key === "formula")) projected = projected.filter((property) => property.key === "formula" || property.source !== "calculated");

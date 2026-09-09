@@ -11,6 +11,33 @@ import { engineeringLabel, projectEngineeringScenario } from "../lib/engineering
 import { EngineeringScenario } from "./SystemWorkspace";
 
 const SUGGESTION_WIDTH = 250, SUGGESTION_GAP = 14, SUGGESTION_OFFSET = 96;
+const plain = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+
+/** Writers type Portuguese at architectures named in English: "antena" must still find "Antenna". */
+function sharesStem(written: string, part: string) {
+  const shortest = Math.min(written.length, part.length);
+  if (shortest < 3) return false;
+  let shared = 0;
+  while (shared < shortest && written[shared] === part[shared]) shared += 1;
+  return shared >= 4 || shared === shortest;
+}
+
+/** Everyday words the writer used, matched against the names the architecture actually carries. */
+export function nameCompletions(text: string, model: MissionProject["engineeringSystem"], limit = 4) {
+  if (!model) return [];
+  const written = plain(text);
+  const words = [...new Set(written.match(/\p{L}{3,}/gu) ?? [])];
+  if (!words.length) return [];
+  const named = [...model.entities.filter((entity) => !["system", "subsystem"].includes(entity.kind)), ...model.requirements.map((item) => ({ ...item, name: item.title, properties: item.properties }))];
+  return named.flatMap((item) => {
+    const name = plain(item.name);
+    if (written.includes(name)) return [];
+    const word = words.find((candidate) => name.split(/[^\p{L}\d]+/u).some((part) => sharesStem(candidate, part)));
+    if (!word) return [];
+    const detail = item.properties.filter((property) => property.key !== "formula" && typeof property.value === "number").slice(0, 2).map((property) => `${property.value} ${property.unit ?? ""}`.trim()).join(" · ");
+    return [{ id: item.id, word, name: item.name, detail }];
+  }).sort((first, second) => second.word.length - first.word.length).slice(0, limit);
+}
 
 type Interpretation = { text: string; status: "loading" | "resolved" | "confirmation" | "clarification" | "error"; summary?: string; question?: string; change?: EngineeringChange; baselineId?: string; baselineRevision?: number; baselineGeneratedAt?: string };
 /** An impact reading anchored to the idea that produced it, still only a proposal. */
@@ -45,7 +72,7 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
   const framedRef = useRef<string | null>(null);
   const [panning, setPanning] = useState(false);
   const prompt = useAnimatedPrompt(PROMPTS[language]);
-  const copy = language === "pt" ? { add: "Nova ideia", edit: "Editar ideia", remove: "Excluir ideia", connect: "Conectar ideia", undo: "Desfazer", redo: "Refazer", fit: "Enquadrar ideias", in: "Aumentar zoom", out: "Diminuir zoom", placeholder: "Escreva uma hipótese…", impact: "Ver impacto", save: "Salvar", cancel: "Cancelar", idea: "HIPÓTESE", sync: "Não foi possível sincronizar. As ideias estão salvas neste navegador.", yes: "Sim, ver impacto", no: "Não, ajustar", accept: "Aplicar ao sistema", dismiss: "Descartar sugestões", full: "Abrir mapa completo", suggestions: "SUGESTÃO", noImpact: "Nada mais no sistema depende desta mudança." } : { add: "New idea", edit: "Edit idea", remove: "Delete idea", connect: "Connect idea", undo: "Undo", redo: "Redo", fit: "Fit ideas", in: "Zoom in", out: "Zoom out", placeholder: "Write a hypothesis…", impact: "See impact", save: "Save", cancel: "Cancel", idea: "HYPOTHESIS", sync: "Could not sync. Ideas are saved in this browser.", yes: "Yes, see impact", no: "No, adjust", accept: "Apply to system", dismiss: "Dismiss suggestions", full: "Open full map", suggestions: "SUGGESTION", noImpact: "Nothing else in the system depends on this change." };
+  const copy = language === "pt" ? { add: "Nova ideia", edit: "Editar ideia", remove: "Excluir ideia", connect: "Conectar ideia", undo: "Desfazer", redo: "Refazer", fit: "Enquadrar ideias", in: "Aumentar zoom", out: "Diminuir zoom", placeholder: "Escreva uma hipótese…", impact: "Ver impacto", save: "Salvar", cancel: "Cancelar", idea: "HIPÓTESE", sync: "Não foi possível sincronizar. As ideias estão salvas neste navegador.", yes: "Sim, ver impacto", no: "Não, ajustar", accept: "Aplicar ao sistema", dismiss: "Descartar sugestões", full: "Abrir mapa completo", suggestions: "SUGESTÃO", noImpact: "Nada mais no sistema depende desta mudança.", naming: "Do projeto:" } : { add: "New idea", edit: "Edit idea", remove: "Delete idea", connect: "Connect idea", undo: "Undo", redo: "Redo", fit: "Fit ideas", in: "Zoom in", out: "Zoom out", placeholder: "Write a hypothesis…", impact: "See impact", save: "Save", cancel: "Cancel", idea: "HYPOTHESIS", sync: "Could not sync. Ideas are saved in this browser.", yes: "Yes, see impact", no: "No, adjust", accept: "Apply to system", dismiss: "Dismiss suggestions", full: "Open full map", suggestions: "SUGGESTION", noImpact: "Nothing else in the system depends on this change.", naming: "From the project:" };
   const syncMessageRef = useRef(copy.sync);
   syncMessageRef.current = copy.sync;
 
@@ -143,6 +170,15 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
     setComposer(node ? { x: node.x, y: node.y, text: node.text, nodeId: node.id } : { x: (center.x - transform.x) / transform.scale, y: (center.y - transform.y) / transform.scale, text: "" });
     setConnecting(null);
   }
+  function applyCompletion(completion: { word: string; name: string }) {
+    if (!composer) return;
+    const match = new RegExp(`(?<![\\p{L}\\d])${completion.word.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\p{L}*`, "iu");
+    const source = plain(composer.text);
+    const found = source.match(match);
+    const text = found?.index === undefined ? `${composer.text.trim()} ${completion.name}`.trim() : composer.text.slice(0, found.index) + completion.name + composer.text.slice(found.index + found[0].length);
+    setComposer({ ...composer, text: text.slice(0, 220) });
+    textareaRef.current?.focus();
+  }
   function saveIdea() {
     if (!composer?.text.trim()) return;
     const text = composer.text.trim().slice(0, 220);
@@ -234,6 +270,8 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
   });
+
+  const completions = composer ? nameCompletions(composer.text, project.engineeringSystem) : [];
 
   const suggestions = (() => {
     const model = project.engineeringSystem;
@@ -327,7 +365,9 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
             <button type="button" onClick={() => setProposal(null)}><X />{copy.dismiss}</button>
           </div>
         </>}
-        {composer && <form className="lab-composer" data-control style={{ left: composer.x, top: composer.y, width: LAB_NODE_WIDTH }} onSubmit={(event) => { event.preventDefault(); saveIdea(); }}><textarea ref={textareaRef} value={composer.text} maxLength={220} placeholder={copy.placeholder} aria-label={copy.placeholder} onChange={(event) => setComposer({ ...composer, text: event.target.value })} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); saveIdea(); } if (event.key === "Escape") setComposer(null); }} /><button type="submit" aria-label={copy.save}><Plus aria-hidden="true" /></button><button type="button" onClick={() => setComposer(null)} aria-label={copy.cancel}>×</button></form>}
+        {composer && <form className="lab-composer" data-control style={{ left: composer.x, top: composer.y, width: LAB_NODE_WIDTH }} onSubmit={(event) => { event.preventDefault(); saveIdea(); }}><textarea ref={textareaRef} value={composer.text} maxLength={220} placeholder={copy.placeholder} aria-label={copy.placeholder} onChange={(event) => setComposer({ ...composer, text: event.target.value })} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); saveIdea(); } if (event.key === "Escape") setComposer(null); }} /><button type="submit" aria-label={copy.save}><Plus aria-hidden="true" /></button><button type="button" onClick={() => setComposer(null)} aria-label={copy.cancel}>×</button>
+          {completions.length > 0 && <div className="discovery-completions"><span>{copy.naming}</span>{completions.map((completion) => <button type="button" key={completion.id} onClick={() => applyCompletion(completion)} title={completion.detail}>{completion.name}{completion.detail && <em>{completion.detail}</em>}</button>)}</div>}
+        </form>}
       </div>
       {feedback && <div className="discovery-notice" role="status">{feedback}</div>}
       {connecting && <div className="discovery-notice">{language === "pt" ? "Selecione a outra ideia para conectar." : "Select the other idea to connect."}<button type="button" onClick={() => setConnecting(null)}>{copy.cancel}</button></div>}

@@ -267,6 +267,13 @@ try {
   assert.equal(await page.getByRole("button", { name: "Elementos do sistema", exact: true }).count(), 0);
   assert.equal(await page.getByRole("tab").count(), 2);
   await page.getByRole("button", { name: "Nova ideia", exact: true }).first().click();
+  // A writer types everyday words; the composer offers the names the architecture carries.
+  await page.locator(".lab-composer textarea").fill("radio mais forte");
+  await page.locator(".discovery-completions button").first().waitFor();
+  assert.ok((await page.locator(".discovery-completions").innerText()).includes("Radio R1"), await page.locator(".discovery-completions").innerText());
+  await page.screenshot({ path: "/tmp/norte-discovery-completions.png", fullPage: true });
+  await page.locator(".discovery-completions button").filter({ hasText: "Radio R1" }).first().click();
+  assert.equal(await page.locator(".lab-composer textarea").inputValue(), "Radio R1 mais forte");
   await page.locator(".lab-composer textarea").fill("Payload 280 g");
   await page.locator(".lab-composer textarea").press("Enter");
   await page.locator(".lab-composer textarea").press("Escape");
