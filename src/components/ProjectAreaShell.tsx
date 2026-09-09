@@ -3,17 +3,6 @@ import { Info } from "lucide-react";
 import type { MissionProject } from "../lib/projectStore";
 import type { Language } from "../lib/types";
 
-/** The vocabulary every area shares, so a link means the same thing on each page. */
-export const LINK_KINDS = {
-  architecture: ["Arquitetura", "Architecture"],
-  decision: ["Decisões", "Decisions"],
-  artifact: ["Artefatos", "Artifacts"],
-  requirement: ["Requisitos", "Requirements"],
-  software: ["Software", "Software"],
-  verification: ["Verificação", "Verification"]
-} as const;
-export type LinkKind = keyof typeof LINK_KINDS;
-
 type Props = {
   language: Language; project: MissionProject; icon: ReactNode;
   eyebrow: string; title: string; subtitle: string; counter?: string; actions?: ReactNode; children: ReactNode;

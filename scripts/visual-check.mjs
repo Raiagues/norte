@@ -373,19 +373,33 @@ try {
     assert.equal((await page.locator(".project-area-preview").innerText()).toLocaleLowerCase("pt"), "prévia");
   }
   await page.locator(".mission-area").filter({ hasText: "Requisitos" }).click();
-  assert.equal(await page.locator(".area-list-item").count(), 2);
-  await page.locator(".area-list-item").last().click();
-  assert.ok((await page.locator(".area-link-card.live").innerText()).includes("Total mass"), await page.locator(".area-link-card.live").innerText());
+  // System requirements and the reference programme's own rules share one list.
+  const rows = () => page.locator(".requirement-table tbody tr");
+  assert.ok(await rows().count() > 2, `expected system and programme rows, got ${await rows().count()}`);
+  assert.ok((await page.locator(".requirement-table").innerText()).includes("Total mass"));
+  assert.ok((await page.locator(".requirement-table").innerText()).includes("OBSAT"), await page.locator(".requirement-table").innerText());
   await page.screenshot({ path: "/tmp/norte-area-requirements.png", fullPage: true });
+  const total = await rows().count();
+  await page.locator(".requirement-filters select").first().selectOption("Structure");
+  assert.ok(await rows().count() < total, "the subsystem filter changed nothing");
+  assert.equal(await page.locator(".requirement-table tbody tr .requirement-tag").first().innerText(), "Structure");
+  await page.locator(".requirement-search input").fill("nada disso existe");
+  assert.equal(await page.locator(".requirement-empty").count(), 1);
+  await page.locator(".requirement-clear").click();
+  assert.equal(await rows().count(), total);
   await page.locator(".mission-area").filter({ hasText: "Verificação" }).click();
-  assert.equal(await page.locator(".verification-card").count(), 2);
   // A change explored and saved earlier marks the verification that depended on it.
-  assert.equal(await page.locator(".verification-card.stale").count(), 1);
-  assert.ok((await page.locator(".verification-card.stale").innerText()).includes("Total mass"), await page.locator(".verification-card.stale").innerText());
+  assert.equal(await page.locator(".requirement-table tbody tr.changed").count(), 1);
+  assert.ok((await page.locator(".requirement-table tbody tr.changed").innerText()).includes("Total mass"), await page.locator(".requirement-table tbody tr.changed").innerText());
+  await page.locator(".requirement-filters select").last().selectOption("review");
+  assert.equal(await page.locator(".requirement-table tbody tr").count(), 1);
+  await page.locator(".requirement-clear").click();
   await page.screenshot({ path: "/tmp/norte-area-verification.png", fullPage: true });
   await page.locator(".mission-area").filter({ hasText: "Software" }).click();
   assert.ok(await page.locator(".area-repo-action").isDisabled());
-  assert.equal(await page.locator(".area-card").count(), 6);
+  assert.equal(await page.locator(".software-block").count(), 7);
+  assert.equal(await page.locator(".software-lane").count(), 4);
+  assert.ok((await page.locator("#software-power").innerText()).includes("Battery"), await page.locator("#software-power").innerText());
   await page.screenshot({ path: "/tmp/norte-area-software.png", fullPage: true });
 
   // Discovery follows the user onto any page, resizes and closes without losing the board.
@@ -405,7 +419,7 @@ try {
   });
   const overflow = await page.evaluate(() => {
     const panel = document.querySelector(".discovery-panel").getBoundingClientRect().left;
-    return Math.max(...[...document.querySelectorAll(".area-card")].map((card) => card.getBoundingClientRect().right)) - panel;
+    return Math.max(...[...document.querySelectorAll(".software-block")].map((card) => card.getBoundingClientRect().right)) - panel;
   });
   assert.ok(overflow <= 1, `a card runs ${overflow}px past the panel edge`);
   await page.screenshot({ path: "/tmp/norte-discovery-panel.png" });

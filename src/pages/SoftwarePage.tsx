@@ -1,62 +1,118 @@
-import { Boxes, Cpu, FileCheck2, FolderGit2, Network, TestTubeDiagonal, Link2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Code2, FolderGit2, Cpu, RadioTower, Link2 } from "lucide-react";
 import { ProjectAreaShell, AreaPreviewNote } from "../components/ProjectAreaShell";
 import type { MissionProject } from "../lib/projectStore";
 import type { Language } from "../lib/types";
 
-/** Modules a small satellite team recognises, drawn against whatever architecture exists. */
-const MODULES = [
-  { id: "flight-software", pt: "Software de bordo", en: "Flight software", layer: "onboard", controls: ["computer", "obc", "on-board"], pt_role: "Laço principal, modos de operação e telemetria.", en_role: "Main loop, operating modes and telemetry." },
-  { id: "attitude-control", pt: "Controle de atitude", en: "Attitude control", layer: "onboard", controls: ["wheel", "magnetorquer", "adcs", "attitude"], pt_role: "Determinação e controle de apontamento.", en_role: "Attitude determination and pointing control." },
-  { id: "power-manager", pt: "Gerência de energia", en: "Power manager", layer: "onboard", controls: ["battery", "eps", "solar", "power"], pt_role: "Orçamento de energia, cortes de carga e modo seguro.", en_role: "Energy budget, load shedding and safe mode." },
-  { id: "payload-driver", pt: "Driver do payload", en: "Payload driver", layer: "onboard", controls: ["camera", "payload", "optics", "storage"], pt_role: "Aquisição, compressão e armazenamento.", en_role: "Acquisition, compression and storage." },
-  { id: "comms-stack", pt: "Pilha de comunicação", en: "Communication stack", layer: "onboard", controls: ["radio", "antenna", "transceiver", "communication"], pt_role: "Enquadramento, janelas de passagem e retransmissão.", en_role: "Framing, pass windows and retransmission." },
-  { id: "ground-segment", pt: "Segmento solo", en: "Ground segment", layer: "ground", controls: [], pt_role: "Estação, agendamento de passagens e painel de telemetria.", en_role: "Station, pass scheduling and telemetry dashboard." }
+type ModuleId = "ground" | "comms" | "core" | "adcs" | "power" | "payload" | "storage";
+
+/** A layered block diagram: ground, on-board core, and the drivers that touch hardware. */
+const MODULES: Array<{ id: ModuleId; lane: 0 | 1 | 2 | 3; pt: string; en: string; ptRole: string; enRole: string; controls: string[] }> = [
+  { id: "ground", lane: 0, pt: "Segmento solo", en: "Ground segment", ptRole: "Estação, passagens, telemetria", enRole: "Station, passes, telemetry", controls: [] },
+  { id: "comms", lane: 1, pt: "Pilha de comunicação", en: "Communication stack", ptRole: "Enquadramento e retransmissão", enRole: "Framing and retransmission", controls: ["radio", "antenna", "transceiver", "communication"] },
+  { id: "core", lane: 1, pt: "Núcleo de bordo", en: "Flight core", ptRole: "Modos, escalonador, telemetria", enRole: "Modes, scheduler, telemetry", controls: ["computer", "obc", "on-board"] },
+  { id: "adcs", lane: 2, pt: "Controle de atitude", en: "Attitude control", ptRole: "Determinação e apontamento", enRole: "Determination and pointing", controls: ["wheel", "magnetorquer", "adcs", "attitude"] },
+  { id: "power", lane: 2, pt: "Gerência de energia", en: "Power manager", ptRole: "Orçamento, cortes, modo seguro", enRole: "Budget, shedding, safe mode", controls: ["battery", "eps", "solar", "power"] },
+  { id: "payload", lane: 2, pt: "Driver do payload", en: "Payload driver", ptRole: "Aquisição e compressão", enRole: "Acquisition and compression", controls: ["camera", "payload", "optics"] },
+  { id: "storage", lane: 3, pt: "Armazenamento", en: "Storage", ptRole: "Buffer de bordo e fila de downlink", enRole: "On-board buffer and downlink queue", controls: ["storage", "memory"] }
 ];
+
+const LINKS: Array<[ModuleId, ModuleId]> = [["ground", "comms"], ["comms", "core"], ["core", "adcs"], ["core", "power"], ["core", "payload"], ["payload", "storage"], ["storage", "comms"]];
+const LANES = [
+  { lane: 0 as const, pt: "Em solo", en: "On the ground", Icon: RadioTower },
+  { lane: 1 as const, pt: "Bordo · núcleo", en: "On board · core", Icon: Cpu },
+  { lane: 2 as const, pt: "Bordo · drivers", en: "On board · drivers", Icon: Code2 },
+  { lane: 3 as const, pt: "Bordo · dados", en: "On board · data", Icon: Code2 }
+];
+
+type Edge = { id: string; path: string };
+
+/** Connectors are measured from the laid-out blocks, so they survive any reflow. */
+function useModuleEdges(deps: unknown[]) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState<Edge[]>([]);
+  const measure = useCallback(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const origin = frame.getBoundingClientRect();
+    setEdges(LINKS.flatMap(([from, to]) => {
+      const start = frame.querySelector(`#software-${from}`)?.getBoundingClientRect();
+      const end = frame.querySelector(`#software-${to}`)?.getBoundingClientRect();
+      if (!start || !end) return [];
+      const x1 = start.left + start.width / 2 - origin.left, x2 = end.left + end.width / 2 - origin.left;
+      const downwards = end.top >= start.bottom - 1;
+      const y1 = downwards ? start.bottom - origin.top : start.top - origin.top;
+      const y2 = downwards ? end.top - origin.top : end.bottom - origin.top;
+      const bend = Math.max(12, Math.abs(y2 - y1) / 2);
+      return [{ id: `${from}-${to}`, path: `M${x1},${y1} C${x1},${y1 + (downwards ? bend : -bend)} ${x2},${y2 - (downwards ? bend : -bend)} ${x2},${y2}` }];
+    }));
+  }, []);
+  useEffect(() => {
+    measure();
+    const frame = frameRef.current;
+    if (!frame) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
+    for (const block of frame.querySelectorAll(".software-block")) observer.observe(block);
+    return () => observer.disconnect();
+  }, [measure, ...deps]);
+  return { frameRef, edges };
+}
 
 export function SoftwarePage({ language, project, onOpenRequirements }: { language: Language; project: MissionProject; onOpenRequirements: () => void }) {
   const pt = language === "pt";
   const model = project.engineeringSystem;
   const entities = model?.entities.filter((entity) => !["system", "subsystem"].includes(entity.kind)) ?? [];
   const requirements = model?.requirements ?? [];
-  const controlled = (module: typeof MODULES[number]) => entities.filter((entity) => module.controls.some((hint) => `${entity.id} ${entity.name}`.toLowerCase().includes(hint))).slice(0, 4);
+  const controlled = (module: typeof MODULES[number]) => entities.filter((entity) => module.controls.some((hint) => `${entity.id} ${entity.name}`.toLowerCase().includes(hint))).slice(0, 3);
   const c = pt ? {
-    eyebrow: "Área do projeto", title: "Software", subtitle: "A arquitetura de software e o que ela controla, exige e comprova no resto do sistema.",
-    repo: "Conectar repositório GitHub", soon: "Em breve", repoHint: "Módulos, commits e testes virão do repositório, ligados aos elementos do sistema.",
-    controls: "Controla no sistema", requirements: "Requisitos relacionados", tests: "Testes", onboard: "A bordo", ground: "Em solo",
-    noEntity: "Nenhum elemento correspondente na arquitetura atual.", noRequirement: "Os requisitos entram quando forem alocados a este módulo.",
-    seeRequirements: "Ver requisitos", count: `${MODULES.length} módulos`
+    eyebrow: "Área do projeto", title: "Software", subtitle: "A arquitetura de software do satélite e os elementos do sistema que cada módulo controla.",
+    repo: "Conectar repositório GitHub", soon: "Em breve", repoHint: "Módulos, commits e testes virão do repositório, ligados a estes blocos.",
+    controls: "Controla", requirements: "Requisitos", seeRequirements: "Ver requisitos", none: "Sem elemento correspondente",
+    count: `${MODULES.length} módulos`
   } : {
-    eyebrow: "Project area", title: "Software", subtitle: "The software architecture and what it controls, demands and proves across the rest of the system.",
-    repo: "Connect GitHub repository", soon: "Coming soon", repoHint: "Modules, commits and tests will come from the repository, tied to system elements.",
-    controls: "Controls in the system", requirements: "Related requirements", tests: "Tests", onboard: "On board", ground: "On the ground",
-    noEntity: "No matching element in the current architecture.", noRequirement: "Requirements appear once they are allocated to this module.",
-    seeRequirements: "See requirements", count: `${MODULES.length} modules`
+    eyebrow: "Project area", title: "Software", subtitle: "The satellite's software architecture and the system elements each module controls.",
+    repo: "Connect GitHub repository", soon: "Coming soon", repoHint: "Modules, commits and tests will come from the repository, tied to these blocks.",
+    controls: "Controls", requirements: "Requirements", seeRequirements: "See requirements", none: "No matching element",
+    count: `${MODULES.length} modules`
   };
 
-  return <ProjectAreaShell language={language} project={project} icon={<Boxes aria-hidden="true" />} eyebrow={c.eyebrow} title={c.title} subtitle={c.subtitle} counter={c.count}
+  const { frameRef, edges } = useModuleEdges([entities.length, requirements.length, language]);
+
+  return <ProjectAreaShell language={language} project={project} icon={<Code2 aria-hidden="true" />} eyebrow={c.eyebrow} title={c.title} subtitle={c.subtitle} counter={c.count}
     actions={<button type="button" className="area-repo-action" disabled title={c.soon}><FolderGit2 aria-hidden="true" />{c.repo}<small>{c.soon}</small></button>}>
     <p className="area-repo-hint"><Link2 aria-hidden="true" />{c.repoHint}</p>
-    {(["onboard", "ground"] as const).map((layer) => <section key={layer} className="area-layer">
-      <h2 className="area-layer-title"><Cpu aria-hidden="true" />{layer === "onboard" ? c.onboard : c.ground}</h2>
-      <div className="area-grid">
-        {MODULES.filter((module) => module.layer === layer).map((module) => {
-          const parts = controlled(module);
-          const related = requirements.filter((requirement) => requirement.relatedEntityIds.some((id) => parts.some((part) => part.id === id))).slice(0, 3);
-          return <article className="area-card" key={module.id}>
-            <header><Boxes aria-hidden="true" /><strong>{pt ? module.pt : module.en}</strong></header>
-            <p>{pt ? module.pt_role : module.en_role}</p>
-            <div className="area-card-links">
-              <div className="area-card-link"><small><Network aria-hidden="true" />{c.controls}</small>{parts.length ? <ul>{parts.map((part) => <li key={part.id}>{part.name}</li>)}</ul> : <em>{c.noEntity}</em>}</div>
-              <div className="area-card-link"><small><FileCheck2 aria-hidden="true" />{c.requirements}</small>{related.length ? <ul>{related.map((requirement) => <li key={requirement.id}>{requirement.id} · {requirement.title}</li>)}</ul> : <em>{c.noRequirement}</em>}</div>
-              <div className="area-card-link"><small><TestTubeDiagonal aria-hidden="true" />{c.tests}</small><em>{pt ? "Suítes do repositório, ligadas a cada requisito." : "Repository suites, tied to each requirement."}</em></div>
-            </div>
-          </article>;
-        })}
-      </div>
-    </section>)}
+    <div className="software-diagram" ref={frameRef}>
+      <svg className="software-edges" aria-hidden="true"><defs><marker id="software-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10" fill="#5c86ab" /></marker></defs>
+        {edges.map((edge) => <path key={edge.id} d={edge.path} markerEnd="url(#software-arrow)" />)}
+      </svg>
+      {LANES.map(({ lane, pt: ptLane, en, Icon }) => <div className="software-lane" key={lane}>
+        <span className="software-lane-label"><Icon aria-hidden="true" />{pt ? ptLane : en}</span>
+        <div className="software-lane-blocks">
+          {MODULES.filter((module) => module.lane === lane).map((module) => {
+            const parts = controlled(module);
+            const related = requirements.filter((requirement) => requirement.relatedEntityIds.some((id) => parts.some((part) => part.id === id)));
+            return <article className={`software-block lane-${lane}`} key={module.id} id={`software-${module.id}`}>
+              <strong>{pt ? module.pt : module.en}</strong>
+              <small>{pt ? module.ptRole : module.enRole}</small>
+              <div className="software-block-ports">
+                <span className="software-port"><em>{c.controls}</em>{parts.length ? parts.map((part) => part.name).join(", ") : c.none}</span>
+                {related.length > 0 && <span className="software-port req"><em>{c.requirements}</em>{related.map((requirement) => requirement.id).join(", ")}</span>}
+              </div>
+            </article>;
+          })}
+        </div>
+      </div>)}
+      <p className="software-legend" aria-label={pt ? "Ligações entre módulos" : "Links between modules"}>
+        {LINKS.map(([from, to]) => {
+          const name = (id: ModuleId) => { const module = MODULES.find((item) => item.id === id)!; return pt ? module.pt : module.en; };
+          return `${name(from)} → ${name(to)}`;
+        }).join(" · ")}
+      </p>
+    </div>
     <AreaPreviewNote text={pt
-      ? `Os elementos e requisitos mostrados vêm da arquitetura deste projeto (${entities.length} elementos, ${requirements.length} requisitos). Os módulos são a estrutura proposta; o repositório ainda não está conectado.`
-      : `The elements and requirements shown come from this project's architecture (${entities.length} elements, ${requirements.length} requirements). The modules are the proposed structure; the repository is not connected yet.`} />
-    <button type="button" className="area-cross-link" onClick={onOpenRequirements}><FileCheck2 aria-hidden="true" />{c.seeRequirements}</button>
+      ? `Os elementos e requisitos citados nos blocos vêm da arquitetura deste projeto (${entities.length} elementos, ${requirements.length} requisitos). Os módulos e suas ligações são a estrutura proposta; o repositório ainda não está conectado.`
+      : `The elements and requirements named in the blocks come from this project's architecture (${entities.length} elements, ${requirements.length} requirements). The modules and their links are the proposed structure; the repository is not connected yet.`} />
+    <button type="button" className="area-cross-link" onClick={onOpenRequirements}><Code2 aria-hidden="true" />{c.seeRequirements}</button>
   </ProjectAreaShell>;
 }
