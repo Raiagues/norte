@@ -1,9 +1,12 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { ChevronDown, ChevronRight, Info, Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
 import type { EngineeringAnalysis, EngineeringEntity, EngineeringRelation, EngineeringSystemModel } from "../lib/engineeringSystem";
 import { ENGINEERING_NODE_HEIGHT, ENGINEERING_NODE_WIDTH, engineeringCurve, engineeringInterfaceCurve, engineeringInitialScale, engineeringParentId, engineeringLabel, engineeringRelationDirectionLabel, formatEngineeringValue, layoutEngineeringGraph } from "../lib/engineeringUi";
 import type { GraphPositions } from "../lib/engineeringUi";
 import type { Language } from "../lib/types";
+
+const MINIMAP_WIDTH = 172, MINIMAP_HEIGHT = 116;
 
 type Props = {
   language: Language; model: EngineeringSystemModel; entities: EngineeringEntity[];
@@ -62,12 +65,27 @@ export function SystemGraph({ language, model, entities, selectedId, highlightId
     return () => observer.disconnect();
   }, []);
 
-  function zoom(factor: number) {
+  function zoom(factor: number, anchor?: { x: number; y: number }) {
     setNavigation((current) => {
       const next = Math.min(2.5, Math.max(.2, current.scale * factor));
-      return { scale: next, x: viewport.width / 2 - (viewport.width / 2 - current.x) * next / current.scale, y: viewport.height / 2 - (viewport.height / 2 - current.y) * next / current.scale };
+      const pivotX = anchor?.x ?? viewport.width / 2, pivotY = anchor?.y ?? viewport.height / 2;
+      return { scale: next, x: pivotX - (pivotX - current.x) * next / current.scale, y: pivotY - (pivotY - current.y) * next / current.scale };
     });
   }
+
+  useEffect(() => {
+    const node = viewportRef.current;
+    if (!node) return;
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = node.getBoundingClientRect();
+      if (event.shiftKey) { setNavigation((current) => ({ ...current, x: current.x - event.deltaX - event.deltaY })); return; }
+      const step = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaMode === 2 ? event.deltaY * rect.height : event.deltaY;
+      zoom(Math.exp(-Math.max(-240, Math.min(240, step)) * .0022), { x: event.clientX - rect.left, y: event.clientY - rect.top });
+    };
+    node.addEventListener("wheel", wheel, { passive: false });
+    return () => node.removeEventListener("wheel", wheel);
+  }, [viewport.width, viewport.height]);
 
   function revealKeyboardFocus(target: HTMLElement, rect: { x: number; y: number; width: number; height: number }) {
     if (!target.matches(":focus-visible") || panRef.current || dragRef.current?.moved) return;
@@ -76,6 +94,27 @@ export function SystemGraph({ language, model, entities, selectedId, highlightId
     const deltaX = left < 16 ? 16 - left : right > viewport.width - 16 ? viewport.width - 16 - right : 0;
     const deltaY = top < 50 ? 50 - top : bottom > viewport.height - 70 ? viewport.height - 70 - bottom : 0;
     if (deltaX || deltaY) setNavigation((current) => ({ ...current, x: current.x + deltaX, y: current.y + deltaY }));
+  }
+
+  const minimap = (() => {
+    if (nodes.length < 2) return null;
+    const worldLeft = -x / scale, worldTop = -y / scale;
+    const left = Math.min(...nodes.map((node) => node.x), worldLeft) - 40, top = Math.min(...nodes.map((node) => node.y), worldTop) - 40;
+    const right = Math.max(...nodes.map((node) => node.x + ENGINEERING_NODE_WIDTH), worldLeft + viewport.width / scale) + 40;
+    const bottom = Math.max(...nodes.map((node) => node.y + ENGINEERING_NODE_HEIGHT), worldTop + viewport.height / scale) + 40;
+    const ratio = Math.min(MINIMAP_WIDTH / (right - left), MINIMAP_HEIGHT / (bottom - top));
+    return { left, top, ratio, offsetX: (MINIMAP_WIDTH - (right - left) * ratio) / 2, offsetY: (MINIMAP_HEIGHT - (bottom - top) * ratio) / 2 };
+  })();
+  const minimapRef = useRef(minimap);
+  minimapRef.current = minimap;
+  const minimapDragRef = useRef<{ pointer: number; map: NonNullable<typeof minimap> } | null>(null);
+
+  function centerFromMinimap(event: ReactPointerEvent<HTMLDivElement>) {
+    const map = minimapDragRef.current?.map ?? minimapRef.current;
+    if (!map) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const worldX = map.left + (event.clientX - rect.left - map.offsetX) / map.ratio, worldY = map.top + (event.clientY - rect.top - map.offsetY) / map.ratio;
+    setNavigation((current) => ({ ...current, x: viewport.width / 2 - worldX * current.scale, y: viewport.height / 2 - worldY * current.scale }));
   }
 
   return <div className="engineering-graph" ref={viewportRef} aria-label={pt ? "Arquitetura do sistema" : "System architecture"}
@@ -88,8 +127,7 @@ export function SystemGraph({ language, model, entities, selectedId, highlightId
       const pan = panRef.current;
       if (pan?.pointer === event.pointerId) setNavigation((current) => ({ ...current, x: pan.originX + event.clientX - pan.x, y: pan.originY + event.clientY - pan.y }));
     }}
-    onPointerUp={(event) => { const pan = panRef.current; if (pan && Math.hypot(event.clientX - pan.x, event.clientY - pan.y) < 4) onClearSelection?.(); panRef.current = null; }} onPointerCancel={() => { panRef.current = null; }}
-    onWheel={(event) => { if (event.ctrlKey || event.metaKey) zoom(event.deltaY < 0 ? 1.1 : 1 / 1.1); else setNavigation((current) => ({ ...current, x: current.x - event.deltaX, y: current.y - event.deltaY })); }}>
+    onPointerUp={(event) => { const pan = panRef.current; if (pan && Math.hypot(event.clientX - pan.x, event.clientY - pan.y) < 4) onClearSelection?.(); panRef.current = null; }} onPointerCancel={() => { panRef.current = null; }}>
     <div className="engineering-world" style={{ width: Math.max(graph.width, ...nodes.map((node) => node.x + ENGINEERING_NODE_WIDTH + 100)), height: Math.max(graph.height, ...nodes.map((node) => node.y + ENGINEERING_NODE_HEIGHT + 100)), transform: `translate(${x}px, ${y}px) scale(${scale})` }}>
       <svg className="engineering-edges" width="100%" height="100%" aria-label={pt ? "Relações técnicas" : "Technical relationships"}>
         <defs><marker id={markerId} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="currentColor" /></marker></defs>
@@ -159,6 +197,13 @@ export function SystemGraph({ language, model, entities, selectedId, highlightId
       })}
     </div>
     {!entities.length && <div className="engineering-graph-empty">{pt ? "Nenhuma entidade vinculada a este recorte." : "No entities are linked to this view."}</div>}
+    {minimap && <div className="engineering-minimap" data-graph-control aria-hidden="true" style={{ width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT }} title={pt ? "Mapa da arquitetura. Clique ou arraste para navegar." : "Architecture map. Click or drag to navigate."}
+      onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); minimapDragRef.current = { pointer: event.pointerId, map: minimap }; centerFromMinimap(event); }}
+      onPointerMove={(event) => { if (minimapDragRef.current?.pointer === event.pointerId) centerFromMinimap(event); }}
+      onPointerUp={() => { minimapDragRef.current = null; }} onPointerCancel={() => { minimapDragRef.current = null; }}>
+      {nodes.map(({ entity, x: nodeX, y: nodeY }) => <i key={entity.id} className={`kind-${entity.kind}${selectedId === entity.id ? " selected" : ""}`} style={{ left: minimap.offsetX + (nodeX - minimap.left) * minimap.ratio, top: minimap.offsetY + (nodeY - minimap.top) * minimap.ratio, width: Math.max(4, ENGINEERING_NODE_WIDTH * minimap.ratio), height: Math.max(3, ENGINEERING_NODE_HEIGHT * minimap.ratio) }} />)}
+      <span style={{ left: minimap.offsetX + (-x / scale - minimap.left) * minimap.ratio, top: minimap.offsetY + (-y / scale - minimap.top) * minimap.ratio, width: viewport.width / scale * minimap.ratio, height: viewport.height / scale * minimap.ratio }} />
+    </div>}
     <div className="engineering-navigation" data-graph-control role="group" aria-label={pt ? "Navegação do grafo" : "Graph navigation"}>
       <button type="button" aria-label={pt ? "Afastar" : "Zoom out"} onClick={() => zoom(1 / 1.2)}><Minus aria-hidden="true" /></button>
       <output>{Math.round(scale * 100)}%</output>
