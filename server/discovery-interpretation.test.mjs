@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createEngineeringValidationModel } from "../examples/engineering-validation.mjs";
 import { interpretationPrompt, resolveInterpretation } from "./discovery-interpretation.mjs";
+import { analyzeImpact } from "../shared/impact-engine.mjs";
 import { createSystemAiService } from "./system-ai.mjs";
 
 const model = createEngineeringValidationModel();
@@ -65,4 +66,33 @@ test("provider failure remains recoverable instead of guessing a change", async 
   const service = createSystemAiService({ apiKey: "synthetic-test-key", fetch: async () => { requests++; return new Response("{}", { status: 503 }); } });
   await assert.rejects(service.interpret(model, "radio 1.2 A"), { code: "SYSTEM_AI_UNAVAILABLE" });
   assert.equal(requests, 1);
+});
+
+test("camera mass can be proposed without a previous mass, without changing the baseline", () => {
+  const cameraModel = structuredClone(model);
+  const camera = cameraModel.entities.find((item) => item.id === "payload");
+  camera.name = "Imaging payload";
+  camera.description = "Camera for mission imaging";
+  camera.properties = [];
+  const before = structuredClone(cameraModel);
+  const candidate = { ...output(), targetId: camera.id, summary: "A câmera passa a ter 1 kg.", updates: [{ propertyKey: "mass", operation: "set", value: 1, unit: "kg", quote: "1kg" }] };
+  const result = resolveInterpretation(cameraModel, "mudar peso da camera para 1kg", candidate, "pt");
+  assert.equal(result.status, "resolved");
+  assert.deepEqual(result.change.oldValues, []);
+  assert.equal(result.change.newValues[0].value, 1);
+  assert.equal(result.change.newValues[0].source, "user");
+  assert.doesNotThrow(() => analyzeImpact(cameraModel, result.change, "pt"));
+  assert.deepEqual(cameraModel, before);
+  for (const patch of [{ operation: "add" }, { operation: "scale" }, { unit: "W" }, { value: -1 }, { quote: "2kg" }]) {
+    assert.equal(resolveInterpretation(cameraModel, "mudar peso da camera para 1kg", { ...candidate, updates: [{ ...candidate.updates[0], ...patch }] }).status, "clarification");
+  }
+  const prompt = interpretationPrompt(cameraModel, "mudar peso da camera para 1kg", "en");
+  assert.ok(prompt.includes(camera.description));
+});
+test("clarification never asks users for internal IDs or property keys", () => {
+  for (const question of ["Which camera and what is its target ID?", "Informe o identificador da câmera", "Qual propertyKey devo usar?"]) {
+    const result = resolveInterpretation(model, "mudar peso da camera para 1kg", { ...output(), kind: "clarification", question }, "pt");
+    assert.equal(result.status, "clarification");
+    assert.doesNotMatch(result.question, /ID|identificador|propertyKey/iu);
+  }
 });
