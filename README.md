@@ -30,7 +30,7 @@ The core interaction is a proposed change followed by its consequences: an alter
 | Beta | Automatic engineering-model extraction, System navigation, requirement traceability, auditable expert corrections, text-driven Discovery scenarios and a bounded deterministic impact engine. Extraction quality depends on the linked evidence. |
 | Planned | Raw-artifact extraction benchmark, broader engineering rules, controlled promotion of scenarios to the baseline and independent engineering/student validation. |
 
-New project and team creation are temporarily disabled in the interface. A fresh database contains one neutral team and the **Quetzal-1** project with an empty memory and no reference competition; its real documents are imported by an explicit command. Its architecture is generated when conception starts. Generation failures never substitute a prebuilt model.
+New project and team creation are available. Projects select a type and start with a small, editable set of sectors; folders and sector permissions organize Project Memory. See [organization, presence, PDFs and migration](docs/PROJECT_ORGANIZATION.md). A fresh database contains one neutral team and the **Quetzal-1** project with an empty memory and no reference competition; its real documents are imported by an explicit command. Its architecture is generated when conception starts. Generation failures never substitute a prebuilt model.
 
 Norte is not a general physics simulator. An inferred dependency is a hypothesis for review. A deterministic result is limited to its inputs, units and explicit rule.
 
@@ -40,7 +40,7 @@ Norte is not a general physics simulator. An inferred dependency is a hypothesis
 2. Select **Start conception**. Norte reads the linked memory, builds and persists the initial engineering model, then opens **System**. Failed extraction can be retried after correcting the memory.
 3. Inspect the macro architecture, focus a subsystem and open object information intentionally. Requirements are a separate layer linked to the architecture.
 4. Propose a component, parameter or requirement change. Inspect the affected path, source facts and calculations. Corrections preserve the original suggestion, revised object, supporting evidence and context in exportable records.
-5. Use **Discovery BETA** to write hypotheses. Saving an idea asks the configured AI to interpret it against the saved architecture. The card shows the interpretation or a short clarification question; **See impact** opens the temporary scenario.
+5. Use **Test ideas BETA** to write hypotheses. Saving an idea asks the configured AI to interpret it against the saved architecture. The card shows the interpretation or a short clarification question; **Test idea** opens the temporary scenario.
 
 ## Architecture
 
@@ -107,6 +107,7 @@ npm run typecheck
 npm run lint
 npm test                 # Vitest and Node API/engine tests
 npm run test:api
+npm run test:visual:organization # Teams, creation, folders, documents and PDF downloads
 npm run test:visual      # Isolated browser/API acceptance test (Chromium required)
 npm run test:visual:quetzal # Fixture memory and hypothesis-to-impact interaction check
 npm run test:acceptance:quetzal # LIVE browser run over the seeded real Quetzal documents
@@ -213,7 +214,7 @@ The browser demo exposes `resetDemoValidationData('RESET_VALIDATION_DATA')` from
 
 System expands and collapses children directly on the map. Selecting a card highlights its branch and direct technical interfaces while dimming unrelated elements. The hierarchy toggle sits beside the explorer. Neighboring interfaces use side ports; containment remains a separate dashed connection. Drag cards or use Alt + arrow keys; positions persist without changing engineering facts. Fit and reset remain available. System no longer exposes Requirements, Review documents, What if, Element relationships or hierarchy search.
 
-Discovery keeps the canvas focused on text. Saving a new or edited idea triggers AI interpretation; **See impact** uses the proposed change without opening a target/property form. Ambiguous ideas receive one short question on the card and can be edited in place. Connection, duplication and deletion appear when an idea is selected. AI interpretation needs the connected environment and configured Gemini credentials. Conception contains only System and Discovery.
+Discovery keeps the canvas focused on text. Saving a new or edited idea triggers AI interpretation; **Test idea** uses the proposed change without opening a target/property form. Ambiguous ideas receive one short question on the card and can be edited in place. Connection, duplication and deletion appear when an idea is selected. AI interpretation needs the connected environment and configured Gemini credentials. Conception contains only System and Discovery.
 
 Project Memory has one uppercase title and a unified artifact grid with at most four columns. Existing team references retain their ownership and unlink behavior; project files retain their edit/delete behavior.
 
@@ -243,3 +244,5 @@ benchmark/       Quetzal design context and separate evaluator-only expectations
 docs/            Architecture, research and deployment notes
 .github/         Quality, security and deployment workflows
 ```
+
+A colaboração por convites, os organogramas e a cópia local com três projetos estão documentados em [Equipes e colaboração](docs/TEAM_COLLABORATION.md). Para abrir a cópia preparada: `npm run dev:team-preview`. Emails reais exigem as variáveis SMTP de `.env.example`.

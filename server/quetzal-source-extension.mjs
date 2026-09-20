@@ -32,8 +32,9 @@ export async function attachQuetzalArchitectureSources(store) {
   const fragments = [];
   for (const source of manifest.sources) {
     const model = JSON.parse(await readFile(new URL(`../examples/quetzal1/architecture-extraction/norte-extra-${source.id}.json`, import.meta.url), "utf8"));
+    // Archived outputs retain their original hierarchy; new live extractions are strict.
     // Recheck recorded provider output against the exact bytes being attached.
-    fragments.push({ id: source.id, model: validateExtractedSystem(model, validationProject, parsed, model.model) });
+    fragments.push({ id: source.id, model: validateExtractedSystem(model, validationProject, parsed, model.model, { legacyHierarchy: true }) });
   }
   return store.update((data) => {
     if (!eligible(data)) return { added: 0 };

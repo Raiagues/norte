@@ -49,3 +49,11 @@ Abra a URL HTTPS entregue pelo Render e crie a primeira conta. Ela se torna prop
 - Para uso contínuo, escolha planos com política de disponibilidade e backup adequada à equipe.
 - Exporte dados importantes antes de mudanças grandes e teste a restauração.
 - Não use o ambiente demonstrativo do GitHub Pages para dados pessoais ou decisões reais.
+
+## Documentos e migração de organização
+
+O estado passa à versão 10 por migração aditiva, mantendo projetos, contas, arquivos e permissões. Não execute reset para aplicar a mudança. `DATABASE_URL` é obrigatória no Render: arquivos enviados e fontes editáveis ficam no PostgreSQL; os PDFs gerados são enviados em memória sem arquivos persistentes no serviço web. PDFKit funciona no Node e não exige Chromium ou serviço externo. Consulte [organização, permissões, presença e limites](PROJECT_ORGANIZATION.md).
+
+### Convites e verificação de email
+
+O estado é normalizado para schema 10 sem apagar solicitações ou documentos antigos. Configure `NORTE_PUBLIC_URL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER` e `SMTP_PASSWORD` somente no servidor para enviar convites/verificações. Sem SMTP, convites por nickname funcionam, e o envio por email retorna indisponibilidade explícita. Ver [fluxo, migração e limites](TEAM_COLLABORATION.md). O seed de múltiplos projetos recusa Render/produção e nunca integra build ou startup.

@@ -10,6 +10,7 @@ const dataUrl = (text) => `data:text/markdown;base64,${Buffer.from(text, "utf8")
 
 const sourceText = [
   "# Power",
+  "Power includes a distribution subsystem containing the Bus and Radio.",
   "",
   "The Bus powers the Radio. The Radio must remain within",
   "its documented supply range during every pass.",
@@ -25,7 +26,7 @@ const artifact = { id: "doc", label: "Power notes", scope: "project", ownerId: "
 function extraction({ requirementRefs }) {
   const entity = (id, name, kind, parentId) => ({ id, name, kind, ...(parentId ? { parentId } : {}), description: "", source: "documented", evidenceRefs: ["ev-1"], confidence: 1, properties: [] });
   return {
-    entities: [entity("sys", "Power", "system"), entity("bus", "Bus", "component", "sys"), entity("radio", "Radio", "component", "sys")],
+    entities: [entity("sys", "Power", "system"), entity("bus", "Bus", "component", "distribution"), entity("radio", "Radio", "component", "distribution"), entity("distribution", "Distribution", "subsystem", "sys")],
     relations: [{ id: "r1", from: "bus", to: "radio", kind: "powers", label: "powers", source: "documented", evidenceRefs: ["ev-1"], confidence: 1 }],
     requirements: [{ id: "REQ-1", title: "Supply range", statement: "The Radio must remain within its documented supply range during every pass.", category: "", subsystemTags: [], reviewTags: [], evidenceRefs: requirementRefs, relatedEntityIds: ["radio"], relatedRelationIds: [], properties: [] }],
     evidence: [{ id: "ev-1", artifactId: "doc", artifactLabel: "Power notes", excerpt: "The Bus powers the Radio.", kind: "fact" }]
@@ -101,7 +102,7 @@ test("quotation matching tolerates how whitespace was wrapped and nothing else",
   assert.equal(sourceText.includes(wrapped), false, "the fixture must actually be wrapped");
   const at = locateExcerpt(sourceText, wrapped);
   assert.ok(at >= 0);
-  assert.equal(sourceText.slice(0, at).split("\n").length, 3, "the locator must still point at the real line");
+  assert.equal(sourceText.slice(0, at).split("\n").length, 4, "the locator must still point at the real line");
 
   assert.equal(locateExcerpt(sourceText, "The Bus powers the Radio."), sourceText.indexOf("The Bus powers the Radio."));
   for (const invented of [
@@ -119,7 +120,7 @@ test("a wrapped quotation now verifies end to end and keeps its real line locato
   const raw = extraction({ requirementRefs: ["ev-1"] });
   raw.evidence[0].excerpt = "The Radio must remain within its documented supply range during every pass.";
   const model = validateExtractedSystem(hydrateExtraction(raw, project), project, parsed, "test-model");
-  assert.equal(model.evidence[0].locator, "L3");
+  assert.equal(model.evidence[0].locator, "L4");
 });
 
 // A Markdown source as the mission team actually publishes it.

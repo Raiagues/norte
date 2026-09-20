@@ -1,5 +1,6 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { normalizeNickname, uniqueNickname, validNickname } from "./team-identity.mjs";
 import { randomUUID } from "node:crypto";
 import { QUETZAL_PROJECT_ID, QUETZAL_PROJECT_NAME, QUETZAL_TEAM_ID, QUETZAL_TEAM_NAME } from "../examples/quetzal1/source-manifest.mjs";
 
@@ -40,10 +41,10 @@ export function createInitialData() {
   const timestamp = new Date().toISOString();
   const project = { document: createValidationProject(timestamp), revision: 1, updatedAt: timestamp };
   return {
-    schemaVersion: 8,
+    schemaVersion: 10,
     createdAt: timestamp,
     updatedAt: timestamp,
-    users: [], members: [], artifacts: [], sessions: [],
+    users: [], members: [], artifacts: [], sessions: [], invitations: [], emailVerifications: [], teamStats: {}, activity: [],
     teams: [{
       id: VALIDATION_TEAM_ID, name: VALIDATION_TEAM_NAME, description: "",
       memberIds: [], artifactIds: [], joinRequests: [], createdBy: null,
@@ -54,13 +55,24 @@ export function createInitialData() {
 }
 
 export function normalizeStoredData(value) {
-  if (!value || ![1, 2, 3, 4, 5, 6, 7, 8].includes(value.schemaVersion) || !Array.isArray(value.users) || !Array.isArray(value.members) || !Array.isArray(value.artifacts)) {
+  if (!value || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(value.schemaVersion) || !Array.isArray(value.users) || !Array.isArray(value.members) || !Array.isArray(value.artifacts)) {
     throw new Error("Unsupported Norte data schema.");
   }
   // Normal startup only normalizes shape. Removing old demo data is an explicit,
   // guarded operation in scripts/reset-validation-data.mjs, never a migration.
   const data = structuredClone(value);
-  data.schemaVersion = 8;
+  data.schemaVersion = 10;
+  data.invitations ??= [];
+  data.emailVerifications ??= [];
+  data.teamStats ??= {};
+  data.activity ??= [];
+  const named = [];
+  for (const user of data.users) {
+    const nickname = normalizeNickname(user.nickname);
+    user.nickname = validNickname(nickname) && !named.some(u => u.nickname === nickname) ? nickname : uniqueNickname(named, user.name);
+    user.emailVerifiedAt ??= null;
+    named.push(user);
+  }
   data.sessions = Array.isArray(data.sessions) ? data.sessions : [];
   data.teams = Array.isArray(data.teams) ? data.teams : [];
   data.workspace = data.workspace && typeof data.workspace === "object" && !Array.isArray(data.workspace)
@@ -75,17 +87,30 @@ export function normalizeStoredData(value) {
     scope: artifact.scope === "team" ? "team" : "project", ownerId: artifact.ownerId ?? null
   }));
   for (const team of data.teams) {
+    team.captainMemberId ??= data.users.find(user => user.id === team.createdBy)?.memberId || null;
+    team.adminMemberIds ??= [];
     team.memberIds = Array.isArray(team.memberIds) ? team.memberIds : [];
+    if (value.schemaVersion < 10) {
+      const awaiting = team.memberIds.filter(id => data.members.some(m => m.id === id && !m.accountId && m.accountStatus === 'invited'));
+      team.legacyInvitedMemberIds = [...new Set([...(team.legacyInvitedMemberIds || []), ...awaiting])];
+      team.memberIds = team.memberIds.filter(id => !awaiting.includes(id));
+    }
     team.artifactIds = Array.isArray(team.artifactIds) ? team.artifactIds : [];
     team.joinRequests = Array.isArray(team.joinRequests) ? team.joinRequests : [];
   }
   for (const record of Object.values(data.workspace.projects)) {
     const project = record?.document;
     if (!project?.context) continue;
+    project.creatorId ??= record.createdBy;
+    project.context.folders ??= [];
+    project.context.sectors ??= [];
+    project.context.assignments ??= [];
+    project.context.roles ??= createValidationProject().context.roles;
     project.context.teamId ??= data.teams.find((team) => team.name === project.context.teamName)?.id ?? null;
     project.context.teamArtifactIds = Array.isArray(project.context.teamArtifactIds) ? project.context.teamArtifactIds : [];
     project.context.projectArtifactIds = Array.isArray(project.context.projectArtifactIds) ? project.context.projectArtifactIds : [];
   }
+  if (data.workspace.project?.document?.id) data.workspace.project = data.workspace.projects[data.workspace.project.document.id];
   return data;
 }
 

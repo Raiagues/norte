@@ -8,6 +8,7 @@ const STATIC_DEMO = import.meta.env.VITE_DEMO_MODE === "true";
 export const API_ORIGIN = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/u, "");
 
 export type RegisterAccountInput = {
+  nickname?: string;
   name: string;
   email: string;
   password: string;
@@ -80,6 +81,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || STATIC_DEMO) return;
+    let lastInteraction = Date.now();
+    const active = () => { lastInteraction = Date.now(); };
+    const heartbeat = () => {
+      if (document.visibilityState === "visible" && Date.now() - lastInteraction < 120_000) {
+        void api("/auth/heartbeat", { method: "POST" }).catch(() => undefined);
+      }
+    };
+    const visible = () => { if (document.visibilityState === "visible") { active(); heartbeat(); } };
+    window.addEventListener("pointerdown", active);
+    window.addEventListener("keydown", active);
+    window.addEventListener("scroll", active, true);
+    document.addEventListener("visibilitychange", visible);
+    heartbeat();
+    const interval = window.setInterval(heartbeat, 30_000);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("pointerdown", active);
+      window.removeEventListener("keydown", active);
+      window.removeEventListener("scroll", active, true);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [api, status]);
 
   const login = useCallback(async (email: string, password: string) => {
     if (STATIC_DEMO) {

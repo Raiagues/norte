@@ -149,7 +149,7 @@ test("seeding replaces old memory with real sources, requires conception again a
   assert.equal(audit.readiness.basicProjectReady, true);
 
   // Accounts, sessions and members survive.
-  assert.deepEqual(data.users, original.users);
+  assert.deepEqual(data.users, original.users.map(user => ({ ...user, nickname: user.nickname || "pessoa", emailVerifiedAt: user.emailVerifiedAt || null })));
   assert.deepEqual(data.sessions, original.sessions);
   assert.deepEqual(data.members, original.members);
   assert.deepEqual(data.teams[0].memberIds, ["member-1"]);
@@ -198,7 +198,7 @@ test("stray demonstration projects are removed only when explicitly asked, and a
   assert.deepEqual(cleaned.audit.discardedProjects, [{ id: "projeto-teste", name: "Projeto Teste", artifacts: ["teste-doc"] }]);
   assert.equal(cleaned.audit.after.name, "Quetzal-1");
   // Accounts survive a project removal.
-  assert.deepEqual(cleaned.data.users, original.users);
+  assert.deepEqual(cleaned.data.users, original.users.map(user => ({ ...user, nickname: user.nickname || "pessoa", emailVerifiedAt: user.emailVerifiedAt || null })));
   assert.deepEqual(cleaned.data.sessions, original.sessions);
   assert.deepEqual(cleaned.data.members, original.members);
 });

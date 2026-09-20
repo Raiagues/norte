@@ -69,7 +69,7 @@ test("first registration creates an owner session and protects mutations", async
       institution: "Universidade de Exemplo"
     }
   });
-  assert.equal(accepted.statusCode, 201);
+  assert.equal(accepted.statusCode, 410);
 
   const emailOnlyInvitation = await app.inject({
     method: "POST",
@@ -77,16 +77,14 @@ test("first registration creates an owner session and protects mutations", async
     headers: { cookie, "x-csrf-token": registration.json().csrfToken },
     payload: { email: "convite@example.edu.br" }
   });
-  assert.equal(emailOnlyInvitation.statusCode, 201);
-  assert.equal(emailOnlyInvitation.json().member.email, "convite@example.edu.br");
-  assert.equal(emailOnlyInvitation.json().member.missionRole, "member");
+  assert.equal(emailOnlyInvitation.statusCode, 410);
 
   const persisted = await readFile(storeFile, "utf8");
   assert.doesNotMatch(persisted, /uma frase longa para a missao/);
   assert.match(persisted, /\$argon2id\$/);
 });
 
-test("open registrations receive member access and email invitations link profiles", async (t) => {
+test("open registrations receive member access and legacy direct membership routes stay closed", async (t) => {
   const storeFile = join(tmpdir(), `mission-dev-${randomUUID()}.json`);
   const app = await buildApp({ storeFile, logger: false });
   t.after(async () => {
@@ -112,9 +110,8 @@ test("open registrations receive member access and email invitations link profil
       institution: "Universidade de Exemplo"
     }
   });
-  assert.equal(invitation.statusCode, 201);
+  assert.equal(invitation.statusCode, 410);
   assert.equal("invitationCode" in invitation.json(), false);
-  assert.equal("invitationCodeHash" in invitation.json().member, false);
 
   const withoutInvitation = await app.inject({ method: "POST", url: "/api/auth/register", payload: { ...base, name: "Sem Convite", email: "sem-convite@example.edu.br" } });
   assert.equal(withoutInvitation.statusCode, 201);
@@ -147,16 +144,24 @@ test("open registrations receive member access and email invitations link profil
       institution: "Universidade de Exemplo"
     }
   });
-  assert.equal(memberCannotInvite.statusCode, 403);
+  assert.equal(memberCannotInvite.statusCode, 410);
 
+  const teamForRoles = (await app.inject({ method: "POST", url: "/api/teams", headers: { cookie: cookieFrom(owner), "x-csrf-token": owner.json().csrfToken }, payload: { name: "Role test team" } })).json().team;
+  const roleInvitation = (await app.inject({ method: "POST", url: `/api/teams/${teamForRoles.id}/invitations`, headers: { cookie: cookieFrom(owner), "x-csrf-token": owner.json().csrfToken }, payload: { nickname: second.json().user.nickname } })).json().invitation;
+  assert.equal((await app.inject({ method: "POST", url: `/api/invitations/${roleInvitation.id}/respond`, headers: { cookie: secondCookie, "x-csrf-token": second.json().csrfToken }, payload: { decision: "accept" } })).statusCode, 200);
   const projectWithMemberCaptain = {
     schemaVersion: 2,
     id: "project-role-permissions",
+    name: "Role permissions",
     context: {
+      teamId: teamForRoles.id,
       assignments: [{ memberId: second.json().user.memberId, roleId: "captain", sectorId: "" }]
     },
     board: { nodes: [], links: [] }
   };
+  const initialProject = await app.inject({ method: "POST", url: "/api/projects", headers: { cookie: cookieFrom(owner), "x-csrf-token": owner.json().csrfToken }, payload: { ...projectWithMemberCaptain, context: { teamId: teamForRoles.id, assignments: [{ memberId: second.json().user.memberId, roleId: "member", sectorId: "" }] } } });
+  assert.equal(initialProject.statusCode, 201, initialProject.body);
+  Object.assign(projectWithMemberCaptain, initialProject.json().project, { context: { ...initialProject.json().project.context, assignments: projectWithMemberCaptain.context.assignments } });
   const memberCannotPromoteSelf = await app.inject({
     method: "PUT",
     url: "/api/workspace/project",
@@ -179,7 +184,7 @@ test("open registrations receive member access and email invitations link profil
     headers: { cookie: secondCookie, "x-csrf-token": second.json().csrfToken },
     payload: { email: "project-invite@example.edu.br" }
   });
-  assert.equal(projectCaptainCanInvite.statusCode, 201);
+  assert.equal(projectCaptainCanInvite.statusCode, 410);
 
   const unsafeArtifact = await app.inject({
     method: "POST",
@@ -232,7 +237,7 @@ test("sessions and shared workspaces survive a server restart", async (t) => {
   });
   const cookie = cookieFrom(registration);
   const csrf = registration.json().csrfToken;
-  const project = { schemaVersion: 2, id: "mission-persistence", board: { nodes: [], links: [] } };
+  const project = { schemaVersion: 2, id: "mission-persistence", name: "Persistence project", board: { nodes: [], links: [] } };
   const lab = { schemaVersion: 1, nodes: [], links: [] };
 
   assert.equal((await app.inject({ method: "PUT", url: "/api/workspace/project", headers: { cookie, "x-csrf-token": csrf }, payload: project })).statusCode, 200);
@@ -319,14 +324,13 @@ test("minimal profiles, teams, artifacts, and multiple projects share one worksp
   assert.equal(artifactResponse.statusCode, 201);
   const artifactId = artifactResponse.json().artifact.id;
 
-  const invitedMember = await app.inject({
-    method: "POST",
-    url: "/api/team/members",
-    headers,
-    payload: { teamId, displayName: "Pessoa Convidada", email: "convidada@example.edu.br" }
-  });
-  assert.equal(invitedMember.statusCode, 201);
-  const invitedMemberId = invitedMember.json().member.id;
+  const invitedAccount = await app.inject({ method: "POST", url: "/api/auth/register", payload: { name: "Pessoa Convidada", email: "convidada@example.edu.br", password: "a sufficiently long test passphrase" } });
+  assert.equal(invitedAccount.statusCode, 201);
+  const invitedMemberId = invitedAccount.json().user.memberId;
+  const invitation = await app.inject({ method: "POST", url: `/api/teams/${teamId}/invitations`, headers, payload: { nickname: invitedAccount.json().user.nickname } });
+  assert.equal(invitation.statusCode, 201, invitation.body);
+  const accepted = await app.inject({ method: "POST", url: `/api/invitations/${invitation.json().invitation.id}/respond`, headers: { cookie: cookieFrom(invitedAccount), "x-csrf-token": invitedAccount.json().csrfToken }, payload: { decision: "accept" } });
+  assert.equal(accepted.statusCode, 200, accepted.body);
   const detachedMember = await app.inject({
     method: "DELETE",
     url: `/api/teams/${teamId}/members/${invitedMemberId}`,
@@ -437,7 +441,7 @@ test("public directories hide private team data and project lifecycle controls d
 
   const directory = await app.inject({ method: "GET", url: "/api/directory/members", headers: { cookie: outsiderCookie } });
   assert.equal(directory.statusCode, 200);
-  assert.equal(directory.json().members.length, 2);
+  assert.equal(directory.json().members.length, 1);
   assert.equal(Object.hasOwn(directory.json().members[0], "email"), false);
 
   const project = {
@@ -453,13 +457,17 @@ test("public directories hide private team data and project lifecycle controls d
   assert.equal(teamProjects.json().projects[0].id, project.id);
   assert.equal(teamProjects.json().projects[0].participants[0].displayName, "Capitã Norte");
   const privateProjects = await app.inject({ method: "GET", url: `/api/teams/${teamId}/projects`, headers: { cookie: outsiderCookie } });
-  assert.equal(privateProjects.statusCode, 403);
+  assert.equal(privateProjects.statusCode, 200);
+  assert.deepEqual(privateProjects.json().projects, []);
   const teamsWithCount = await app.inject({ method: "GET", url: "/api/teams", headers: { cookie: outsiderCookie } });
   assert.equal(teamsWithCount.json().teams.find((team) => team.id === teamId).projectCount, 1);
   const teamInUse = await app.inject({ method: "DELETE", url: `/api/teams/${teamId}`, headers: ownerHeaders });
   assert.equal(teamInUse.statusCode, 409);
   assert.equal(teamInUse.json().error, "TEAM_IN_USE");
   assert.equal((await app.inject({ method: "DELETE", url: `/api/projects/${project.id}`, headers: ownerHeaders })).statusCode, 204);
+  assert.equal((await app.inject({ method: "DELETE", url: `/api/teams/${teamId}`, headers: ownerHeaders })).statusCode, 409);
+  assert.ok(app.missionStore.read().artifacts.some(a => a.id === fileArtifact.json().artifact.id), "hidden team files are preserved");
+  assert.equal((await app.inject({ method: "DELETE", url: `/api/artifacts/${fileArtifact.json().artifact.id}`, headers: ownerHeaders })).statusCode, 204);
   assert.equal((await app.inject({ method: "DELETE", url: `/api/teams/${teamId}`, headers: ownerHeaders })).statusCode, 204);
   const artifactsAfterDelete = await app.inject({ method: "GET", url: "/api/artifacts", headers: { cookie: cookieFrom(owner) } });
   assert.equal(artifactsAfterDelete.json().artifacts.some((artifact) => artifact.id === fileArtifact.json().artifact.id), false);

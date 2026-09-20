@@ -53,8 +53,8 @@ test("normalization upgrades the schema without deleting existing data or inject
   await writeFile(file, JSON.stringify(original));
   const store = await new JsonDataStore(file).init();
   const state = store.read();
-  assert.equal(state.schemaVersion, 8);
-  assert.deepEqual(state.users, original.users);
+  assert.equal(state.schemaVersion, 10);
+  assert.deepEqual(state.users, original.users.map(user => ({ ...user, nickname: user.nickname || "pessoa", emailVerifiedAt: user.emailVerifiedAt || null })));
   assert.deepEqual(state.members, original.members);
   assert.equal(state.teams[0].id, "team-aurora");
   assert.equal(state.workspace.project.document.id, "old-project");
@@ -78,7 +78,7 @@ test("reset requires an explicit guard and positively identified development/tes
 test("explicit reset preserves accounts and sessions, removes old workspace data and records a reset marker", () => {
   const original = legacyState();
   const state = resetValidationData(original);
-  assert.deepEqual(state.users, original.users);
+  assert.deepEqual(state.users, original.users.map(user => ({ ...user, nickname: user.nickname || "pessoa", emailVerifiedAt: user.emailVerifiedAt || null })));
   assert.deepEqual(state.sessions, original.sessions);
   assert.deepEqual(state.members, [original.members[0]]);
   assert.equal(state.teams.length, 1);
@@ -119,7 +119,7 @@ test("PostgreSQL reset uses the same guarded state operation and backs up existi
   await pool.query("INSERT INTO norte_state (id, data) VALUES ($1, $2)", ["primary", JSON.stringify(original)]);
   const result = await resetPostgres("postgresql://localhost/norte_test", allowed, { pool, backupDirectory: dir });
   const saved = (await pool.query("SELECT data FROM norte_state WHERE id = $1", ["primary"])).rows[0].data;
-  assert.deepEqual(saved.users, original.users);
+  assert.deepEqual(saved.users, original.users.map(user => ({ ...user, nickname: user.nickname || "pessoa", emailVerifiedAt: user.emailVerifiedAt || null })));
   assert.deepEqual(saved.sessions, original.sessions);
   assert.equal(saved.teams[0].id, VALIDATION_TEAM_ID);
   assert.deepEqual(saved.workspace.labs, {});

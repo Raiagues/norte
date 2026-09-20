@@ -20,7 +20,7 @@ const dataUrl = (text, mimeType = "text/markdown") => `data:${mimeType};base64,$
 // document's system, and never Quetzal's.
 const documentText = [
   "# Bench supply rig",
-  "The Rig contains a Bench Supply and a Load Board.",
+  "The Rig contains an electrical subsystem with a Bench Supply and a Load Board.",
   "The Bench Supply powers the Load Board.",
   "Load Board operating power is 4 W."
 ].join("\n");
@@ -43,7 +43,7 @@ function extractionModel(text) {
   const evidence = { id: "e1", artifactId: "memory-source", artifactLabel: "Bench rig notes", excerpt: text, kind: "fact" };
   const entity = (id, name, kind, parentId) => ({ id, name, kind, ...(parentId ? { parentId } : {}), description: "", source: "documented", evidenceRefs: ["e1"], confidence: 1, properties: [] });
   return {
-    entities: [entity("rig", "Rig", "system"), entity("supply", "Bench Supply", "component", "rig"), entity("load", "Load Board", "component", "rig")],
+    entities: [entity("rig", "Rig", "system"), entity("supply", "Bench Supply", "component", "electrical"), entity("load", "Load Board", "component", "electrical"), entity("electrical", "Electrical", "subsystem", "rig")],
     relations: [{ id: "r1", from: "supply", to: "load", kind: "powers", label: "powers", source: "documented", evidenceRefs: ["e1"], confidence: 1 }],
     requirements: [],
     evidence: [evidence]
@@ -61,7 +61,7 @@ test("A: real document content reaches the provider and drives the extracted sys
   const prompt = sent.contents[0].parts.map((part) => part.text || "").join("\n");
   assert.ok(prompt.includes("The Bench Supply powers the Load Board."), "the document text must be supplied to the provider");
   assert.deepEqual(model.artifactSources, [{ artifactId: "memory-source", artifactLabel: "Bench rig notes", status: "parsed" }]);
-  assert.deepEqual(model.entities.map((entity) => entity.name), ["Rig", "Bench Supply", "Load Board"]);
+  assert.deepEqual(model.entities.map((entity) => entity.name), ["Rig", "Bench Supply", "Load Board", "Electrical"]);
   assert.equal(model.generatedFromRevision, 4);
 
   // No web retrieval: the model may read only what Norte imported.

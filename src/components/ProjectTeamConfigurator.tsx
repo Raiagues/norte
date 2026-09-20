@@ -1,358 +1,55 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Building2,
-  Check,
-  Expand,
-  GripVertical,
-  List,
-  Maximize2,
-  Minimize2,
-  Network,
-  Pencil,
-  Plus,
-  RotateCcw,
-  Save,
-  Trash2,
-  Undo2,
-  UserPlus,
-  X,
-  ZoomIn,
-  ZoomOut
-} from "lucide-react";
-import type { ProjectContext, ProjectMemberAssignment, ProjectStructureItem } from "../lib/projectStore";
-import { memberInitials } from "../lib/team";
-import type { Language } from "../lib/types";
-import type { TeamMember, TeamRecord } from "../lib/team";
-import "../project-team-configurator.css";
+import { useMemo, useState } from 'react';
+import { ArrowDown, ArrowUp, Check, List, Network, Plus, Trash2, Undo2 } from 'lucide-react';
+import { isProjectAdmin, sectorRole } from '../../shared/project-organization.mjs';
+import { projectOrganization } from '../../shared/organization-tree.mjs';
+import { OrganizationTree } from './OrganizationTree';
+import { useAuth } from '../lib/auth';
+import type { MissionProject, ProjectContext, ProjectMemberAssignment } from '../lib/projectStore';
+import type { TeamMember, TeamRecord } from '../lib/team';
+import type { Language } from '../lib/types';
+import '../project-team-configurator.css';
 
-type Props = {
-  language: Language;
-  context: ProjectContext;
-  team: TeamRecord;
-  members: TeamMember[];
-  onSave: (patch: Pick<ProjectContext, "roles" | "sectors" | "assignments">) => void;
-  onCreateMember: (name: string, email: string) => Promise<TeamMember>;
-  onRenameMember: (memberId: string, name: string) => Promise<void>;
-  onClose: () => void;
-};
-
-type Draft = Pick<ProjectContext, "roles" | "sectors" | "assignments">;
-type GroupKind = "sectors" | "roles";
-type ViewKind = "list" | "hierarchy";
-
-function cloneDraft(value: Draft): Draft {
-  return {
-    roles: value.roles.map((item) => ({ ...item })),
-    sectors: value.sectors.map((item) => ({ ...item })),
-    assignments: value.assignments.map((item) => ({ ...item }))
-  };
-}
-
-function uid(prefix: string) {
-  return `${prefix}-${crypto.randomUUID()}`;
-}
-
-export function ProjectTeamConfigurator({ language, context, team, members, onSave, onCreateMember, onRenameMember, onClose }: Props) {
-  const c = language === "pt" ? {
-    description: "Escolha os participantes e organize a estrutura deste projeto. Nada muda até você salvar.",
-    sectors: "Setores",
-    roles: "Cargos",
-    list: "Lista",
-    hierarchy: "Hierarquia",
-    save: "Salvar configuração",
-    cancel: "Cancelar",
-    undo: "Desfazer (Ctrl+Z)",
-    resetView: "Centralizar",
-    fullscreen: "Tela cheia",
-    exitFullscreen: "Sair da tela cheia",
-    noSector: "Sem setor",
-    addSector: "Adicionar setor",
-    addRole: "Adicionar cargo",
-    newSector: "Novo setor",
-    newRole: "Novo cargo",
-    manager: "Gerência",
-    members: "Participantes",
-    addHere: "Adicionar participante aqui",
-    edit: "Editar pessoa",
-    remove: "Remover do projeto",
-    moveQuestion: "Mover esta pessoa para outro setor?",
-    confirm: "Confirmar",
-    keep: "Manter onde está",
-    choose: "Escolha uma pessoa",
-    addPerson: "Adicionar nova pessoa",
-    name: "Nome",
-    email: "E-mail",
-    invite: "Adicionar à equipe",
-    participating: "No projeto",
-    empty: "Nenhuma pessoa neste grupo.",
-    deleteGroup: "Excluir grupo",
-    cannotDelete: "Este cargo está em uso.",
-    role: "Cargo",
-    sector: "Setor",
-    sectorUnit: "Unidade organizacional",
-    sectorOverview: "Estrutura do projeto",
-    roleOverview: "Pessoas e responsabilidades"
-  } : {
-    description: "Choose participants and organize this project's structure. Nothing changes until you save.",
-    sectors: "Sectors",
-    roles: "Roles",
-    list: "List",
-    hierarchy: "Hierarchy",
-    save: "Save configuration",
-    cancel: "Cancel",
-    undo: "Undo (Ctrl+Z)",
-    resetView: "Center",
-    fullscreen: "Fullscreen",
-    exitFullscreen: "Exit fullscreen",
-    noSector: "No sector",
-    addSector: "Add sector",
-    addRole: "Add role",
-    newSector: "New sector",
-    newRole: "New role",
-    manager: "Management",
-    members: "Participants",
-    addHere: "Add participant here",
-    edit: "Edit person",
-    remove: "Remove from project",
-    moveQuestion: "Move this person to another sector?",
-    confirm: "Confirm",
-    keep: "Keep current sector",
-    choose: "Choose a person",
-    addPerson: "Add a new person",
-    name: "Name",
-    email: "Email",
-    invite: "Add to team",
-    participating: "In project",
-    empty: "No one in this group.",
-    deleteGroup: "Delete group",
-    cannotDelete: "This role is in use.",
-    role: "Role",
-    sector: "Sector",
-    sectorUnit: "Organizational unit",
-    sectorOverview: "Project structure",
-    roleOverview: "People and responsibilities"
-  };
-
-  const [draft, setDraft] = useState<Draft>(() => cloneDraft(context));
-  const [history, setHistory] = useState<Draft[]>([]);
-  const [groupKind, setGroupKind] = useState<GroupKind>("roles");
-  const [view, setView] = useState<ViewKind>("list");
-  const [fullscreen, setFullscreen] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [pendingMove, setPendingMove] = useState<{ memberId: string; groupId: string } | null>(null);
-  const [pickerGroup, setPickerGroup] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState("");
-  const [showNewPerson, setShowNewPerson] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const panRef = useRef<{ pointerId: number; x: number; y: number; originX: number; originY: number } | null>(null);
-
-  const teamMembers = useMemo(() => team.memberIds.map((id) => members.find((member) => member.id === id)).filter((member): member is TeamMember => Boolean(member)), [members, team.memberIds]);
-  const memberById = useMemo(() => new Map(teamMembers.map((member) => [member.id, member])), [teamMembers]);
-  const assignedIds = useMemo(() => new Set(draft.assignments.map((item) => item.memberId)), [draft.assignments]);
-  const unassigned = teamMembers.filter((member) => !assignedIds.has(member.id));
-
-  function change(next: Draft | ((current: Draft) => Draft)) {
-    setDraft((current) => {
-      const resolved = typeof next === "function" ? next(current) : next;
-      setHistory((items) => [...items.slice(-39), cloneDraft(current)]);
-      return cloneDraft(resolved);
-    });
+type Draft = Pick<ProjectContext, 'roles' | 'sectors' | 'assignments'>;
+type Props = { language: Language; context: ProjectContext; project: MissionProject; team: TeamRecord; members: TeamMember[]; onSave: (patch: Draft) => void | Promise<void>; onClose: () => void };
+export function ProjectTeamConfigurator({ language, context, project, team, members, onSave, onClose }: Props) {
+  const { user } = useAuth(), pt = language === 'pt', admin = isProjectAdmin(project, user);
+  const [draft, setDraft] = useState<Draft>(() => structuredClone({ roles: context.roles, sectors: context.sectors, assignments: context.assignments }));
+  const [history, setHistory] = useState<Draft[]>([]), [tab, setTab] = useState<'sectors' | 'members'>('sectors');
+  const [view, setView] = useState<'list' | 'hierarchy'>('list'), [search, setSearch] = useState('');
+  const [error, setError] = useState(''), [saving, setSaving] = useState(false), [newRole, setNewRole] = useState('');
+  const teamMembers = members.filter(m => team.memberIds.includes(m.id));
+  const tree = useMemo(() => projectOrganization({ ...project, context: { ...context, ...draft } }, members), [project, context, draft, members]);
+  const roleName = (id: string, name: string) => ({ captain: pt ? 'Responsável pelo projeto' : 'Project lead', manager: pt ? 'Gerente de setor' : 'Sector manager', member: pt ? 'Membro' : 'Member', advisor: pt ? 'Orientador' : 'Advisor' })[id] || name;
+  function change(next: Draft) { setHistory(h => [...h.slice(-19), structuredClone(draft)]); setDraft(next); }
+  function assignment(memberId: string, patch: Partial<ProjectMemberAssignment>) { change({ ...draft, assignments: draft.assignments.map(a => a.memberId === memberId ? { ...a, ...patch } : a) }); }
+  function move(index: number, direction: number) { const sectors = [...draft.sectors]; const [item] = sectors.splice(index, 1); sectors.splice(index + direction, 0, item); change({ ...draft, sectors }); }
+  function removeSector(id: string) {
+    if (!window.confirm(pt ? 'Remover este setor? Pastas ou documentos vinculados impedem a remoção.' : 'Remove this sector? Linked files and folders prevent removal.')) return;
+    change({ ...draft, sectors: draft.sectors.filter(s => s.id !== id), assignments: draft.assignments.map(a => ({ ...a, sectorId: a.sectorId === id ? '' : a.sectorId, ...(a.sectorRoles ? { sectorRoles: a.sectorRoles.filter(g => g.sectorId !== id) } : {}) })) });
   }
-
-  function undo() {
-    setHistory((items) => {
-      const previous = items.at(-1);
-      if (previous) setDraft(cloneDraft(previous));
-      return previous ? items.slice(0, -1) : items;
-    });
-  }
-
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "z") {
-        event.preventDefault();
-        undo();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  });
-
-  const groups: ProjectStructureItem[] = groupKind === "sectors" ? draft.sectors : draft.roles;
-
-  function assignmentGroup(assignment: ProjectMemberAssignment) {
-    return groupKind === "sectors" ? assignment.sectorId : assignment.roleId;
-  }
-
-  function toggleMember(memberId: string) {
-    change((current) => {
-      const existing = current.assignments.find((item) => item.memberId === memberId);
-      return {
-        ...current,
-        assignments: existing
-          ? current.assignments.filter((item) => item.memberId !== memberId)
-          : [...current.assignments, { memberId, roleId: current.assignments.some((item) => item.roleId === "captain") ? "member" : "captain", sectorId: "" }]
-      };
-    });
-  }
-
-  function updateAssignment(memberId: string, patch: Partial<ProjectMemberAssignment>) {
-    change((current) => ({ ...current, assignments: current.assignments.map((item) => item.memberId === memberId ? { ...item, ...patch } : item) }));
-  }
-
-  function addGroup(atStart = false) {
-    const kind = groupKind === "sectors" ? "sector" : "role";
-    const item = { id: uid(kind), name: groupKind === "sectors" ? c.newSector : c.newRole };
-    change((current) => ({ ...current, [groupKind]: atStart ? [item, ...current[groupKind]] : [...current[groupKind], item] }));
-  }
-
-  function renameGroup(id: string, name: string) {
-    change((current) => ({ ...current, [groupKind]: current[groupKind].map((item) => item.id === id ? { ...item, name } : item) }));
-  }
-
-  function deleteGroup(id: string) {
-    if (!id || (groupKind === "roles" && draft.assignments.some((item) => item.roleId === id))) return;
-    change((current) => ({
-      ...current,
-      [groupKind]: current[groupKind].filter((item) => item.id !== id),
-      assignments: groupKind === "sectors" ? current.assignments.map((item) => item.sectorId === id ? { ...item, sectorId: "" } : item) : current.assignments
-    }));
-  }
-
-  function reorderSector(sourceId: string, targetId: string) {
-    if (!sourceId || !targetId || sourceId === targetId) return;
-    change((current) => {
-      const sectors = [...current.sectors];
-      const sourceIndex = sectors.findIndex((item) => item.id === sourceId);
-      const targetIndex = sectors.findIndex((item) => item.id === targetId);
-      if (sourceIndex < 0 || targetIndex < 0) return current;
-      const [source] = sectors.splice(sourceIndex, 1);
-      sectors.splice(targetIndex, 0, source);
-      return { ...current, sectors };
-    });
-  }
-
-  function confirmMove() {
-    if (!pendingMove) return;
-    updateAssignment(pendingMove.memberId, groupKind === "sectors" ? { sectorId: pendingMove.groupId } : { roleId: pendingMove.groupId });
-    setPendingMove(null);
-  }
-
-  function addExisting(groupId: string, memberId: string) {
-    if (!memberId) return;
-    change((current) => ({
-      ...current,
-      assignments: [...current.assignments, {
-        memberId,
-        roleId: groupKind === "roles" ? groupId : (current.assignments.some((item) => item.roleId === "captain") ? "member" : "captain"),
-        sectorId: groupKind === "sectors" ? groupId : ""
-      }]
-    }));
-    setPickerGroup(null);
-  }
-
-  async function submitPerson(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    setCreating(true);
-    try {
-      const member = await onCreateMember(String(data.get("name") || ""), String(data.get("email") || ""));
-      change((current) => ({ ...current, assignments: [...current.assignments, { memberId: member.id, roleId: "member", sectorId: "" }] }));
-      setShowNewPerson(false);
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  async function saveMemberName(memberId: string) {
-    const name = editingName.trim();
-    if (name) await onRenameMember(memberId, name);
-    setEditingId(null);
-  }
-
-  function startPan(event: React.PointerEvent<HTMLDivElement>) {
-    if (event.target !== event.currentTarget) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    panRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, originX: pan.x, originY: pan.y };
-  }
-
-  function movePan(event: React.PointerEvent<HTMLDivElement>) {
-    const start = panRef.current;
-    if (!start || start.pointerId !== event.pointerId) return;
-    setPan({ x: start.originX + event.clientX - start.x, y: start.originY + event.clientY - start.y });
-  }
-
-  function finishPan() { panRef.current = null; }
-
-  function MemberNode({ assignment }: { assignment: ProjectMemberAssignment }) {
-    const member = memberById.get(assignment.memberId);
-    if (!member) return null;
-    const role = draft.roles.find((item) => item.id === assignment.roleId)?.name || assignment.roleId;
-    const sector = draft.sectors.find((item) => item.id === assignment.sectorId)?.name || c.noSector;
-    return <article className="ptc-member" draggable onDragStart={(event) => event.dataTransfer.setData("text/member", member.id)}>
-      <span className={member.avatarUrl ? "ptc-avatar has-photo" : "ptc-avatar"}>{member.avatarUrl ? <img src={member.avatarUrl} alt="" /> : memberInitials(member.displayName)}</span>
-      <span><strong>{member.displayName}</strong><small>{groupKind === "sectors" ? role : sector}</small></span>
-      <span className="ptc-member-actions"><button type="button" title={c.edit} onClick={() => { setEditingId(member.id); setEditingName(member.displayName); }}><Pencil aria-hidden="true" /></button><button type="button" title={c.remove} onClick={() => toggleMember(member.id)}><Trash2 aria-hidden="true" /></button></span>
-    </article>;
-  }
-
-  return <section className={fullscreen ? "ptc-root fullscreen" : "ptc-root"}>
-    <div className="ptc-intro">{c.description}</div>
-    <div className="ptc-toolbar">
-      <div className="ptc-tabs" role="tablist"><button className={groupKind === "sectors" ? "active" : ""} type="button" onClick={() => setGroupKind("sectors")}>{c.sectors}</button><button className={groupKind === "roles" ? "active" : ""} type="button" onClick={() => setGroupKind("roles")}>{c.roles}</button></div>
-      <button className="ptc-add-group" type="button" onClick={() => addGroup(false)}><Plus aria-hidden="true" />{groupKind === "sectors" ? c.addSector : c.addRole}</button>
-      <div className="ptc-segmented"><button className={view === "list" ? "active" : ""} type="button" onClick={() => setView("list")}><List aria-hidden="true" />{c.list}</button><button className={view === "hierarchy" ? "active" : ""} type="button" onClick={() => setView("hierarchy")}><Network aria-hidden="true" />{c.hierarchy}</button></div>
-      <div className="ptc-tools"><button type="button" title={c.undo} disabled={history.length === 0} onClick={undo}><Undo2 aria-hidden="true" /></button>{view === "hierarchy" && <><button type="button" title="Zoom out" onClick={() => setZoom((value) => Math.max(.55, value - .1))}><ZoomOut aria-hidden="true" /></button><span>{Math.round(zoom * 100)}%</span><button type="button" title="Zoom in" onClick={() => setZoom((value) => Math.min(1.6, value + .1))}><ZoomIn aria-hidden="true" /></button><button type="button" title={c.resetView} onClick={() => { setPan({ x: 0, y: 0 }); setZoom(1); }}><RotateCcw aria-hidden="true" /></button><button type="button" title={fullscreen ? c.exitFullscreen : c.fullscreen} onClick={() => setFullscreen((value) => !value)}>{fullscreen ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}</button></>}</div>
-    </div>
-
-    {pendingMove && <div className="ptc-confirm"><Expand aria-hidden="true" /><span>{c.moveQuestion}</span><button type="button" onClick={() => setPendingMove(null)}>{c.keep}</button><button className="primary" type="button" onClick={confirmMove}><Check aria-hidden="true" />{c.confirm}</button></div>}
-
-    {view === "list" && groupKind === "sectors" ? <div className="ptc-sector-list">
-      <div className="ptc-structure-heading"><Building2 aria-hidden="true" /><span><strong>{c.sectorOverview}</strong><small>{draft.sectors.length} {c.sectors.toLocaleLowerCase()}</small></span></div>
-      {draft.sectors.map((sector, index) => <article draggable key={sector.id} onDragStart={(event) => event.dataTransfer.setData("text/sector", sector.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); reorderSector(event.dataTransfer.getData("text/sector"), sector.id); }}>
-        <GripVertical aria-hidden="true" />
-        <span><small>{c.sector} {String(index + 1).padStart(2, "0")}</small><input value={sector.name} maxLength={60} onChange={(event) => renameGroup(sector.id, event.target.value)} /></span>
-        <button type="button" title={c.deleteGroup} onClick={() => deleteGroup(sector.id)}><Trash2 aria-hidden="true" /></button>
-      </article>)}
-      <button className="ptc-add-structure" type="button" onClick={() => addGroup(false)}><Plus aria-hidden="true" />{c.addSector}</button>
-    </div> : view === "list" ? <div className="ptc-list-scroll">
-      <div className="ptc-structure-heading roles"><Network aria-hidden="true" /><span><strong>{c.roleOverview}</strong><small>{draft.assignments.length} {c.participating.toLocaleLowerCase()}</small></span></div>
-      {teamMembers.map((member) => {
-        const assignment = draft.assignments.find((item) => item.memberId === member.id);
-        return <article className={assignment ? "selected" : ""} key={member.id}>
-          <label><input type="checkbox" checked={Boolean(assignment)} onChange={() => toggleMember(member.id)} /><span className={member.avatarUrl ? "ptc-avatar has-photo" : "ptc-avatar"}>{member.avatarUrl ? <img src={member.avatarUrl} alt="" /> : memberInitials(member.displayName)}</span><span><strong>{member.displayName}</strong><small>{member.course || member.email}</small></span><i><Check aria-hidden="true" /></i></label>
-          {assignment && <div className="ptc-list-fields roles"><label><span>{c.role}</span><select value={assignment.roleId} onChange={(event) => updateAssignment(member.id, { roleId: event.target.value })}>{draft.roles.map((role) => <option value={role.id} key={role.id}>{role.name}</option>)}</select></label><label><span>{c.sector}</span><select value={assignment.sectorId} onChange={(event) => updateAssignment(member.id, { sectorId: event.target.value })}><option value="">{c.noSector}</option>{draft.sectors.map((sector) => <option value={sector.id} key={sector.id}>{sector.name}</option>)}</select></label><button type="button" title={c.edit} onClick={() => { setEditingId(member.id); setEditingName(member.displayName); }}><Pencil aria-hidden="true" /></button><button type="button" title={c.remove} onClick={() => toggleMember(member.id)}><Trash2 aria-hidden="true" /></button></div>}
+  return <section className="ptc-root">
+    <p className="ptc-intro">{pt ? 'Organize os setores e os participantes deste projeto. Pessoas novas devem aceitar um convite na página da equipe antes de serem selecionadas aqui.' : 'Organize this project’s sectors and participants. New people must accept a team invitation before they can be selected here.'}</p>
+    <div className="ptc-toolbar"><div className="ptc-tabs" role="tablist" aria-label={pt ? 'Equipe do projeto' : 'Project team'}><button role="tab" aria-selected={tab === 'sectors'} className={tab === 'sectors' ? 'active' : ''} type="button" onClick={() => setTab('sectors')}>{pt ? 'Setores' : 'Sectors'}</button><button role="tab" aria-selected={tab === 'members'} className={tab === 'members' ? 'active' : ''} type="button" onClick={() => setTab('members')}>{pt ? 'Cargos e membros' : 'Roles and members'}</button></div><button type="button" disabled={!history.length} onClick={() => { const previous = history.at(-1); if (previous) { setDraft(previous); setHistory(h => h.slice(0, -1)); } }}><Undo2 size={16} />{pt ? 'Desfazer' : 'Undo'}</button></div>
+    {tab === 'sectors' ? <div className="ptc-sector-list">{draft.sectors.map((sector, index) => <article key={sector.id}><span><small>{pt ? 'Setor' : 'Sector'} {index + 1}</small><input aria-label={`${pt ? 'Nome do setor' : 'Sector name'} ${index + 1}`} disabled={!admin} value={sector.name} maxLength={100} onChange={e => change({ ...draft, sectors: draft.sectors.map(s => s.id === sector.id ? { ...s, name: e.target.value } : s) })} /></span><button type="button" title={pt ? 'Mover acima' : 'Move up'} disabled={!admin || index === 0} onClick={() => move(index, -1)}><ArrowUp /></button><button type="button" title={pt ? 'Mover abaixo' : 'Move down'} disabled={!admin || index === draft.sectors.length - 1} onClick={() => move(index, 1)}><ArrowDown /></button><button type="button" title={pt ? 'Remover setor' : 'Remove sector'} disabled={!admin} onClick={() => removeSector(sector.id)}><Trash2 /></button></article>)}<button type="button" className="ptc-add-structure" disabled={!admin} onClick={() => change({ ...draft, sectors: [...draft.sectors, { id: crypto.randomUUID(), name: pt ? 'Novo setor' : 'New sector' }] })}><Plus />{pt ? 'Adicionar setor' : 'Add sector'}</button></div> : <div className="project-participants">
+      <label>{pt ? 'Selecionar membros da equipe' : 'Select team members'}<input type="search" value={search} placeholder={pt ? 'Pesquisar nome ou nickname' : 'Search name or nickname'} onChange={e => setSearch(e.target.value)} /></label>
+      {teamMembers.filter(m => `${m.displayName} ${m.nickname || ''}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(member => {
+        const a = draft.assignments.find(item => item.memberId === member.id);
+        return <article key={member.id}><label className="participant-select"><input type="checkbox" checked={Boolean(a)} disabled={!admin} onChange={() => change({ ...draft, assignments: a ? draft.assignments.filter(item => item.memberId !== member.id) : [...draft.assignments, { memberId: member.id, roleId: 'member', sectorId: '' }] })} /><strong>{member.displayName}</strong><small>{member.nickname ? `@${member.nickname}` : ''}</small></label>
+          {a && <><label>{pt ? 'Responsabilidade no projeto' : 'Project responsibility'}<select disabled={!admin} value={a.roleId} onChange={e => assignment(member.id, { roleId: e.target.value })}>{draft.roles.map(r => <option key={r.id} value={r.id}>{roleName(r.id, r.name)}</option>)}</select></label><div className="sector-grants">{draft.sectors.map(sector => {
+            const current = a.sectorRoles?.find(g => g.sectorId === sector.id)?.role || (a.sectorId === sector.id ? a.roleId === 'manager' ? 'manager' : 'member' : '');
+            const canDelegate = sectorRole(project, user, sector.id) === 'manager' && member.id !== user?.memberId && current !== 'manager' && !['captain', 'advisor'].includes(a.roleId);
+            return <label key={sector.id}>{sector.name}<select aria-label={`${member.displayName} · ${sector.name}`} disabled={!admin && !canDelegate} value={current} onChange={e => {
+              const value = e.target.value as 'manager' | 'member' | 'viewer' | '';
+              assignment(member.id, { ...(admin && !value && a.sectorId === sector.id ? { sectorId: '' } : {}), sectorRoles: [...(a.sectorRoles || []).filter(g => g.sectorId !== sector.id), ...(value ? [{ sectorId: sector.id, role: value }] : [])] });
+            }}><option value="" disabled={!admin}>{pt ? 'Não participa deste setor' : 'Not assigned here'}</option><option value="viewer">{pt ? 'Participante · leitura' : 'Participant · read'}</option><option value="member">{pt ? 'Membro · edição' : 'Member · edit'}</option><option value="manager" disabled={!admin}>{pt ? 'Gerente do setor' : 'Sector manager'}</option></select></label>;
+          })}</div></>}
         </article>;
       })}
-      <button className="ptc-add-person" type="button" onClick={() => setShowNewPerson((value) => !value)}><UserPlus aria-hidden="true" />{c.addPerson}</button>
-      {showNewPerson && <form className="ptc-new-person" onSubmit={(event) => void submitPerson(event)}><label><span>{c.name}</span><input name="name" required maxLength={100} autoFocus /></label><label><span>{c.email}</span><input name="email" type="email" required maxLength={254} /></label><button className="primary" type="submit" disabled={creating}><UserPlus aria-hidden="true" />{c.invite}</button></form>}
-    </div> : <div className="ptc-canvas" onPointerDown={startPan} onPointerMove={movePan} onPointerUp={finishPan} onPointerCancel={finishPan}>
-      {groupKind === "sectors" && <button className="ptc-add-rail left" type="button" title={c.addSector} onClick={() => addGroup(true)}><Plus aria-hidden="true" /></button>}
-      <div className="ptc-stage" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
-        <div className="ptc-team-root"><UsersRoundIcon /><span><small>{groupKind === "sectors" ? c.sectorOverview : c.roleOverview}</small><strong>{team.name}</strong></span></div>
-        <div className="ptc-groups">{groups.map((group) => {
-          const grouped = draft.assignments.filter((assignment) => assignmentGroup(assignment) === group.id);
-          const inUse = groupKind === "roles" && grouped.length > 0;
-          return <section className={`ptc-group ${groupKind === "sectors" ? "sector-only" : "role-group"}`} key={group.id} draggable={groupKind === "sectors"} onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.setData("text/sector", group.id); }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const memberId = event.dataTransfer.getData("text/member"); const sectorId = event.dataTransfer.getData("text/sector"); if (groupKind === "roles" && memberId && assignmentGroup(draft.assignments.find((item) => item.memberId === memberId)!) !== group.id) setPendingMove({ memberId, groupId: group.id }); else if (sectorId && groupKind === "sectors") reorderSector(sectorId, group.id); }}>
-            <header><input value={group.name} maxLength={60} onChange={(event) => renameGroup(group.id, event.target.value)} /><span><GripVertical aria-hidden="true" />{groupKind === "roles" ? grouped.length : ""}</span><button type="button" title={inUse ? c.cannotDelete : c.deleteGroup} disabled={inUse} onClick={() => deleteGroup(group.id)}><Trash2 aria-hidden="true" /></button></header>
-            {groupKind === "sectors" ? <div className="ptc-sector-node"><Building2 aria-hidden="true" /><span><small>{c.sectorUnit}</small><strong>{String(draft.sectors.findIndex((item) => item.id === group.id) + 1).padStart(2, "0")}</strong></span></div> : <>
-              <div className="ptc-member-grid">{grouped.map((assignment) => <MemberNode assignment={assignment} key={assignment.memberId} />)}{grouped.length === 0 && <span className="ptc-empty">{c.empty}</span>}</div>
-              <button className="ptc-add-under" type="button" title={c.addHere} onClick={() => setPickerGroup(group.id)}><Plus aria-hidden="true" /></button>
-              {pickerGroup === group.id && <div className="ptc-picker"><select autoFocus defaultValue="" onChange={(event) => addExisting(group.id, event.target.value)}><option value="">{c.choose}</option>{unassigned.map((member) => <option value={member.id} key={member.id}>{member.displayName}</option>)}</select><button type="button" onClick={() => setPickerGroup(null)}><X aria-hidden="true" /></button></div>}
-            </>}
-          </section>;
-        })}</div>
-      </div>
-      {groupKind === "sectors" && <button className="ptc-add-rail right" type="button" title={c.addSector} onClick={() => addGroup(false)}><Plus aria-hidden="true" /></button>}
+      {admin && <details><summary>{pt ? 'Cargo específico (opcional)' : 'Custom role (optional)'}</summary><input aria-label={pt ? 'Nome do cargo' : 'Role name'} value={newRole} maxLength={100} onChange={e => setNewRole(e.target.value)} /><button type="button" disabled={!newRole.trim()} onClick={() => { change({ ...draft, roles: [...draft.roles, { id: crypto.randomUUID(), name: newRole.trim() }] }); setNewRole(''); }}>{pt ? 'Adicionar cargo' : 'Add role'}</button></details>}
     </div>}
-
-    {editingId && <div className="ptc-inline-editor"><label><span>{c.name}</span><input value={editingName} onChange={(event) => setEditingName(event.target.value)} maxLength={100} autoFocus /></label><button type="button" onClick={() => setEditingId(null)}>{c.cancel}</button><button className="primary" type="button" onClick={() => void saveMemberName(editingId)}><Save aria-hidden="true" />{c.save}</button></div>}
-    <footer><button type="button" onClick={onClose}>{c.cancel}</button><button className="primary" type="button" onClick={() => onSave(cloneDraft(draft))}><Check aria-hidden="true" />{c.save}</button></footer>
+    <div className="ptc-toolbar"><strong>{pt ? 'Organização do projeto' : 'Project organization'}</strong><div className="ptc-segmented"><button type="button" className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}><List />{pt ? 'Lista' : 'List'}</button><button type="button" className={view === 'hierarchy' ? 'active' : ''} onClick={() => setView('hierarchy')}><Network />{pt ? 'Organograma' : 'Chart'}</button></div></div>
+    <OrganizationTree tree={tree} view={view} language={language} />
+    {error && <p role="alert">{error}</p>}
+    <footer><button type="button" onClick={onClose}>{pt ? 'Cancelar' : 'Cancel'}</button><button className="primary" type="button" disabled={saving} onClick={async () => { setSaving(true); setError(''); try { await onSave(draft); } catch (e) { setError(e instanceof Error ? e.message : 'Falha ao salvar'); } finally { setSaving(false); } }}><Check />{pt ? 'Salvar configuração' : 'Save configuration'}</button></footer>
   </section>;
-}
-
-function UsersRoundIcon() {
-  return <Network aria-hidden="true" />;
 }

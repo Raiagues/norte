@@ -67,9 +67,9 @@ describe("project-owned conception progression", () => {
     expect(sidebar(1, null, "Team two")).toContain("Team two");
     expect(sidebar(0, null)).toMatch(/class="mission-phase locked"/u);
   });
-  it("keeps new project visibly disabled", () => {
+  it("enables project creation with a clear entry point", () => {
     const html = renderToStaticMarkup(createElement(AuthProvider, { children: createElement(HomePage, { language: "en", t: (key) => key, onLanguageChange: noop }) }));
-    expect(html).toMatch(/class="home-action-card accent-create"[^>]*disabled=""/u);
-    expect(html).toContain("Coming soon");
+    expect(html).not.toMatch(/class="home-action-card accent-create"[^>]*disabled=""/u);
+    expect(html).toContain("Choose a type and organize your sectors.");
   });
 });

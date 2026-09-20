@@ -1,3 +1,7 @@
+import { MemoryWorkspace, ArtifactPermission } from "../components/MemoryWorkspace";
+import { MemoryFolders } from "../components/MemoryFolders";
+import { UserActivity } from "../components/UserActivity";
+import { canEditSector, folderPath, folderSector, isProjectAdmin } from "../../shared/project-organization.mjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -6,6 +10,7 @@ import {
   CalendarDays,
   Check,
   ChevronRight,
+  Maximize2,
   ExternalLink,
   FileCode2,
   FileSpreadsheet,
@@ -19,14 +24,13 @@ import {
   Trash2,
   Unlink2,
   UsersRound,
-  Waypoints,
   X
 } from "lucide-react";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { ArtifactSourceFields } from "../components/ArtifactSourceFields";
 import { UserBadge } from "../components/UserBadge";
 import { ProjectTeamConfigurator } from "../components/ProjectTeamConfigurator";
-import { ApiError, useAuth } from "../lib/auth";
+import { API_ORIGIN, ApiError, useAuth } from "../lib/auth";
 import { artifactHref, artifactIsStoredFile, artifactStatusLabel, formatArtifactSize } from "../lib/artifacts";
 import { projectMemoryReadiness } from "../../shared/project-memory.mjs";
 import { programCategory, programModality, referenceProgram, REFERENCE_PROGRAMS } from "../lib/programs";
@@ -45,8 +49,7 @@ type Props = {
   onProjectChange: (project: MissionProject) => void;
   onContinue: () => Promise<void> | void;
   onHome: () => void;
-  onOpenDiscovery: () => void;
-  discoveryOpen: boolean;
+  onPersistProject: (project: MissionProject) => Promise<void>;
   onTeams: () => void;
   onManageTeam: () => void;
 };
@@ -54,13 +57,13 @@ type Props = {
 type DialogState =
   | { type: "program" }
   | { type: "team" }
-  | { type: "team-artifacts" }
   | { type: "artifact"; scope: ArtifactScope; artifact: ConnectedArtifact | null }
   | null;
 
 type ArtifactFormat = "github" | "pdf" | "csv" | "sheet" | "doc" | "code" | "link";
 
 function artifactFormat(artifact: ConnectedArtifact): ArtifactFormat {
+  if (artifact.documentText !== undefined) return "pdf";
   if (artifact.kind === "repository" || /github\.com/iu.test(artifact.url)) return "github";
   const path = (artifact.fileName || artifact.url).toLocaleLowerCase("en-US").split(/[?#]/u)[0];
   if (path.endsWith(".pdf")) return "pdf";
@@ -97,8 +100,12 @@ function MemoryDialog({ title, eyebrow, children, onClose, className = "" }: { t
   </div>;
 }
 
-export function StudySetupPage({ language, project, isDraft = false, t, onLanguageChange, onProjectChange, onContinue, onHome, onTeams, onOpenDiscovery, discoveryOpen }: Props) {
+export function StudySetupPage({ language, project, isDraft = false, t, onLanguageChange, onProjectChange, onContinue, onHome, onTeams, onPersistProject }: Props) {
   const auth = useAuth();
+  const [expandedMemory, setExpandedMemory] = useState(false);
+  const [selectedArtifact, setSelectedArtifact] = useState<string | null>(null);
+  const [selectedFolder, setSelectedFolder] = useState("all");
+  const admin = isProjectAdmin(project, auth.user);
   const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [artifacts, setArtifacts] = useState<ConnectedArtifact[]>([]);
@@ -139,7 +146,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     chooseTeam: "Selecione uma equipe",
     noTeam: "Você ainda não participa de nenhuma equipe.",
     teamsArea: "Abrir equipes",
-    configureTeam: "Configurar equipe",
+    configureTeam: "Equipe do projeto",
     teamEmptyTitle: "Conecte uma equipe ao projeto",
     teamEmptyHint: "Depois, escolha os participantes e atribua suas funções.",
     participating: "Participantes",
@@ -192,8 +199,6 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     personName: "Nome",
     personEmail: "E-mail",
     inviteHint: "A pessoa poderá criar a conta normalmente com este e-mail; não é necessário código.",
-    teamLibrary: "Biblioteca da equipe",
-    teamLibraryHint: "Marque quais referências desta equipe devem aparecer nesta memória.",
     teamReference: "Da equipe",
     projectReference: "Do projeto",
     newProjectArtifact: "Novo artefato do projeto",
@@ -234,7 +239,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     chooseTeam: "Select a team",
     noTeam: "You are not part of a team yet.",
     teamsArea: "Open teams",
-    configureTeam: "Configure team",
+    configureTeam: "Project team",
     teamEmptyTitle: "Connect a team to the project",
     teamEmptyHint: "Then choose participants and assign their roles.",
     participating: "Participants",
@@ -287,8 +292,6 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     personName: "Name",
     personEmail: "Email",
     inviteHint: "The person can create an account normally with this email; no code is needed.",
-    teamLibrary: "Team library",
-    teamLibraryHint: "Select which team references should appear in this memory.",
     teamReference: "From team",
     projectReference: "From project",
     newProjectArtifact: "New project artifact",
@@ -338,7 +341,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     return member ? { member, assignment } : null;
   }).filter((value): value is { member: TeamMember; assignment: ProjectMemberAssignment } => Boolean(value)), [members, project.context.assignments]);
   const availableTeamArtifacts = useMemo(() => selectedTeam ? selectedTeam.artifactIds.map((id) => artifacts.find((artifact) => artifact.id === id)).filter((artifact): artifact is ConnectedArtifact => Boolean(artifact)) : [], [artifacts, selectedTeam]);
-  const linkedTeamArtifacts = availableTeamArtifacts.filter((artifact) => project.context.teamArtifactIds.includes(artifact.id));
+  const linkedTeamArtifacts = availableTeamArtifacts.filter((artifact) => project.context.teamArtifactIds.includes(artifact.id)).map(artifact => ({ ...artifact, folderId: project.context.teamArtifactFolders?.[artifact.id] || null }));
   const linkedProjectArtifacts = artifacts.filter((artifact) => artifact.scope === "project" && (artifact.ownerId === project.id || project.context.projectArtifactIds.includes(artifact.id)));
 
   function updateProject(next: Partial<MissionProject>, contextPatch?: Partial<MissionProject["context"]>) {
@@ -374,7 +377,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
   function selectTeam(teamId: string) {
     const team = associatedTeams.find((item) => item.id === teamId) ?? null;
     if (!team) {
-      updateProject({}, { configured: false, teamId: null, teamName: "", teamArtifactIds: [], assignments: [] });
+      updateProject({}, { configured: false, teamId: null, teamName: "", teamArtifactIds: [], teamArtifactFolders: {}, assignments: [] });
       return;
     }
     let assignments = project.context.assignments.filter((assignment) => team.memberIds.includes(assignment.memberId));
@@ -382,51 +385,15 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
       const preferredMemberId = team.memberIds.includes(auth.user?.memberId || "") ? auth.user?.memberId : team.memberIds[0];
       if (preferredMemberId) assignments = [{ memberId: preferredMemberId, roleId: "captain", sectorId: "" }];
     }
-    updateProject({}, { configured: false, teamId: team.id, teamName: team.name, teamArtifactIds: [...team.artifactIds], assignments });
+    updateProject({}, { configured: false, teamId: team.id, teamName: team.name, teamArtifactIds: [], teamArtifactFolders: {}, assignments });
   }
 
   function toggleTeamArtifact(artifactId: string) {
+    const placements = { ...project.context.teamArtifactFolders };
+    delete placements[artifactId];
     const linked = project.context.teamArtifactIds.includes(artifactId);
-    updateProject({}, { teamArtifactIds: linked ? project.context.teamArtifactIds.filter((id) => id !== artifactId) : [...project.context.teamArtifactIds, artifactId] });
+    updateProject({}, { teamArtifactFolders: placements, teamArtifactIds: linked ? project.context.teamArtifactIds.filter((id) => id !== artifactId) : [...project.context.teamArtifactIds, artifactId] });
     if (linked) setFeedback(c.unlinked);
-  }
-
-  async function createMember(name: string, email: string): Promise<TeamMember> {
-    if (!selectedTeam) throw new Error(c.noTeam);
-    setBusy(true);
-    setFeedback("");
-    try {
-      const response = await auth.api<{ member: TeamMember }>("/team/members", {
-        method: "POST",
-        body: JSON.stringify({
-          teamId: selectedTeam.id,
-          displayName: name,
-          email,
-          missionRole: "member",
-          primaryArea: "systems",
-          secondaryAreas: [],
-          institution: "",
-          course: "",
-          academicStage: "",
-          skills: [],
-          availabilityHours: 0,
-          notes: ""
-        })
-      });
-      await loadMemory();
-      setFeedback(c.saved);
-      return response.member;
-    } catch (reason) {
-      setFeedback(reason instanceof ApiError ? reason.message : c.loadError);
-    } finally {
-      setBusy(false);
-    }
-    throw new Error(c.loadError);
-  }
-
-  async function renameMember(memberId: string, name: string) {
-    await auth.api(`/team/members/${memberId}`, { method: "PATCH", body: JSON.stringify({ displayName: name }) });
-    await loadMemory();
   }
 
   function finishProgramSetup() {
@@ -446,9 +413,12 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     const ownerId = dialog.scope === "team" ? selectedTeam?.id : project.id;
     if (!ownerId) return;
     const payload: Record<string, unknown> = {
+      folderId: dialog.scope === "project" ? data.get("folderId") || null : null,
+      entityId: data.get("entityId") || null,
+      ...(data.has("documentText") ? { documentText: String(data.get("documentText")) } : {}),
       kind: String(data.get("kind") || "document") as ArtifactKind,
       label: String(data.get("label") || ""),
-      url: String(data.get("url") || ""),
+      ...(data.has("documentText") ? {} : { url: String(data.get("url") || "") }),
       fileName: String(data.get("fileName") || ""),
       mimeType: String(data.get("mimeType") || ""),
       size: Number(data.get("size") || 0),
@@ -461,7 +431,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     // keeps the bytes it already holds. A new artifact always needs a source.
     const keepsStoredContent = Boolean(current && !payload.url && current.contentPath);
     if (keepsStoredContent) Reflect.deleteProperty(payload, "url");
-    else if (!payload.url) {
+    else if (!payload.url && !payload.documentText) {
       setFeedback(language === "pt" ? "Adicione um link ou escolha um arquivo." : "Add a link or choose a file.");
       return;
     }
@@ -471,18 +441,17 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
       let artifactId = current?.id || "";
       if (current) {
         await auth.api("/artifacts/" + current.id, { method: "PATCH", body: JSON.stringify(payload) });
-        updateProject({ memoryRevision: project.memoryRevision + 1 });
+
       } else {
         const response = await auth.api<{ artifact: ConnectedArtifact }>("/artifacts", { method: "POST", body: JSON.stringify(payload) });
         artifactId = response.artifact.id;
-      }
-      if (dialog.scope === "project" && artifactId && !project.context.projectArtifactIds.includes(artifactId)) {
-        updateProject({}, { projectArtifactIds: [...project.context.projectArtifactIds, artifactId] });
       }
       if (dialog.scope === "team" && artifactId && !project.context.teamArtifactIds.includes(artifactId)) {
         updateProject({}, { teamArtifactIds: [...project.context.teamArtifactIds, artifactId] });
       }
       setDialog(null);
+      const refreshed = await auth.api<{ project: MissionProject }>("/projects/" + project.id);
+      onProjectChange(refreshed.project);
       await loadMemory();
       setFeedback(c.saved);
     } catch (reason) {
@@ -497,7 +466,9 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     setBusy(true);
     try {
       await auth.api("/artifacts/" + artifact.id, { method: "DELETE" });
-      updateProject({}, { projectArtifactIds: project.context.projectArtifactIds.filter((id) => id !== artifact.id) });
+
+      const refreshed = await auth.api<{ project: MissionProject }>("/projects/" + project.id);
+      onProjectChange(refreshed.project);
       await loadMemory();
     } catch (reason) {
       setFeedback(reason instanceof ApiError ? reason.message : c.loadError);
@@ -528,31 +499,39 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
   }
 
   function ArtifactCard({ artifact, scope }: { artifact: ConnectedArtifact; scope: ArtifactScope }) {
-    const canEdit = scope === "project" || Boolean(selectedTeam?.canManage);
+    const canEdit = scope === "project" && (artifact.canEdit ?? canEditSector(project, auth.user, folderSector(project, artifact.folderId)));
     const stored = artifactIsStoredFile(artifact);
-    const href = artifactHref(artifact);
+    const pdf = artifact.documentText !== undefined || artifact.mimeType === "application/pdf";
+    const href = artifact.documentText !== undefined ? `${API_ORIGIN}/api/artifacts/${artifact.id}/pdf` : artifactHref(artifact);
     const status = artifactStatusLabel(artifact, language);
     const size = formatArtifactSize(artifact.size);
     return <article className="pm-artifact-card">
-      <a href={href} target={stored ? undefined : "_blank"} rel={stored ? undefined : "noreferrer"} download={stored ? artifact.fileName || artifact.label : undefined} aria-label={`${c.open}: ${artifact.label}`}>
+      <a onClick={event => { event.preventDefault(); setSelectedArtifact(artifact.id); setSelectedFolder(artifact.folderId || ""); setExpandedMemory(true); }} href={href} target={pdf || !stored ? "_blank" : undefined} rel={stored ? undefined : "noreferrer"} download={stored && !pdf ? artifact.fileName || artifact.label : undefined} aria-label={`${c.open}: ${artifact.label}`}>
         <ArtifactIcon artifact={artifact} />
         <div>
-          <small>{scope === "team" ? c.teamReference : c.projectReference}</small>
+          <small>{folderPath(project, artifact.folderId) || (scope === "team" ? c.teamReference : c.projectReference)}</small>
           <strong>{artifact.label}</strong>
-          <span>{artifact.description || artifact.url}</span>
+          <ArtifactPermission artifact={{ ...artifact, canEdit }} language={language} />
+          <span>{artifact.description || artifact.fileName || (stored ? "" : artifact.url)}</span>
           <em className={status.usable ? "pm-artifact-status usable" : "pm-artifact-status blocked"}>{size && `${size} · `}{status.text}</em>
         </div>
         <ExternalLink aria-hidden="true" />
       </a>
       <div className="pm-artifact-actions">
+        {scope === "team" && canEditSector(project, auth.user, folderSector(project, artifact.folderId)) && <select aria-label={language === "pt" ? `Pasta da referência ${artifact.label}` : `Reference folder ${artifact.label}`} value={artifact.folderId || ""} onChange={async event => {
+          const placements = { ...project.context.teamArtifactFolders };
+          if (event.target.value) placements[artifact.id] = event.target.value; else delete placements[artifact.id];
+          try { await onPersistProject({ ...project, context: { ...project.context, teamArtifactFolders: placements } }); } catch (reason) { setFeedback(reason instanceof Error ? reason.message : c.loadError); }
+        }}><option value="" disabled={!admin}>{language === "pt" ? "Sem pasta" : "Unfiled"}</option>{[...project.context.sectors, ...(project.context.folders || [])].filter(f => canEditSector(project, auth.user, folderSector(project, f.id))).map(f => <option value={f.id} key={f.id}>{folderPath(project, f.id)}</option>)}</select>}
+        {pdf && <a href={`${href}?download=1`} download>{language === "pt" ? "Baixar PDF" : "Download PDF"}</a>}
         {canEdit && <button type="button" title={c.edit} aria-label={c.edit} onClick={() => setDialog({ type: "artifact", scope, artifact })}><Pencil aria-hidden="true" /></button>}
-        {scope === "team" ? <button type="button" title={c.unlink} aria-label={c.unlink} onClick={() => toggleTeamArtifact(artifact.id)}><Unlink2 aria-hidden="true" /></button> : <button type="button" title={c.delete} aria-label={c.delete} onClick={() => void deleteProjectArtifact(artifact)}><Trash2 aria-hidden="true" /></button>}
+        {scope === "team" && admin ? <button type="button" title={c.unlink} aria-label={c.unlink} onClick={() => toggleTeamArtifact(artifact.id)}><Unlink2 aria-hidden="true" /></button> : canEdit && scope === "project" ? <button type="button" title={c.delete} aria-label={c.delete} onClick={() => void deleteProjectArtifact(artifact)}><Trash2 aria-hidden="true" /></button> : null}
       </div>
     </article>;
   }
 
   return <div className="pm-shell">
-    <main className="pm-main">
+    <main className="pm-main" inert={expandedMemory || Boolean(dialog)} aria-hidden={expandedMemory || Boolean(dialog)}>
       <header className="pm-topbar">
         <button type="button" onClick={onHome}><ArrowLeft aria-hidden="true" />{c.back}</button>
         <div className="top-actions"><LanguageToggle language={language} onChange={onLanguageChange} /><UserBadge connectedLabel={t("common.connected")} /></div>
@@ -565,10 +544,9 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
         </div>}
         <header className="pm-heading">
           <div><h1>{c.title}</h1>
-          <label className="pm-project-name"><span>{c.projectName}</span><div><Pencil aria-hidden="true" /><input id="project-memory-name" name="projectName" value={project.name} onChange={(event) => updateProject({ name: event.target.value })} placeholder={c.projectPlaceholder} maxLength={120} /></div></label></div>
+          <label className="pm-project-name"><span>{c.projectName}</span><div><Pencil aria-hidden="true" /><input id="project-memory-name" name="projectName" disabled={!admin} value={project.name} onChange={(event) => updateProject({ name: event.target.value })} placeholder={c.projectPlaceholder} maxLength={120} /></div></label></div>
           <div className="pm-heading-actions">
-          <button type="button" className={`explore-impact-action${discoveryOpen ? " open" : ""}`} onClick={onOpenDiscovery} aria-pressed={discoveryOpen} title={language === "pt" ? "Explorar impacto" : "Explore impact"}><Waypoints aria-hidden="true" />{language === "pt" ? "Explorar impacto" : "Explore impact"}</button>
-          <button className="pm-open-conception" type="button" onClick={() => void continueToConception()} disabled={!canContinue || busy}>{loading || busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : null}{isDraft ? c.createAndContinue : c.continue}<ArrowRight aria-hidden="true" /></button>
+          <button className="pm-open-conception" type="button" onClick={() => void continueToConception()} disabled={!canContinue || busy || (!admin && !project.engineeringSystem)}>{loading || busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : null}{isDraft ? c.createAndContinue : c.continue}<ArrowRight aria-hidden="true" /></button>
           </div>
         </header>
 
@@ -579,7 +557,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
           <span className="pm-card-label">{c.referenceProgram}</span>
           {/* A real mission need not belong to a competition: "independent" is a
               legitimate, deliberate state, not an unfinished one. */}
-          {!program && <button className="pm-empty-program" type="button" onClick={() => setDialog({ type: "program" })}>
+          {!program && <button className="pm-empty-program" type="button" disabled={!admin} onClick={() => setDialog({ type: "program" })}>
             <span><BookOpenCheck aria-hidden="true" /></span>
             <div>
               <strong>{independent ? c.independentProgram : c.programEmptyTitle}</strong>
@@ -594,7 +572,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
               <span><CalendarDays aria-hidden="true" /><small>{c.deadline}</small><strong>{modality?.milestone.date || "—"}</strong></span>
               <span><BookOpenCheck aria-hidden="true" /><small>{c.category}</small><strong>{category?.label[language] || "—"}</strong></span>
             </div>
-            <button className="pm-details-button" type="button" onClick={() => setDialog({ type: "program" })}>{c.programDetails}<ChevronRight aria-hidden="true" /></button>
+            <button className="pm-details-button" type="button" disabled={!admin} onClick={() => setDialog({ type: "program" })}>{c.programDetails}<ChevronRight aria-hidden="true" /></button>
           </>}
         </section>
         {programSyncing && <div className="pm-program-import" role="status"><span><LoaderCircle className="pm-spin" aria-hidden="true" /></span><div><strong>{c.importingProgram}</strong><i /></div></div>}
@@ -619,11 +597,14 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
 
         <section className="pm-artifacts-board">
           <section className="pm-band pm-artifact-band">
-            <header><h2>{c.artifacts}</h2><div className="pm-band-actions">{selectedTeam && availableTeamArtifacts.length > 0 && <button type="button" onClick={() => setDialog({ type: "team-artifacts" })}><Link2 aria-hidden="true" />{c.selectArtifacts}</button>}<button type="button" onClick={() => setDialog({ type: "artifact", scope: "project", artifact: null })}><Plus aria-hidden="true" />{c.addArtifact}</button></div></header>
-            <div className="pm-artifact-grid">{[...linkedTeamArtifacts, ...linkedProjectArtifacts].map((artifact) => <ArtifactCard artifact={artifact} scope={artifact.scope === "team" ? "team" : "project"} key={artifact.id} />)}{linkedTeamArtifacts.length + linkedProjectArtifacts.length === 0 && <button className="pm-track-empty compact" type="button" onClick={() => setDialog({ type: "artifact", scope: "project", artifact: null })}><FileText aria-hidden="true" /><span><strong>{c.noArtifacts}</strong></span></button>}</div>
+            <header><h2>{c.artifacts}</h2><div className="pm-band-actions"><button type="button" onClick={() => setExpandedMemory(true)}><Maximize2 aria-hidden="true" />{language === "pt" ? "Expandir navegação" : "Expand navigation"}</button><button type="button" title={language === "pt" ? "Selecione uma pasta de um setor em que você pode editar." : "Select a folder in a sector you can edit."} disabled={!canEditSector(project, auth.user, folderSector(project, selectedFolder === "all" ? null : selectedFolder))} onClick={() => setDialog({ type: "artifact", scope: "project", artifact: null })}><Plus aria-hidden="true" />{c.addArtifact}</button></div></header>
+            <div className="memory-library"><MemoryFolders project={project} language={language} artifacts={[...linkedProjectArtifacts, ...linkedTeamArtifacts]} selected={selectedFolder} onSelect={setSelectedFolder} onSave={onPersistProject} /><div className="pm-artifact-grid">{[...linkedTeamArtifacts, ...linkedProjectArtifacts].filter(artifact => selectedFolder === "all" || (artifact.folderId || "") === selectedFolder).map((artifact) => <ArtifactCard artifact={artifact} scope={artifact.scope === "team" ? "team" : "project"} key={artifact.id} />)}{linkedTeamArtifacts.length + linkedProjectArtifacts.length === 0 && <button className="pm-track-empty compact" type="button" onClick={() => setDialog({ type: "artifact", scope: "project", artifact: null })}><FileText aria-hidden="true" /><span><strong>{c.noArtifacts}</strong></span></button>}</div></div>
           </section>
         </section>
 
+        {admin && <label className="project-public-setting"><input type="checkbox" checked={project.context.publicSummary === true} onChange={event => updateProject({}, { publicSummary: event.target.checked })} />{language === "pt" ? "Mostrar o nome e o tipo deste projeto no perfil público da equipe" : "Show this project's name and type on the team's public profile"}</label>}
+        <p className="activity-notice">{language === "pt" ? "Atividade registrada: último acesso, dias e sessões nos projetos e contagens de alterações em artefatos e na organização. Resumos de 30 dias são visíveis aos responsáveis autorizados. Documentos lidos e movimentos não são registrados." : "Recorded activity: last access, project days and sessions, and counts of artifact and organization changes. Authorized leaders can see 30-day summaries. Read documents and movements are not recorded."}</p>
+        {admin && !auth.isDemo && <UserActivity language={language} projectId={project.id} />}
         <footer className="pm-footer">
           <div className={missing.length || memoryLoadError ? "pm-readiness missing" : "pm-readiness"} aria-live="polite">{loading ? <strong>{c.loading}</strong> : memoryLoadError ? <strong>{c.memoryUnavailable}</strong> : missing.length ? <><span>{c.missing}</span><strong>{missing.join(" · ")}</strong></> : null}</div>
 
@@ -631,6 +612,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
       </div>
     </main>
 
+    {expandedMemory && !dialog && <MemoryWorkspace project={project} artifacts={[...linkedProjectArtifacts, ...linkedTeamArtifacts]} language={language} selectedId={selectedArtifact} onSelect={setSelectedArtifact} folderId={selectedFolder} onFolder={setSelectedFolder} onSave={onPersistProject} onEdit={artifact => { setDialog({ type: "artifact", scope: "project", artifact }); }} onClose={() => setExpandedMemory(false)} />}
     {dialog?.type === "program" && <MemoryDialog eyebrow={c.referenceProgram} title={program ? c.programDetails : c.chooseReference} onClose={() => setDialog(null)}>
       <div className="pm-dialog-copy">{c.programDetailsHint}</div>
       <div className="pm-program-picker" role="radiogroup" aria-label={c.referenceProgram}>
@@ -657,14 +639,13 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
 
     {dialog?.type === "team" && <MemoryDialog className="pm-team-config-dialog" eyebrow={c.team} title={c.configureTeam} onClose={() => setDialog(null)}>
       <div className="pm-team-config">
-        <label className="pm-dialog-field"><span>{c.team}</span><select value={project.context.teamId || ""} onChange={(event) => selectTeam(event.target.value)}><option value="">{associatedTeams.length ? c.chooseTeam : c.noTeam}</option>{associatedTeams.map((team) => <option value={team.id} key={team.id}>{team.name}</option>)}</select></label>
+        <label className="pm-dialog-field"><span>{c.team}</span><select disabled={!admin} value={project.context.teamId || ""} onChange={(event) => selectTeam(event.target.value)}><option value="">{associatedTeams.length ? c.chooseTeam : c.noTeam}</option>{associatedTeams.map((team) => <option value={team.id} key={team.id}>{team.name}</option>)}</select></label>
         {!selectedTeam && <button className="pm-dialog-empty" type="button" onClick={() => { setDialog(null); onTeams(); }}><UsersRound aria-hidden="true" /><span><strong>{c.noTeam}</strong><small>{c.teamsArea}</small></span></button>}
-        {selectedTeam && <ProjectTeamConfigurator key={selectedTeam.id} language={language} context={project.context} team={selectedTeam} members={members} onCreateMember={createMember} onRenameMember={renameMember} onClose={() => setDialog(null)} onSave={(patch) => { updateProject({}, { ...patch, configured: false }); setDialog(null); setFeedback(c.saved); }} />}
+        {selectedTeam && <ProjectTeamConfigurator key={selectedTeam.id} language={language} context={project.context} team={selectedTeam} members={members} project={project} onClose={() => setDialog(null)} onSave={async (patch) => { await onPersistProject({ ...project, context: { ...project.context, ...patch } }); setDialog(null); setFeedback(c.saved); }} />}
       </div>
     </MemoryDialog>}
 
-    {dialog?.type === "team-artifacts" && <MemoryDialog eyebrow={c.artifacts} title={c.teamLibrary} onClose={() => setDialog(null)}><div className="pm-dialog-copy">{c.teamLibraryHint}</div><div className="pm-selection-list artifacts">{availableTeamArtifacts.map((artifact) => { const checked = project.context.teamArtifactIds.includes(artifact.id); return <label key={artifact.id}><input type="checkbox" checked={checked} onChange={() => toggleTeamArtifact(artifact.id)} /><ArtifactIcon artifact={artifact} /><span><strong>{artifact.label}</strong><small>{artifact.description || artifact.url}</small></span><Check aria-hidden="true" /></label>; })}{availableTeamArtifacts.length === 0 && <div className="pm-artifact-empty">{c.noArtifacts}</div>}</div><footer><button type="button" onClick={() => setDialog({ type: "artifact", scope: "team", artifact: null })}><Plus aria-hidden="true" />{c.addArtifact}</button><button className="primary" type="button" onClick={() => setDialog(null)}><Check aria-hidden="true" />{c.save}</button></footer></MemoryDialog>}
-
-    {dialog?.type === "artifact" && <MemoryDialog eyebrow={dialog.scope === "team" ? c.artifacts : c.artifacts} title={dialog.artifact ? c.editArtifact : c.newProjectArtifact} onClose={() => setDialog(null)}><form className="pm-dialog-form" onSubmit={(event) => void saveArtifact(event)}><label><span>{c.kind}</span><select name="kind" defaultValue={dialog.artifact?.kind || "document"}><option value="document">{c.sourceKinds.document}</option><option value="repository">{c.sourceKinds.repository}</option><option value="dataset">{c.sourceKinds.dataset}</option><option value="link">{c.sourceKinds.link}</option></select></label><label><span>{c.artifactName}</span><input name="label" defaultValue={dialog.artifact?.label || ""} required maxLength={140} autoFocus /></label><ArtifactSourceFields language={language} artifact={dialog.artifact} onError={setFeedback} /><label><span>{c.description}</span><textarea name="description" defaultValue={dialog.artifact?.description || ""} maxLength={500} rows={3} /></label><footer><button type="button" onClick={() => setDialog(null)}>{c.cancel}</button><button className="primary" type="submit" disabled={busy}>{busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}{c.save}</button></footer></form></MemoryDialog>}
+    {dialog?.type === "artifact" && <MemoryDialog eyebrow={dialog.scope === "team" ? c.artifacts : c.artifacts} title={dialog.artifact ? c.editArtifact : c.newProjectArtifact} onClose={() => setDialog(null)}><form className="pm-dialog-form" onSubmit={(event) => void saveArtifact(event)}>{feedback && <p role="alert">{feedback}</p>}<label><span>{c.kind}</span><select name="kind" defaultValue={dialog.artifact?.kind || "document"}><option value="document">{c.sourceKinds.document}</option><option value="repository">{c.sourceKinds.repository}</option><option value="dataset">{c.sourceKinds.dataset}</option><option value="link">{c.sourceKinds.link}</option></select></label><label><span>{c.artifactName}</span><input name="label" defaultValue={dialog.artifact?.label || ""} required maxLength={140} autoFocus /></label>{dialog.scope === "project" && <><label className="pm-dialog-field"><span>{language === "pt" ? "Pasta" : "Folder"}</span><select name="folderId" defaultValue={dialog.artifact?.folderId || (selectedFolder === "all" ? "" : selectedFolder)}><option value="" disabled={!admin}>{language === "pt" ? "Sem pasta" : "Unfiled"}</option>{[...project.context.sectors, ...(project.context.folders || [])].filter(f => canEditSector(project, auth.user, folderSector(project, f.id))).map(f => <option value={f.id} key={f.id}>{folderPath(project, f.id)}</option>)}</select></label><label className="pm-dialog-field"><span>{language === "pt" ? "Objeto técnico relacionado" : "Related technical object"}</span><select name="entityId" defaultValue={dialog.artifact?.entityId || ""}><option value="">{language === "pt" ? "Nenhum" : "None"}</option>{project.engineeringSystem?.entities.map(e => <option key={e.id} value={e.id}>{e.kind} · {e.name}</option>)}</select></label></>}
+      <ArtifactSourceFields allowDocument={!auth.isDemo} language={language} artifact={dialog.artifact} onError={setFeedback} /><label><span>{c.description}</span><textarea name="description" defaultValue={dialog.artifact?.description || ""} maxLength={500} rows={3} /></label><footer><button type="button" onClick={() => setDialog(null)}>{c.cancel}</button><button className="primary" type="submit" disabled={busy}>{busy ? <LoaderCircle className="pm-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}{c.save}</button></footer></form></MemoryDialog>}
   </div>;
 }

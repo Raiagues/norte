@@ -19,6 +19,9 @@ test("repeated extraction preserves every success and failure without recording 
     for (const document of contextDocuments) assert.ok(text.includes(document.id));
     assert.doesNotMatch(text, /evaluation_reference|GROUND_TRUTH|reviewer notes/u);
     const response = createQuetzalDesignModel();
+    // Synthetic provider output satisfies the current typed containment contract.
+    response.entities.push({ id: "avionics", name: "Avionics", kind: "subsystem", parentId: "system", description: "", properties: [], source: "inferred", evidenceRefs: response.entities.find(e => e.id === "obc").evidenceRefs, confidence: .5 });
+    for (const e of response.entities) if (["obc", "housekeeping"].includes(e.id)) e.parentId = "avionics";
     if (calls === 2) response.relations[0].to = response.relations[0].from;
     return new Response(JSON.stringify({ modelVersion: "test-provider-model", usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50 }, candidates: [{ finishReason: "STOP", content: { parts: [{ text: "PRIVATE_THOUGHT_NOT_IN_OUTPUT", thought: true }, { text: JSON.stringify(response) }] } }] }), { status: 200 });
   } });

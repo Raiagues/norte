@@ -1,3 +1,4 @@
+import { projectOrganization } from "../../shared/organization-tree.mjs";
 import { completeConception, createEmptyProject } from "./projectStore";
 import type { MissionProject } from "./projectStore";
 import type { ConnectedArtifact, DirectoryMember, ProjectSummary, SessionUser, TeamMember, TeamProjectSummary, TeamRecord } from "./team";
@@ -24,6 +25,7 @@ type DemoState = {
 export const DEMO_USER: SessionUser = {
   id: "pages-demo-owner",
   memberId: "pages-demo-captain",
+  nickname: "emily_demo",
   name: "Emily Raiane Rodrigues",
   initials: "ER",
   email: "emilyrayannerodrigues@gmail.com",
@@ -46,6 +48,7 @@ const DEMO_READABLE_MIMES = new Set(["application/pdf", "text/plain", "text/mark
  * follows the one shared rule rather than a second, looser definition.
  */
 function demoArtifact(artifact: ConnectedArtifact): ConnectedArtifact {
+  artifact = { ...artifact, canEdit: !artifact.official && artifact.scope !== "team" };
   const mime = /^data:([^;,]+);base64,/u.exec(artifact.url || "")?.[1] ?? "";
   if (!mime) return { ...artifact, readability: { status: "metadata_only", reason: "External links are metadata only; their contents have not been fetched." } };
   const readable = DEMO_READABLE_MIMES.has(mime);
@@ -74,7 +77,7 @@ function initialState(): DemoState {
   const teams: TeamRecord[] = [{
     id: TEAM_ID, name: "Norte Validation Team", description: "", memberIds: [DEMO_USER.memberId],
     artifactIds: [], joinRequests: [], createdBy: DEMO_USER.id, createdAt: now, updatedAt: now,
-    membership: "member", canManage: true
+    membership: "member", canManage: true, captainMemberId: DEMO_USER.memberId
   }];
   return { schemaVersion: DEMO_SCHEMA_VERSION, members, artifacts: createQuetzalArtifacts(PROJECT_ID, now, DEMO_USER.id), teams, projects: { [project.id]: project }, project, labs: {} };
 }
@@ -197,16 +200,20 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
   const method = (init.method || "GET").toUpperCase();
   const body = bodyOf(init);
   const memberMatch = path.match(/^\/team\/members\/([^/]+)$/u);
-  const invitationMatch = path.match(/^\/team\/members\/([^/]+)\/invitation$/u);
+
   const artifactMatch = path.match(/^\/artifacts\/([^/]+)$/u);
   const teamMatch = path.match(/^\/teams\/([^/]+)$/u);
-  const teamJoinMatch = path.match(/^\/teams\/([^/]+)\/join-requests$/u);
-  const teamMemberMatch = path.match(/^\/teams\/([^/]+)\/members$/u);
+
+
   const teamMemberDeleteMatch = path.match(/^\/teams\/([^/]+)\/members\/([^/]+)$/u);
   const teamProjectsMatch = path.match(/^\/teams\/([^/]+)\/projects$/u);
   const projectMatch = path.match(/^\/projects\/([^/]+)$/u);
   const labMatch = path.match(/^\/workspace\/labs\/([^/]+)$/u);
 
+  if (method === "POST" && (/^\/teams\/[^/]+\/(join-requests|members)$/.test(path) || path === "/team/members" || /^\/team\/members\/[^/]+\/invitation$/.test(path))) throw new Error("A entrada em equipes exige convite e aceite no servidor autenticado.");
+  if (method === "GET" && (path === "/invitations" || /^\/teams\/[^/]+\/invitations$/.test(path))) return { invitations: [], emailConfigured: false } as T;
+  if (/\/invitations|email-verification|\/directory\/nickname|\/insights$/.test(path)) throw new Error("Convites, verificação e estatísticas precisam do servidor autenticado. Esta demonstração não envia mensagens.");
+  if (/\/visit$/.test(path) && method === "POST") return { ok: true } as T;
   if (path === "/system-ai/generate" && method === "POST") {
     const project = state.projects[String(body.projectId)];
     if (!project) throw new Error(body.language === "pt" ? "Projeto não encontrado." : "Project was not found.");
@@ -232,14 +239,15 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
   }
 
   if (path === "/teams" && method === "GET") return { teams: state.teams.map((team) => {
-    const membership = team.memberIds.includes(DEMO_USER.memberId) ? "member" : team.joinRequests.includes(DEMO_USER.memberId) ? "requested" : "available";
+    const membership = team.memberIds.includes(DEMO_USER.memberId) ? "member" : "available";
     const canManage = team.createdBy === DEMO_USER.id || (membership === "member" && DEMO_USER.accessRole === "owner_admin");
     const privateData = membership === "member" || canManage;
     return {
       ...team,
+      captainMemberId: team.captainMemberId || (team.createdBy === DEMO_USER.id ? DEMO_USER.memberId : null),
       memberIds: privateData ? team.memberIds : [],
       artifactIds: privateData ? team.artifactIds : [],
-      joinRequests: canManage ? team.joinRequests : [],
+      joinRequests: [],
       createdBy: privateData ? team.createdBy : null,
       memberCount: team.memberCount ?? team.memberIds.length,
       artifactCount: team.artifactIds.length,
@@ -256,6 +264,7 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
       const sectors = new Map(project.context.sectors.map((item) => [item.id, item.name]));
       return {
         ...summary(project),
+        organization: projectOrganization(project, state.members),
         participants: project.context.assignments.map((assignment) => {
           const member = state.members.find((item) => item.id === assignment.memberId);
           return {
@@ -285,7 +294,7 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
   }
   if (path === "/teams" && method === "POST") {
     const now = timestamp();
-    const team: TeamRecord = { id: id("team"), name: String(body.name || "Nova equipe"), description: String(body.description || ""), memberIds: [DEMO_USER.memberId], artifactIds: [], joinRequests: [], createdBy: DEMO_USER.id, createdAt: now, updatedAt: now, membership: "member", canManage: true };
+    const team: TeamRecord = { id: id("team"), name: String(body.name || "Nova equipe"), description: String(body.description || ""), memberIds: [DEMO_USER.memberId], artifactIds: [], joinRequests: [], createdBy: DEMO_USER.id, captainMemberId: DEMO_USER.memberId, createdAt: now, updatedAt: now, membership: "member", canManage: true };
     state.teams.push(team);
     writeState(state);
     return { team } as T;
@@ -299,23 +308,10 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
   if (teamMatch && method === "DELETE") {
     const teamId = teamMatch[1];
     if (Object.values(state.projects).some((project) => project.context.teamId === teamId)) throw new Error("Move or delete the projects connected to this team first.");
-    const artifactIds = new Set(state.teams.find((team) => team.id === teamId)?.artifactIds || []);
-    state.artifacts = state.artifacts.filter((artifact) => !artifactIds.has(artifact.id) && !(artifact.scope === "team" && artifact.ownerId === teamId));
+    if (state.artifacts.some(a => a.scope === "team" && a.ownerId === teamId)) throw new Error("Esta equipe possui documentos preservados.");
     state.teams = state.teams.filter((team) => team.id !== teamId);
     writeState(state);
     return undefined as T;
-  }
-  if (teamJoinMatch && method === "POST") {
-    const team = state.teams.find((item) => item.id === teamJoinMatch[1]);
-    if (team && !team.memberIds.includes(DEMO_USER.memberId)) team.joinRequests = [...new Set([...team.joinRequests, DEMO_USER.memberId])];
-    writeState(state);
-    return { team } as T;
-  }
-  if (teamMemberMatch && method === "POST") {
-    const team = state.teams.find((item) => item.id === teamMemberMatch[1]);
-    if (team) team.memberIds = [...new Set([...team.memberIds, String(body.memberId)])];
-    writeState(state);
-    return { team } as T;
   }
   if (teamMemberDeleteMatch && method === "DELETE") {
     const team = state.teams.find((item) => item.id === teamMemberDeleteMatch[1]);
@@ -374,27 +370,6 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
     return { board: body, revision: 1 } as T;
   }
 
-  if (path === "/team/members" && method === "POST") {
-    const now = timestamp();
-    const email = String(body.email || "");
-    let member = state.members.find((item) => item.email.toLowerCase() === email.toLowerCase());
-    if (!member) {
-      member = {
-        id: id("member"), accountId: null, displayName: String(body.displayName || email.split("@")[0] || "Nova pessoa"), email,
-        missionRole: "member", primaryArea: "systems", secondaryAreas: [], institution: "", course: "", academicStage: "",
-        skills: [], availabilityHours: 0, notes: "", accountStatus: "invited", accessRole: null, avatarUrl: "", createdAt: now, updatedAt: now
-      };
-      state.members.push(member);
-    }
-    const team = state.teams.find((item) => item.id === body.teamId);
-    if (team) team.memberIds = [...new Set([...team.memberIds, member.id])];
-    writeState(state);
-    return { member } as T;
-  }
-  if (invitationMatch && method === "POST") {
-    const member = state.members.find((item) => item.id === invitationMatch[1]);
-    return { member } as T;
-  }
   if (memberMatch && method === "PATCH") {
     const member = state.members.find((item) => item.id === memberMatch[1]);
     if (member) Object.assign(member, body, { updatedAt: timestamp() });
@@ -412,6 +387,10 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
     const now = timestamp();
     const artifact = { ...body, id: id("artifact"), official: false, createdBy: DEMO_USER.id, connectedAt: now, updatedAt: now } as ConnectedArtifact;
     state.artifacts.push(artifact);
+    if (artifact.scope === "project" && artifact.ownerId && state.projects[artifact.ownerId]) {
+      const project = state.projects[artifact.ownerId];
+      project.context.projectArtifactIds = [...new Set([...project.context.projectArtifactIds, artifact.id])];
+    }
     if (artifact.scope === "team") {
       const team = state.teams.find((item) => item.id === artifact.ownerId);
       if (team) team.artifactIds = [...new Set([...team.artifactIds, artifact.id])];

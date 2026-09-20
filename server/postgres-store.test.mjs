@@ -25,7 +25,7 @@ test("the PostgreSQL adapter persists accounts, sessions and workspace data", as
   });
   assert.equal(registration.statusCode, 201);
   const cookie = registration.headers["set-cookie"].split(";")[0];
-  const project = { schemaVersion: 2, id: "mission-postgres", board: { nodes: [], links: [] } };
+  const project = { schemaVersion: 2, id: "mission-postgres", name: "Postgres project", board: { nodes: [], links: [] } };
   const saved = await app.inject({
     method: "PUT",
     url: "/api/workspace/project",

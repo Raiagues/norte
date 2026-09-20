@@ -15,6 +15,8 @@ type Props = {
   loadingProjects?: boolean;
   onOpenProject?: (projectId: string) => void;
   onDeleteProject?: (projectId: string) => Promise<void> | void;
+  onCreateProject?: () => void;
+  onAdmin?: () => void;
   onOpenTeams?: () => void;
 };
 
@@ -26,7 +28,7 @@ export function HomePage({
   loadingProjects = false,
   onOpenProject,
   onDeleteProject,
-  onOpenTeams
+  onOpenTeams, onCreateProject, onAdmin
 }: Props) {
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [deletingId, setDeletingId] = useState("");
@@ -35,13 +37,13 @@ export function HomePage({
     teams: "Equipes",
     teamsDescription: "Encontre e organize sua equipe.",
     create: "Novo projeto",
-    createDescription: "Em breve",
+    createDescription: "Escolha o tipo e organize seus setores.",
     open: "Abrir projeto",
     openDescription: "Retome exatamente de onde sua equipe parou.",
     chooseProject: "Escolha um projeto",
     chooseHint: "O projeto será aberto na última fase trabalhada.",
     empty: "Nenhum projeto criado ainda.",
-    emptyHint: "A criação de projetos estará disponível em breve.",
+    emptyHint: "Crie um projeto para começar.",
     loading: "Carregando projetos",
     untitled: "Projeto sem nome",
     noProgram: "Programa ainda não selecionado",
@@ -55,13 +57,13 @@ export function HomePage({
     teams: "Teams",
     teamsDescription: "Discover and organize your team.",
     create: "New project",
-    createDescription: "Coming soon",
+    createDescription: "Choose a type and organize your sectors.",
     open: "Open project",
     openDescription: "Resume exactly where your team stopped.",
     chooseProject: "Choose a project",
     chooseHint: "The project opens at the last phase your team worked on.",
     empty: "No projects have been created yet.",
-    emptyHint: "Project creation will be available soon.",
+    emptyHint: "Create a project to get started.",
     loading: "Loading projects",
     untitled: "Untitled project",
     noProgram: "Program not selected yet",
@@ -97,6 +99,7 @@ export function HomePage({
       <main className="home-main">
         <header className="home-topbar home-landing-topbar">
           <div className="top-actions">
+            {onAdmin && <button type="button" onClick={onAdmin}>{language === "pt" ? "Administrar usuários" : "Manage users"}</button>}
             <LanguageToggle language={language} onChange={onLanguageChange} />
             <UserBadge connectedLabel={t("common.connected")} />
           </div>
@@ -112,7 +115,7 @@ export function HomePage({
               <small>{c.openDescription}</small>
               <ArrowRight className="home-card-arrow" aria-hidden="true" />
             </button>
-            <button className="home-action-card accent-create" type="button" disabled>
+            <button className="home-action-card accent-create" type="button" onClick={onCreateProject}>
               <span className="home-card-icon"><Plus aria-hidden="true" /></span>
               <strong>{c.create}</strong>
               <small>{c.createDescription}</small>
@@ -136,7 +139,7 @@ export function HomePage({
           </header>
           <div className="home-project-picker-list">
             {loadingProjects ? <div className="home-project-dialog-empty"><LoaderCircle className="home-spin" aria-hidden="true" />{c.loading}</div> : projects.length === 0 ? (
-              <div className="home-project-dialog-empty"><FolderOpen aria-hidden="true" /><strong>{c.empty}</strong><span>{c.emptyHint}</span><button type="button" disabled><Plus aria-hidden="true" />{c.create}</button></div>
+              <div className="home-project-dialog-empty"><FolderOpen aria-hidden="true" /><strong>{c.empty}</strong><span>{c.emptyHint}</span><button type="button" onClick={onCreateProject}><Plus aria-hidden="true" />{c.create}</button></div>
             ) : projects.map((project) => {
               const program = referenceProgram(project.programId);
               const date = new Intl.DateTimeFormat(language === "pt" ? "pt-BR" : "en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(project.updatedAt));

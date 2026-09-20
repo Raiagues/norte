@@ -95,20 +95,14 @@ try {
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   await page.locator(".home-action-card.accent-create").waitFor();
   console.log("Browser: authenticated home loaded");
-  assert.ok(await page.locator(".home-action-card.accent-create").isDisabled());
-  await page.locator(".home-action-card.accent-create").dispatchEvent("click");
-  await page.locator(".home-action-card.accent-create").dispatchEvent("keydown", { key: "Enter" });
-  assert.ok(page.url().endsWith("/norte/"));
+  assert.ok(await page.locator(".home-action-card.accent-create").isEnabled());
   await page.locator(".mission-sidebar-toggle").click();
   assert.equal(await page.locator(".mission-context-switcher select").count(), 1);
   assert.equal(await page.locator(".mission-project-team strong").innerText(), "Norte Validation Team");
   assert.ok(await page.locator(".mission-phase").nth(1).isDisabled());
   await page.locator(".home-action-card.accent-team").click();
   const createTeam = page.locator(".teams-hub-heading > button");
-  assert.ok(await createTeam.isDisabled());
-  await createTeam.dispatchEvent("click");
-  await createTeam.dispatchEvent("keydown", { key: " " });
-  assert.equal(await page.getByRole("dialog").count(), 0);
+  assert.ok(await createTeam.isEnabled());
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   await page.locator(".home-action-card.accent-open").click();
   failedMemoryReads = Number.POSITIVE_INFINITY;
@@ -128,7 +122,7 @@ try {
   assert.equal(await page.locator(".pm-heading > div > span, .pm-heading > div > p").count(), 0);
   assert.equal(await page.locator(".pm-artifact-band").count(), 1);
   assert.equal(await page.locator(".pm-artifact-grid .pm-artifact-card").count(), 5);
-  assert.equal(await page.locator(".pm-artifact-grid").evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length), 4);
+  assert.ok(await page.locator(".pm-artifact-grid").evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length <= 4));
   assert.ok(await page.locator(".pm-artifact-grid").evaluate((element) => element.scrollWidth <= element.clientWidth + 1));
   await page.getByRole("button", { name: "EN", exact: true }).click();
   assert.equal(await page.locator(".pm-heading h1").innerText(), "PROJECT MEMORY");
@@ -149,7 +143,8 @@ try {
   const programLabel = await page.locator(".pm-program-card .pm-card-label").boundingBox();
   const programContent = await page.locator(".pm-program-copy").boundingBox();
   assert.ok(programContent.y - (programLabel.y + programLabel.height) >= 14);
-  assert.ok((await page.locator(".pm-artifact-card").first().boundingBox()).height <= 115);
+  // Permission labels add a line while preserving compact, readable cards.
+  assert.ok((await page.locator(".pm-artifact-card").first().boundingBox()).height <= 160);
   await page.screenshot({ path: "/tmp/norte-memory-obsat-toast.png", fullPage: true });
   await page.locator(".pm-program-toast").waitFor({ state: "hidden" });
   await page.getByRole("button", { name: "PT", exact: true }).click();
@@ -297,7 +292,7 @@ try {
   assert.equal(interpretations, 1);
   assert.equal(await page.getByRole("dialog").count(), 0);
   await page.screenshot({ path: "/tmp/norte-discovery-interpreted.png", fullPage: true });
-  await page.locator(".lab-node").getByRole("button", { name: "Ver impacto" }).click();
+  await page.locator(".lab-node").getByRole("button", { name: "Testar ideia" }).click();
   await page.locator(".discovery-suggestion").first().waitFor();
   const suggestions = await page.locator(".discovery-suggestion").allInnerTexts();
   assert.ok(suggestions.length > 1, `expected an impact flow, got ${suggestions.length}`);
@@ -327,7 +322,7 @@ try {
   await page.locator(".lab-composer textarea").press("Escape");
   await page.locator(".discovery-interpretation.confirmation").waitFor();
   assert.ok((await page.locator(".lab-node").last().innerText()).includes("Você quer aplicar essa massa ao Payload?"));
-  await page.locator(".lab-node").last().getByRole("button", { name: "Sim, ver impacto", exact: true }).click();
+  await page.locator(".lab-node").last().getByRole("button", { name: "Sim, testar ideia", exact: true }).click();
   await page.locator(".discovery-suggestion").first().waitFor();
   await page.screenshot({ path: "/tmp/norte-discovery-confirmation.png", fullPage: true });
   // Accepting is the only step that writes: the architecture must actually carry the value afterwards.
@@ -487,11 +482,11 @@ try {
   });
   assert.ok(overflow <= 1, `a card runs ${overflow}px past the panel edge`);
   await page.screenshot({ path: "/tmp/norte-discovery-panel.png" });
-  await page.getByRole("button", { name: /Fechar Explorar impacto/u }).click();
+  await page.getByRole("button", { name: /Fechar Testar ideias/u }).click();
   assert.equal(await page.locator(".discovery-panel").count(), 0);
   await page.locator(".explore-impact-action").click();
   assert.equal(await page.locator(".discovery-panel .lab-node").count(), 1);
-  await page.getByRole("button", { name: /Fechar Explorar impacto/u }).click();
+  await page.getByRole("button", { name: /Fechar Testar ideias/u }).click();
   // The tool is offered on every project page, the Conception Room included.
   await page.locator(".mission-phase").nth(1).click();
   await page.locator(".engineering-graph").waitFor();
@@ -564,25 +559,25 @@ try {
   assert.ok(artifactScroll.scrolls, "the artifacts band should scroll on its own");
   assert.equal(artifactScroll.thumb, "#2f6389");
   assert.ok(/2f6389|47, 99, 137/u.test(artifactScroll.firefox), artifactScroll.firefox);
-  // Nothing the page owns may sit under the floating launcher.
+  // Memory contains organization only; ideas are available in technical areas.
   // The tool lives in the navigation, so nothing floats over the page content.
   assert.equal(await page.locator(".discovery-launcher").count(), 0);
-  assert.equal(await page.locator(".explore-impact-action").count(), 1);
+  assert.equal(await page.locator(".explore-impact-action").count(), 0);
   await page.locator(".pm-workspace").evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
   await page.screenshot({ path: "/tmp/norte-memory-artifacts-scroll.png" });
   for (const source of ["ADCS hardware", "ADM hardware", "ADCS software", "MISSION overview"]) assert.equal(await page.locator(".pm-artifact-card").filter({ hasText: source }).count(), 1);
   await page.screenshot({ path: "/tmp/norte-quetzal-whole-memory.png", fullPage: true });
-  // Leaving Conception queues a project save; deleting before it lands recreates it.
+  // Flush pending navigation writes before testing deletion. Missing projects are never recreated by autosave.
   await waitSaved();
   await request("DELETE", `/api/projects/${projectId}`);
   await request("DELETE", "/api/projects/independent-browser-project");
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   await page.locator(".home-action-card.accent-open").click();
-  assert.ok(await page.locator(".home-project-dialog-empty button").isDisabled());
-  await page.locator(".home-project-dialog-empty button").dispatchEvent("click");
-  await page.locator(".home-project-dialog-empty button").dispatchEvent("keydown", { key: "Enter" });
+  assert.ok(await page.locator(".home-project-dialog-empty button").isEnabled());
+  await page.locator(".home-project-dialog-empty button").click();
+  await page.locator(".context-workspace").waitFor();
   assert.equal(await page.locator(".pm-workspace").count(), 0);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ passed: true, generations, checks: ["persistent phases and upcoming phases", "automatic initialization and recovery", "inline expansion without drilldown", "selection dims unrelated branches", "persistent node dragging", "hierarchy edge toggle", "removed System controls", "rename immediately opens and survives reload", "automatic AI interpretation and inline clarification", "contextual details and provenance", "project-specific progress and team switching", "Discovery mass conflict", "undo redo persistence", "two accessible conception tabs", "unified four-column artifacts", "responsive"], viewports: results }, null, 2));
+  console.log(JSON.stringify({ passed: true, generations, checks: ["persistent phases and upcoming phases", "automatic initialization and recovery", "inline expansion without drilldown", "selection dims unrelated branches", "persistent node dragging", "hierarchy edge toggle", "removed System controls", "rename immediately opens and survives reload", "automatic AI interpretation and inline clarification", "contextual details and provenance", "project-specific progress and team switching", "Discovery mass conflict", "undo redo persistence", "two accessible conception tabs", "folder-based artifact library", "responsive"], viewports: results }, null, 2));
 } catch (error) { await page.screenshot({ path: "/tmp/norte-browser-failure.png", fullPage: true }).catch(() => undefined); throw error; }
 finally { await browser.close(); await app.close(); vite.kill("SIGTERM"); await rm(directory, { recursive: true, force: true }); }

@@ -38,7 +38,11 @@
     "diagnose:project-memory": "node scripts/diagnose-project-memory.mjs",
     "seed:quetzal": "node scripts/seed-quetzal-validation.mjs",
     "diagnose:extraction": "node --env-file-if-exists=.env.local scripts/diagnose-extraction.mjs",
-    "benchmark:extract": "node scripts/extract-quetzal.mjs"
+    "benchmark:extract": "node scripts/extract-quetzal.mjs",
+    "test:visual:organization": "node scripts/visual-organization.mjs",
+    "seed:team-preview": "node scripts/seed-team-preview.mjs",
+    "dev:team-preview": "node scripts/dev-team-preview.mjs",
+    "test:visual:teams": "node scripts/visual-team-collaboration.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
@@ -51,6 +55,8 @@
     "argon2": "^0.45.1",
     "fastify": "^5.12.1",
     "lucide-react": "^1.39.0",
+    "nodemailer": "^10.0.10",
+    "pdfkit": "^0.20.2",
     "pg": "^8.23.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

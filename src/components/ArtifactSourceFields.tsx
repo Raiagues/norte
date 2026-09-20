@@ -7,6 +7,9 @@ import "../artifact-source.css";
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const SAFE_MIME_TYPES = new Set([
+  "application/octet-stream",
+  "image/png",
+  "image/jpeg",
   "application/json",
   "application/msword",
   "application/pdf",
@@ -17,11 +20,12 @@ const SAFE_MIME_TYPES = new Set([
   "text/markdown",
   "text/plain"
 ]);
-const SAFE_EXTENSIONS = /\.(?:c|cc|cpp|csv|doc|docx|h|hpp|ino|json|md|ods|odt|pdf|py|rtf|ts|tsx|txt|xls|xlsx)$/iu;
+const SAFE_EXTENSIONS = /\.(?:step|stp|stl|iges|igs|dxf|dwg|fcstd|sldprt|sldasm|zip|png|jpg|jpeg|c|cc|cpp|csv|doc|docx|h|hpp|ino|json|md|ods|odt|pdf|py|rtf|ts|tsx|txt|xls|xlsx)$/iu;
 
 type Props = {
   language: Language;
   artifact?: ConnectedArtifact | null;
+  allowDocument?: boolean;
   onError?: (message: string) => void;
 };
 
@@ -34,11 +38,12 @@ function readFile(file: File): Promise<string> {
   });
 }
 
-export function ArtifactSourceFields({ language, artifact = null, onError }: Props) {
+export function ArtifactSourceFields({ language, artifact = null, onError, allowDocument = false }: Props) {
   const initialIsFile = Boolean(artifact && artifactIsStoredFile(artifact));
-  const [mode, setMode] = useState<"link" | "file">(initialIsFile ? "file" : "link");
+  const [mode, setMode] = useState<"link" | "file" | "document">(artifact?.documentText !== undefined ? "document" : initialIsFile ? "file" : "link");
   // A stored file arrives without its bytes. Keeping the existing name means the
   // form submits no url and the server preserves the content it already holds.
+  const [documentText, setDocumentText] = useState(artifact?.documentText || "");
   const [url, setUrl] = useState(artifact?.url || "");
   const [fileName, setFileName] = useState(artifact?.fileName || "");
   const [mimeType, setMimeType] = useState(artifact?.mimeType || "");
@@ -54,7 +59,7 @@ export function ArtifactSourceFields({ language, artifact = null, onError }: Pro
     linkLabel: "Endereço",
     drop: "Arraste um arquivo aqui",
     browse: "ou escolha no computador",
-    formats: "PDF, DOC, planilha, CSV, texto ou código · até 4 MB",
+    formats: "PDF, CAD, imagem, planilha, texto ou código · até 4 MB",
     remove: "Remover arquivo",
     tooLarge: "O arquivo deve ter no máximo 4 MB.",
     unsafe: "Esse formato não é aceito. Use PDF, documento, planilha, texto ou código.",
@@ -65,7 +70,7 @@ export function ArtifactSourceFields({ language, artifact = null, onError }: Pro
     linkLabel: "Address",
     drop: "Drop a file here",
     browse: "or choose it from your computer",
-    formats: "PDF, DOC, spreadsheet, CSV, text, or code · up to 4 MB",
+    formats: "PDF, CAD, image, spreadsheet, text, or code · up to 4 MB",
     remove: "Remove file",
     tooLarge: "The file must be no larger than 4 MB.",
     unsafe: "That format is not accepted. Use a PDF, document, spreadsheet, text, or code file.",
@@ -82,7 +87,7 @@ export function ArtifactSourceFields({ language, artifact = null, onError }: Pro
       report(c.tooLarge);
       return;
     }
-    const safeMime = !file.type || SAFE_MIME_TYPES.has(file.type);
+    const safeMime = !file.type || SAFE_MIME_TYPES.has(file.type) || /\.(step|stp|stl|iges|igs|dxf|dwg|fcstd|sldprt|sldasm|zip)$/iu.test(file.name);
     if (!safeMime || !SAFE_EXTENSIONS.test(file.name)) {
       report(c.unsafe);
       return;
@@ -90,9 +95,10 @@ export function ArtifactSourceFields({ language, artifact = null, onError }: Pro
     setReading(true);
     try {
       const dataUrl = await readFile(file);
-      setUrl(dataUrl);
+      const effectiveMime = SAFE_MIME_TYPES.has(file.type) ? file.type : /\.(?:c|cc|cpp|h|hpp|ino|py|ts|tsx|md|txt)$/iu.test(file.name) ? "text/plain" : "application/octet-stream";
+      setUrl(dataUrl.replace(/^data:[^;]*;/u, `data:${effectiveMime};`));
       setFileName(file.name);
-      setMimeType(file.type || "text/plain");
+      setMimeType(effectiveMime);
       setSize(file.size);
       report("");
     } catch {
@@ -102,7 +108,7 @@ export function ArtifactSourceFields({ language, artifact = null, onError }: Pro
     }
   }
 
-  function switchMode(nextMode: "link" | "file") {
+  function switchMode(nextMode: "link" | "file" | "document") {
     report("");
     setMode(nextMode);
     if (nextMode === "link") {
@@ -117,16 +123,17 @@ export function ArtifactSourceFields({ language, artifact = null, onError }: Pro
   return <fieldset className="artifact-source-fields">
     <legend>{language === "pt" ? "Origem" : "Source"}</legend>
     <div className="artifact-source-modes" role="group" aria-label={language === "pt" ? "Origem do artefato" : "Artifact source"}>
+      {allowDocument && <button type="button" className={mode === "document" ? "active" : ""} onClick={() => switchMode("document")}>{language === "pt" ? "Escrever documento" : "Write document"}</button>}
       <button className={mode === "link" ? "active" : ""} type="button" onClick={() => switchMode("link")}><Link2 aria-hidden="true" />{c.link}</button>
       <button className={mode === "file" ? "active" : ""} type="button" onClick={() => switchMode("file")}><FileUp aria-hidden="true" />{c.file}</button>
     </div>
 
-    {mode === "link" ? <label className="artifact-link-field"><span>{c.linkLabel}</span><input name="url" value={url} onChange={(event) => setUrl(event.target.value)} required maxLength={2048} placeholder="https://" /></label> : <>
+    {mode === "document" ? <div className="document-editor"><label>{language === "pt" ? "Conteúdo editável (Markdown)" : "Editable content (Markdown)"}<textarea name="documentText" required maxLength={200000} value={documentText} onChange={event => setDocumentText(event.target.value)} placeholder={"# Título\n\n## Objetivo\n\n| Item | Resultado |\n| --- | --- |\n| Teste | Pendente |\n\n## Referências\n[Referência](https://...)"} /></label><p>{language === "pt" ? "Use # e ## para títulos, tabelas com | e links para referências. O original continua editável; o PDF fica disponível após salvar." : "Use # and ## for headings, | for tables and links for references. The original stays editable; PDF becomes available after saving."}</p><label>{language === "pt" ? "Inserir imagem PNG ou JPEG" : "Insert PNG or JPEG image"}<input type="file" accept="image/png,image/jpeg" onChange={async event => { const file = event.target.files?.[0]; if (!file) return; if (file.size > 100000 || !['image/png', 'image/jpeg'].includes(file.type)) { report(language === "pt" ? "Use PNG/JPEG de até 100 KB." : "Use PNG/JPEG up to 100 KB."); return; } try { const uri = await readFile(file); setDocumentText(text => `${text}\n\n![${file.name.replace(/[\]\r\n]/gu, '')}](${uri})\n`); } catch { report(c.readError); } }} /></label></div> : mode === "link" ? <label className="artifact-link-field"><span>{c.linkLabel}</span><input name="url" value={url} onChange={(event) => setUrl(event.target.value)} required maxLength={2048} placeholder="https://" /></label> : <>
       <input type="hidden" name="url" value={url} />
       <input type="hidden" name="fileName" value={fileName} />
       <input type="hidden" name="mimeType" value={mimeType} />
       <input type="hidden" name="size" value={String(size)} />
-      <input ref={inputRef} className="artifact-file-input" type="file" tabIndex={-1} accept=".pdf,.doc,.docx,.xls,.xlsx,.ods,.odt,.csv,.txt,.md,.json,.ino,.c,.cc,.cpp,.h,.hpp,.py,.ts,.tsx" onChange={(event) => { const file = event.target.files?.[0]; if (file) void acceptFile(file); }} />
+      <input ref={inputRef} className="artifact-file-input" type="file" tabIndex={-1} accept=".step,.stp,.stl,.iges,.igs,.dxf,.dwg,.fcstd,.sldprt,.sldasm,.zip,.png,.jpg,.jpeg,.pdf,.doc,.docx,.xls,.xlsx,.ods,.odt,.csv,.txt,.md,.json,.ino,.c,.cc,.cpp,.h,.hpp,.py,.ts,.tsx" onChange={(event) => { const file = event.target.files?.[0]; if (file) void acceptFile(file); }} />
       {fileName ? <div className="artifact-file-ready"><FileUp aria-hidden="true" /><span><strong>{fileName}</strong><small>{Math.max(1, Math.round(size / 1024))} KB</small></span><button type="button" title={c.remove} aria-label={c.remove} onClick={() => { setUrl(""); setFileName(""); setMimeType(""); setSize(0); if (inputRef.current) inputRef.current.value = ""; }}><X aria-hidden="true" /></button></div> : <button
         className={dragging ? "artifact-drop-zone dragging" : "artifact-drop-zone"}
         type="button"

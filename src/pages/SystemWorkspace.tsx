@@ -1,3 +1,5 @@
+import { useAuth } from "../lib/auth";
+import { isProjectAdmin } from "../../shared/project-organization.mjs";
 import { useMemo, useState } from "react";
 import { ArrowLeft, Bookmark, Check, FileCheck2, Network, X, PanelLeftClose, PanelLeftOpen, Pencil } from "lucide-react";
 import type { EngineeringAnalysis, EngineeringRelation, EngineeringRequirement, EngineeringSystemModel } from "../lib/engineeringSystem";
@@ -42,6 +44,8 @@ export function EngineeringScenario({ language, model, analysis, onClear, onSave
 }
 
 export function SystemWorkspace({ language, project, onProjectChange, onBackSetup }: { language: Language; project: MissionProject; onProjectChange: (project: MissionProject) => void; onBackSetup: () => void }) {
+  const { user } = useAuth();
+  const canEdit = isProjectAdmin(project, user);
   const model = project.engineeringSystem;
   const [treeOpen, setTreeOpen] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -68,14 +72,14 @@ export function SystemWorkspace({ language, project, onProjectChange, onBackSetu
       <div className="engineering-bar-actions">
         <button type="button" onClick={() => { setExpanded(new Set(model.entities.map((item) => item.id))); setSelectedId(null); }}>{pt ? "Expandir tudo" : "Expand all"}</button>
         <button type="button" onClick={() => { setExpanded(new Set()); setSelectedId(null); }}>{pt ? "Recolher tudo" : "Collapse all"}</button>
-        <button type="button" className={editing ? "engineering-edit-toggle editing" : "engineering-edit-toggle"} aria-pressed={editing} onClick={() => setEditing(!editing)}>
+        <button type="button" disabled={!canEdit} className={editing ? "engineering-edit-toggle editing" : "engineering-edit-toggle"} aria-pressed={editing} onClick={() => setEditing(!editing)}>
           {editing ? <Check aria-hidden="true" /> : <Pencil aria-hidden="true" />}{editing ? pt ? "Concluir edição" : "Finish editing" : pt ? "Editar" : "Edit"}
         </button>
       </div>
     </header>
     <div className="engineering-workspace-body">
       <div className={`engineering-hierarchy-panel ${treeOpen ? "open" : "closed"}`}>
-        <button type="button" className="engineering-hierarchy-toggle" aria-label={pt ? treeOpen ? "Recolher hierarquia" : "Expandir hierarquia" : treeOpen ? "Collapse hierarchy" : "Expand hierarchy"} aria-expanded={treeOpen} onClick={() => setTreeOpen(!treeOpen)}>{treeOpen ? <PanelLeftClose /> : <PanelLeftOpen />}{treeOpen && <span>{pt ? "Hierarquia" : "Hierarchy"}</span>}</button>
+        <button type="button" className="engineering-hierarchy-toggle" aria-label={pt ? treeOpen ? "Recolher hierarquia" : "Expandir hierarquia" : treeOpen ? "Collapse hierarchy" : "Expand hierarchy"} aria-expanded={treeOpen} onClick={() => setTreeOpen(!treeOpen)}>{treeOpen ? <PanelLeftClose /> : <PanelLeftOpen />}{treeOpen && <span>{pt ? "Árvore técnica" : "Technical tree"}</span>}</button>
         {treeOpen && <EngineeringExplorer model={model} language={language} selectedId={selectedId} expandedIds={expanded} onToggle={toggle} onSelect={selectTree} onOverview={() => setSelectedId(null)} />}
       </div>
       <div className="engineering-canvas-shell">

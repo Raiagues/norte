@@ -59,7 +59,7 @@ export function DiscoveryPanel({ language, project, width, contextLabel, onClose
     return () => window.removeEventListener("keydown", onKey, true);
   }, [onClose]);
 
-  return <aside className="discovery-panel" style={{ width }} aria-label={pt ? "Explorar impacto" : "Explore impact"}>
+  return <aside className="discovery-panel" style={{ width }} aria-label={pt ? "Testar ideias" : "Test ideas"}>
     <div className="discovery-panel-grip" role="separator" aria-label={pt ? "Ajustar largura do painel" : "Adjust panel width"} aria-orientation="vertical" aria-valuenow={width} aria-valuemin={DISCOVERY_MIN_WIDTH} aria-valuemax={DISCOVERY_MAX_WIDTH} tabIndex={0}
       onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); dragRef.current = { pointer: event.pointerId, x: event.clientX, width }; }}
       onPointerMove={(event) => { const drag = dragRef.current; if (drag?.pointer === event.pointerId) onResize(drag.width + drag.x - event.clientX); }}
@@ -70,9 +70,9 @@ export function DiscoveryPanel({ language, project, width, contextLabel, onClose
         onResize(width + (event.key === "ArrowLeft" ? 40 : -40));
       }} />
     <header className="discovery-panel-bar">
-      <span className="discovery-panel-title"><Waypoints aria-hidden="true" />{pt ? "Explorar impacto" : "Explore impact"}<em>BETA</em></span>
+      <span className="discovery-panel-title"><Waypoints aria-hidden="true" />{pt ? "Testar ideias" : "Test ideas"}<em>BETA</em></span>
       <span className="discovery-panel-context" title={contextLabel}>{contextLabel}</span>
-      <button type="button" onClick={onClose} aria-label={pt ? "Fechar Explorar impacto" : "Close Explore impact"}><PanelRightClose aria-hidden="true" /></button>
+      <button type="button" onClick={onClose} aria-label={pt ? "Fechar Testar ideias" : "Close Test ideas"}><PanelRightClose aria-hidden="true" /></button>
     </header>
     <div className="discovery-panel-body">
       <BrainstormLab language={language} project={project} onProjectChange={onProjectChange} />

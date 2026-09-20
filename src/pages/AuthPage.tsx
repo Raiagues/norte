@@ -73,6 +73,7 @@ export function AuthPage() {
       } else {
         await auth.register({
           name: String(data.get("name") || ""),
+          nickname: String(data.get("nickname") || ""),
           email: String(data.get("email") || ""),
           password: String(data.get("password") || "")
         });
@@ -119,10 +120,12 @@ export function AuthPage() {
             <div><span>{mode === "login" ? "LOGIN" : "ACCOUNT"}</span><h2>{mode === "login" ? c.loginTitle : c.registerTitle}</h2></div>
           </div>
 
+          {window.location.hash.startsWith("#/invitations") && <p>{language === "pt" ? "Entre ou crie uma conta com o email que recebeu o convite. Você poderá verificar o email e decidir se deseja participar." : "Sign in or register with the invited email. You can verify the address and choose whether to join."}</p>}
           {mode === "register" && !auth.hasOwner && <p className="auth-owner-note">{c.firstAccount}</p>}
 
           <div className="auth-fields auth-fields-simple">
             {mode === "register" && <label><span>{c.name}</span><input name="name" autoComplete="name" required minLength={2} maxLength={100} /></label>}
+            {mode === "register" && <label><span>Nickname</span><input name="nickname" autoComplete="username" required minLength={3} maxLength={30} pattern="[A-Za-z][A-Za-z0-9_]{2,29}" /><small>{language === "pt" ? "Seu identificador público único: 3 a 30 letras, números ou sublinhado." : "Your unique public identifier: 3–30 letters, numbers or underscores."}</small></label>}
             <label><span>{c.email}</span><input name="email" type="email" autoComplete="email" required maxLength={254} defaultValue={mode === "register" ? joinParameters.get("email") || "" : ""} /></label>
             <label><span>{c.password}</span><input name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={mode === "login" ? 1 : 15} maxLength={128} /><small>{mode === "register" ? c.passwordHint : ""}</small></label>
           </div>

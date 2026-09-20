@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Camera, Check, LoaderCircle, LogOut, Settings2, ShieldCheck, UsersRound, X } from "lucide-react";
+import { Bell, Copy, Camera, Check, LoaderCircle, LogOut, Settings2, ShieldCheck, UsersRound, X } from "lucide-react";
 import { ApiError, useAuth } from "../lib/auth";
 import { accessRoleLabel } from "../lib/team";
 import type { TeamMember, TeamRecord } from "../lib/team";
@@ -39,6 +39,8 @@ function avatarData(file: File): Promise<string> {
 export function UserBadge({ connectedLabel, compact = false }: Props) {
   const auth = useAuth();
   const { user, logout, isDemo } = auth;
+  const [invitationCount, setInvitationCount] = useState(0);
+  const [nickname, setNickname] = useState(user?.nickname || "");
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profile, setProfile] = useState<TeamMember | null>(null);
@@ -56,9 +58,19 @@ export function UserBadge({ connectedLabel, compact = false }: Props) {
     return () => window.removeEventListener("pointerdown", close);
   }, []);
 
+  useEffect(() => {
+    if (!user || isDemo) return;
+    let active = true;
+    const load = () => { void auth.api<{ invitations: unknown[] }>("/invitations").then(r => { if (active) setInvitationCount(r.invitations.length); }).catch(() => undefined); };
+    load(); const timer = window.setInterval(load, 45_000);
+    window.addEventListener("norte-invitations-changed", load);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener("norte-invitations-changed", load); };
+  }, [auth.api, user, isDemo]);
+
   async function openProfile() {
     setOpen(false);
     setProfileOpen(true);
+    setNickname(user?.nickname || "");
     setError("");
     try {
       const [profileResponse, teamResponse] = await Promise.all([
@@ -82,6 +94,7 @@ export function UserBadge({ connectedLabel, compact = false }: Props) {
         method: "PATCH",
         body: JSON.stringify({
           displayName: profile.displayName,
+          ...(nickname ? { nickname } : {}),
           institution: profile.institution,
           course: profile.course,
           academicStage: profile.academicStage,
@@ -116,6 +129,7 @@ export function UserBadge({ connectedLabel, compact = false }: Props) {
   return (
     <>
       <div className={compact ? "user-badge compact account-badge" : "user-badge account-badge"} ref={rootRef}>
+        <button className="invitation-bell" type="button" aria-label={`${language === "pt" ? "Convites" : "Invitations"} (${invitationCount})`} onClick={() => { window.location.hash = "#/invitations"; }}><Bell size={18} />{invitationCount > 0 && <span>{invitationCount}</span>}</button>
         <button className="account-badge-trigger" type="button" onClick={() => setOpen((current) => !current)} aria-expanded={open} aria-label={user.name}>
           <div className={avatar ? "avatar has-photo" : "avatar"}>{avatar ? <img src={avatar} alt="" /> : user.initials}</div>
           {!compact && <div className="user-copy"><div className="user-name">{user.name}</div><div className="user-state"><span className="online-dot" />{connectedLabel}</div></div>}
@@ -123,6 +137,8 @@ export function UserBadge({ connectedLabel, compact = false }: Props) {
         {open && (
           <div className="account-menu">
             <div className="account-menu-head"><ShieldCheck aria-hidden="true" /><div><strong>{user.name}</strong><span>{user.email}</span></div></div>
+            {user.nickname && <button type="button" onClick={() => { void navigator.clipboard.writeText(user.nickname!).catch(() => undefined); }}><Copy size={16} />@{user.nickname}</button>}
+            <button type="button" onClick={() => { setOpen(false); window.location.hash = "#/invitations"; }}><Bell size={16} />{language === "pt" ? "Convites" : "Invitations"} ({invitationCount})</button>
             <div className="account-menu-role">{isDemo ? (language === "pt" ? "Administradora · modo demonstração" : "Administrator · demo mode") : accessRoleLabel(user.accessRole, language)}</div>
             <button type="button" onClick={() => void openProfile()}><Settings2 aria-hidden="true" />{language === "pt" ? "Ver e editar perfil" : "View and edit profile"}</button>
             <button type="button" onClick={() => { setOpen(false); window.location.hash = "#/teams"; }}><UsersRound aria-hidden="true" />{language === "pt" ? "Minhas equipes" : "My teams"}</button>
@@ -141,6 +157,7 @@ export function UserBadge({ connectedLabel, compact = false }: Props) {
             </div>
             <div className="profile-fields">
               <label><span>{language === "pt" ? "Nome" : "Name"}</span><input value={profile.displayName} required maxLength={100} onChange={(event) => setProfile({ ...profile, displayName: event.target.value })} /></label>
+              <label><span>Nickname</span><input value={nickname} minLength={3} maxLength={30} pattern="[A-Za-z][A-Za-z0-9_]{2,29}" onChange={e => setNickname(e.target.value)} /><small>{language === "pt" ? "Identificador público único para receber convites." : "Unique public identifier for invitations."}</small></label>
               <label><span>E-mail</span><input value={profile.email} readOnly /></label>
               <label><span>{language === "pt" ? "Universidade" : "University"}</span><input value={profile.institution} maxLength={160} onChange={(event) => setProfile({ ...profile, institution: event.target.value })} /></label>
               <label><span>{language === "pt" ? "Curso" : "Course"}</span><input value={profile.course} maxLength={120} onChange={(event) => setProfile({ ...profile, course: event.target.value })} /></label>

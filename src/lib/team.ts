@@ -6,8 +6,11 @@ export type ArtifactKind = "official" | "document" | "repository" | "dataset" | 
 export type ArtifactScope = "team" | "project";
 
 export type SessionUser = {
+  testEnvironment?: boolean;
   id: string;
   memberId: string;
+  nickname?: string;
+  emailVerifiedAt?: string | null;
   name: string;
   initials: string;
   email: string;
@@ -19,6 +22,7 @@ export type SessionUser = {
 };
 
 export type TeamMember = {
+  nickname?: string | null;
   id: string;
   accountId: string | null;
   displayName: string;
@@ -40,6 +44,7 @@ export type TeamMember = {
 };
 
 export type TeamRecord = {
+  captainMemberId?: string | null;
   id: string;
   name: string;
   description: string;
@@ -65,6 +70,11 @@ export type ArtifactReadability = {
 };
 
 export type ConnectedArtifact = {
+  folderId?: string | null;
+  entityId?: string | null;
+  documentText?: string;
+  canEdit?: boolean;
+  editReason?: string;
   id: string;
   kind: ArtifactKind;
   label: string;
@@ -115,6 +125,8 @@ export type TeamProjectParticipant = {
 
 export type TeamProjectSummary = ProjectSummary & {
   participants: TeamProjectParticipant[];
+  organization?: import("../../shared/organization-tree.mjs").OrganizationNode;
+  public?: boolean;
 };
 
 export function memberInitials(name: string): string {

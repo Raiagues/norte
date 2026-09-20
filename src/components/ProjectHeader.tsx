@@ -19,8 +19,8 @@ export function ProjectHeader({ language, current, projectName, extra, navigatio
   const previous = railNeighbour(current, -1);
   const next = railNeighbour(current, 1);
   const c = pt
-    ? { previous: "Fase anterior", next: "Próxima fase", soon: "Em breve", explore: "Explorar impacto" }
-    : { previous: "Previous phase", next: "Next phase", soon: "Coming soon", explore: "Explore impact" };
+    ? { previous: "Fase anterior", next: "Próxima fase", soon: "Em breve", explore: "Testar ideias" }
+    : { previous: "Previous phase", next: "Next phase", soon: "Coming soon", explore: "Test ideas" };
 
   return <header className="project-head">
     <div className="project-head-titles">

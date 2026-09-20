@@ -1,3 +1,4 @@
+import type { ProjectFolder, ProjectType, SectorGrant } from "../../shared/project-organization.mjs";
 import type { Language, MissionLink, MissionNode, NodeState } from "./types";
 import type { EngineeringSystemModel } from "./engineeringSystem";
 
@@ -47,9 +48,13 @@ export type ProjectMemberAssignment = {
   memberId: string;
   roleId: string;
   sectorId: string;
+  sectorRoles?: SectorGrant[];
 };
 
 export type ProjectContext = {
+  publicSummary?: boolean;
+  folders?: ProjectFolder[];
+  teamArtifactFolders?: Record<string, string>;
   configured: boolean;
   /** "independent" records a deliberate choice to have no reference program. */
   referenceProgram?: "independent" | null;
@@ -66,6 +71,9 @@ export type ProjectContext = {
 };
 
 export type MissionProject = {
+  projectType?: ProjectType;
+  creatorId?: string;
+  organizationRevision?: number;
   schemaVersion: 2;
   id: string;
   name: string;
@@ -113,7 +121,7 @@ const STORAGE_KEY = "norte-project-v2";
 const LEGACY_STORAGE_KEY = "mission-dev-project-v2";
 
 const DEFAULT_ROLES: ProjectStructureItem[] = [
-  { id: "captain", name: "Capitão" },
+  { id: "captain", name: "Responsável pelo projeto" },
   { id: "manager", name: "Gerente" },
   { id: "member", name: "Membro" },
   { id: "advisor", name: "Orientador" }
@@ -150,7 +158,7 @@ export function createEmptyProject(language: Language = "pt"): MissionProject {
       teamName: "",
       teamArtifactIds: [],
       projectArtifactIds: [],
-      roles: DEFAULT_ROLES.map((role) => ({ ...role, name: language === "en" ? ({ captain: "Captain", manager: "Manager", member: "Member", advisor: "Advisor" }[role.id] ?? role.name) : role.name })),
+      roles: DEFAULT_ROLES.map((role) => ({ ...role, name: language === "en" ? ({ captain: "Project lead", manager: "Sector manager", member: "Member", advisor: "Advisor" }[role.id] ?? role.name) : role.name })),
       sectors: [],
       assignments: []
     },
@@ -323,7 +331,7 @@ export function strongestStateForNodeIds(nodes: MissionNode[], nodeIds: number[]
 
 /** Only engineering context changes invalidate the memory revision, not navigation or canvas moves. */
 export function memoryContextFingerprint(project: MissionProject): string {
-  return JSON.stringify({ name: project.name, setup: project.setup, teamId: project.context.teamId, teamArtifactIds: [...project.context.teamArtifactIds].sort(), projectArtifactIds: [...project.context.projectArtifactIds].sort(), programId: project.context.programId, modalityId: project.context.modalityId, categoryId: project.context.categoryId });
+  return JSON.stringify({ projectType: project.projectType, sectors: project.context.sectors, folders: project.context.folders, teamArtifactFolders: project.context.teamArtifactFolders, name: project.name, setup: project.setup, teamId: project.context.teamId, teamArtifactIds: [...project.context.teamArtifactIds].sort(), projectArtifactIds: [...project.context.projectArtifactIds].sort(), programId: project.context.programId, modalityId: project.context.modalityId, categoryId: project.context.categoryId });
 }
 
 export function recordMemoryRevision(previous: MissionProject, next: MissionProject): MissionProject {

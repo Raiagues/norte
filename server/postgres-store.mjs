@@ -33,12 +33,27 @@ export class PostgresDataStore {
       "INSERT INTO norte_state (id, data) VALUES ($1, $2::jsonb) ON CONFLICT (id) DO NOTHING",
       [STATE_ID, JSON.stringify(createInitialData())]
     );
-    const result = await this.pool.query("SELECT data FROM norte_state WHERE id = $1", [STATE_ID]);
-    this.data = normalizeStoredData(result.rows[0].data);
-    if (result.rows[0].data.schemaVersion !== this.data.schemaVersion) {
-      await this.pool.query("UPDATE norte_state SET data = $2::jsonb, updated_at = NOW() WHERE id = $1", [STATE_ID, JSON.stringify(this.data)]);
-    }
+    // Normalize under the same lock used for ordinary writes; simultaneous
+    // starts cannot overwrite a registration or upload with an old snapshot.
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query("SELECT data FROM norte_state WHERE id = $1 FOR UPDATE", [STATE_ID]);
+      this.data = normalizeStoredData(result.rows[0].data);
+      if (result.rows[0].data.schemaVersion !== this.data.schemaVersion) await client.query("UPDATE norte_state SET data = $2::jsonb, updated_at = NOW() WHERE id = $1", [STATE_ID, JSON.stringify(this.data)]);
+      await client.query("COMMIT");
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
     return this;
+  }
+
+  refresh() {
+    const operation = this.queue.then(async () => {
+      const result = await this.pool.query("SELECT data FROM norte_state WHERE id = $1", [STATE_ID]);
+      this.data = normalizeStoredData(result.rows[0].data);
+    });
+    this.queue = operation.catch(() => undefined);
+    return operation;
   }
 
   read() {
