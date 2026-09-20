@@ -54,7 +54,7 @@ test("A: real document content reaches the provider and drives the extracted sys
   let sent = null;
   const service = createSystemAiService({ apiKey: "test-key", fetch: async (_url, options) => {
     sent = JSON.parse(options.body);
-    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(extractionModel("The Bench Supply powers the Load Board.")) }] } }] }), { status: 200 });
+    return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(extractionModel("The Bench Supply powers the Load Board.")) }] } }] }), { status: 200 });
   } });
 
   const model = await service.generate(project, [artifact]);

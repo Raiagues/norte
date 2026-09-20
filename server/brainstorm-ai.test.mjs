@@ -29,7 +29,7 @@ test("the Gemini proxy keeps the key server-side and caches structured results",
       assert.equal(init.headers["x-goog-api-key"], "server-only-key");
       assert.doesNotMatch(init.body, /server-only-key/u);
       return new Response(JSON.stringify({
-        candidates: [{ content: { parts: [{ text: JSON.stringify({ relations: [], groups: [], nodePlans: [], tensions: [], connectionIssues: [], gaps: [] }) }] } }]
+        candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify({ relations: [], groups: [], nodePlans: [], tensions: [], connectionIssues: [], gaps: [] }) }] } }]
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
   });

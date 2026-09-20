@@ -12,7 +12,7 @@ test("diagnostics retain provider and malformed-output denominators separately w
   const result = await diagnoseExtraction({ models: ["test-model"], runs: 2, apiKey: "test-only", outputDirectory: join(directory, "runs"), fetchImpl: async (_url, options) => {
     assert.doesNotMatch(options.body, /QUETZAL_EVALUATOR_ONLY|expectedCalculations|evaluation_reference/u);
     calls++;
-    return calls === 1 ? new Response('{"error":{"status":"UNAVAILABLE","code":503}}', { status: 503 }) : new Response('{"candidates":[{"content":{"parts":[{"text":"invalid JSON"}]}}]}');
+    return calls === 1 ? new Response('{"error":{"status":"UNAVAILABLE","code":503}}', { status: 503 }) : new Response('{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"invalid JSON"}]}}]}');
   } });
   assert.equal(calls, 2);
   assert.equal(result.manifest.summary.physicalRequests, 2);

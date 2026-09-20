@@ -47,7 +47,7 @@ test("the generated schema sent to the provider carries no sourceRefs field", as
   let sent = null;
   const service = createSystemAiService({ apiKey: "test-key", fetch: async (_url, options) => {
     sent = JSON.parse(options.body);
-    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(extraction({ requirementRefs: ["ev-1"] })) }] } }] }), { status: 200 });
+    return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(extraction({ requirementRefs: ["ev-1"] })) }] } }] }), { status: 200 });
   } });
   await service.generate(project, [artifact]);
   const requirements = sent.generationConfig.responseJsonSchema.properties.requirements.items;
@@ -183,7 +183,7 @@ test("a contract violation is retried once, and the follow-up only states what w
     bodies.push(JSON.parse(options.body));
     // First answer breaks the contract exactly as the live provider did; second is valid.
     const payload = extraction({ requirementRefs: bodies.length === 1 ? ["doc"] : ["ev-1"] });
-    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(payload) }] } }] }), { status: 200 });
+    return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(payload) }] } }] }), { status: 200 });
   } });
   const model = await service.generate(project, [artifact]);
   assert.equal(bodies.length, 2, "the rejected answer must be retried once");
@@ -200,7 +200,7 @@ test("the retry is bounded, and never fires for a provider fault", async () => {
   let calls = 0;
   const always = createSystemAiService({ apiKey: "test-key", fetch: async () => {
     calls += 1;
-    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(extraction({ requirementRefs: ["doc"] })) }] } }] }), { status: 200 });
+    return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(extraction({ requirementRefs: ["doc"] })) }] } }] }), { status: 200 });
   } });
   await assert.rejects(() => always.generate(project, [artifact]), /SYSTEM_RESPONSE_INVALID|invalid fields/u);
   assert.equal(calls, 2, "a persistent contract violation stops after the bounded retry");
@@ -209,7 +209,7 @@ test("the retry is bounded, and never fires for a provider fault", async () => {
   calls = 0;
   const single = createSystemAiService({ apiKey: "test-key", maxContractAttempts: 1, fetch: async () => {
     calls += 1;
-    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(extraction({ requirementRefs: ["doc"] })) }] } }] }), { status: 200 });
+    return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(extraction({ requirementRefs: ["doc"] })) }] } }] }), { status: 200 });
   } });
   await assert.rejects(() => single.generate(project, [artifact]));
   assert.equal(calls, 1);

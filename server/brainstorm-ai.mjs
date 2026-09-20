@@ -1,4 +1,6 @@
-const DEFAULT_MODEL = "gemini-3.5-flash-lite";
+import { geminiConfig, geminiStatus } from "./gemini-config.mjs";
+import { geminiGenerate } from "./gemini-transport.mjs";
+import { matchesSchema } from "../shared/engineering-schema.mjs";
 const DOMAIN_IDS = ["mission", "payload", "environment", "electronics", "communications", "software", "structure", "operations", "unassigned"];
 const ACTION_KINDS = new Set([
   "created", "edited", "moved", "deleted", "maturity-changed", "connection-created", "connection-deleted",
@@ -126,6 +128,7 @@ export const brainstormRequestSchema = {
         properties: {
           id: { type: "string", minLength: 1, maxLength: 100 },
           text: { type: "string", minLength: 1, maxLength: 220 },
+          description: { type: "string", maxLength: 6000 },
           x: { type: "number", minimum: -100_000, maximum: 100_000 },
           y: { type: "number", minimum: -100_000, maximum: 100_000 },
           pinned: { type: "boolean" },
@@ -175,6 +178,7 @@ function cleanRequest(value) {
     nodes.push({
       id: candidate.id,
       text: candidate.text.trim(),
+      ...(candidate.description ? { description: candidate.description } : {}),
       x: Math.round(candidate.x),
       y: Math.round(candidate.y),
       pinned: candidate.pinned,
@@ -247,18 +251,6 @@ function buildPrompt(request) {
   ].join("\n");
 }
 
-function extractStructuredValue(response) {
-  const parts = response?.candidates?.[0]?.content?.parts;
-  if (!Array.isArray(parts)) throw serviceError(502, "AI_RESPONSE_INVALID", "The organization service returned an invalid response.");
-  const text = parts.map((part) => typeof part?.text === "string" ? part.text : "").join("").trim();
-  if (!text) throw serviceError(502, "AI_RESPONSE_INVALID", "The organization service returned an empty response.");
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw serviceError(502, "AI_RESPONSE_INVALID", "The organization service returned malformed structured data.");
-  }
-}
-
 function serviceError(statusCode, code, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -269,42 +261,34 @@ function serviceError(statusCode, code, message) {
 export function createBrainstormAiService(options = {}) {
   const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "";
   const fetchImpl = options.fetch ?? fetch;
-  const configuredModel = options.model ?? process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
-  const model = /^[a-zA-Z0-9._-]+$/u.test(configuredModel) ? configuredModel : DEFAULT_MODEL;
   const cache = new Map();
 
   return {
     status() {
-      return { configured: Boolean(apiKey), model };
+      return geminiStatus(apiKey, options, "organization");
     },
 
     async analyze(value) {
       if (!apiKey) throw serviceError(503, "AI_NOT_CONFIGURED", "The organization service is not configured.");
+      const { model, ...generation } = geminiConfig(options, "organization");
       const request = cleanRequest(value);
       const cacheKey = JSON.stringify(request);
       const cached = cache.get(cacheKey);
       if (cached) return cached;
 
-      const upstream = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-        signal: AbortSignal.timeout(45_000),
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: buildPrompt(request) }] }],
-          generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 6_000,
-            responseMimeType: "application/json",
-            responseSchema: brainstormResponseSchema
-          }
-        })
-      });
-      const upstreamBody = await upstream.json().catch(() => null);
-      if (!upstream.ok) {
-        if (upstream.status === 429) throw serviceError(429, "AI_QUOTA", "The organization service is temporarily rate limited.");
-        throw serviceError(502, "AI_UPSTREAM", "The organization service is temporarily unavailable.");
+      let output;
+      try {
+        output = await geminiGenerate({ apiKey, model, fetchImpl,
+          policy: { timeoutMs: 45_000, maxAttempts: 1, totalDeadlineMs: 45_000 },
+          onAttempt: (record, payload) => options.onAttempt?.({ ...record, feature: "organization" }, payload),
+          body: { contents: [{ role: "user", parts: [{ text: buildPrompt(request) }] }], generationConfig: { temperature: 0.2, ...generation, responseMimeType: "application/json", responseSchema: brainstormResponseSchema } }
+        });
+      } catch (error) {
+        if (error.statusCode === 429) throw serviceError(429, "AI_QUOTA", "The organization service is temporarily rate limited.");
+        throw error;
       }
-      const result = { ...extractStructuredValue(upstreamBody), model };
+      if (!matchesSchema(output, brainstormResponseSchema)) throw serviceError(502, "AI_RESPONSE_INVALID", "The organization service returned invalid structured data.");
+      const result = { ...output, model };
       cache.set(cacheKey, result);
       if (cache.size > 80) cache.delete(cache.keys().next().value);
       return result;

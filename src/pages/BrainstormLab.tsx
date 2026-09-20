@@ -1,3 +1,5 @@
+import { hypothesisText, hypothesisFields, discoveryInput, discoveryInputKey, interpretationErrorMessage } from "../lib/discoveryHypothesis";
+import { HYPOTHESIS_MAX_LENGTH, CLARIFICATION_MAX_TURNS } from "../../shared/discovery-limits.mjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Link2, Pencil, Plus, Redo2, Trash2, Undo2, Copy, LoaderCircle, Check, Maximize2, X } from "lucide-react";
 import { useAuth } from "../lib/auth";
@@ -39,12 +41,12 @@ export function nameCompletions(text: string, model: MissionProject["engineering
   }).sort((first, second) => second.word.length - first.word.length).slice(0, limit);
 }
 
-type Interpretation = { text: string; status: "loading" | "resolved" | "confirmation" | "clarification" | "error"; summary?: string; question?: string; change?: EngineeringChange; baselineId?: string; baselineRevision?: number; baselineGeneratedAt?: string };
+type Interpretation = { text: string; status: "loading" | "resolved" | "confirmation" | "clarification" | "unsupported" | "error"; message?: string; code?: string; understood?: { targetName?: string; updates?: Array<{ propertyKey: string; value: string | number; unit: string; quote: string }> }; summary?: string; question?: string; change?: EngineeringChange; baselineId?: string; baselineRevision?: number; baselineGeneratedAt?: string };
 /** An impact reading anchored to the idea that produced it, still only a proposal. */
 type Proposal = { nodeId: string; analysis: EngineeringAnalysis };
 type Props = { language: Language; project: MissionProject; onProjectChange: (project: MissionProject) => void };
 type Transform = { scale: number; x: number; y: number };
-type Composer = { x: number; y: number; text: string; nodeId?: string };
+type Composer = { x: number; y: number; text: string; nodeId?: string; question?: string; answer?: string };
 type Gesture = { kind: "pan" | "node"; pointerId: number; startX: number; startY: number; x: number; y: number; nodeId?: string; before: LabBoard; moved: boolean };
 const PROMPTS = { pt: ["Clique para explorar uma hipótese.", "E se mudássemos alguma coisa?"], en: ["Click to explore a hypothesis.", "What if we changed something?"] };
 
@@ -115,22 +117,25 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
     if (!projectRef.current.engineeringSystem) return;
     interpretationRequests.current.get(node.id)?.abort();
     const controller = new AbortController(); interpretationRequests.current.set(node.id, controller);
-    setInterpretations((current) => ({ ...current, [node.id]: { text: node.text, status: "loading" } }));
+    const input = discoveryInput(boardRef.current, node), key = discoveryInputKey(boardRef.current, node);
+    const isCurrent = () => { const latest = boardRef.current.nodes.find((item) => item.id === node.id); return latest && discoveryInputKey(boardRef.current, latest) === key; };
+    setInterpretations((current) => ({ ...current, [node.id]: { ...current[node.id], text: key, status: "loading", summary: undefined, question: undefined, message: undefined } }));
     try {
       if (auth.isDemo) throw new Error(language === "pt" ? "A interpretação por IA está disponível no ambiente conectado." : "AI interpretation is available in the connected workspace.");
-      const response = await auth.api<Omit<Interpretation, "text">>("/system-ai/interpret-hypothesis", { method: "POST", body: JSON.stringify({ projectId: project.id, text: node.text, language }), signal: controller.signal });
-      if (controller.signal.aborted || boardRef.current.nodes.find((item) => item.id === node.id)?.text !== node.text) return;
+      const response = await auth.api<Omit<Interpretation, "text">>("/system-ai/interpret-hypothesis", { method: "POST", body: JSON.stringify({ projectId: project.id, ...input, language }), signal: controller.signal });
+      if (controller.signal.aborted || !isCurrent()) return;
       const model = projectRef.current.engineeringSystem;
       if (response.baselineId !== model?.id || response.baselineRevision !== (model?.revision || 0) || response.baselineGeneratedAt !== model?.generatedAt) throw new Error(language === "pt" ? "O sistema mudou. Interprete esta ideia novamente." : "The system changed. Interpret this idea again.");
-      setInterpretations((current) => ({ ...current, [node.id]: { ...response, text: node.text } }));
-      if (showResult && ["resolved", "confirmation"].includes(response.status) && response.change) openImpact(response.change, node.id);
+      setInterpretations((current) => ({ ...current, [node.id]: { ...response, text: key } }));
+      update({ ...boardRef.current, nodes: boardRef.current.nodes.map((item) => item.id === node.id ? { ...item, pendingClarification: response.status === "clarification" && response.question ? { question: response.question, summary: response.summary } : undefined } : item) });
+      if (showResult && response.status === "resolved" && response.change) openImpact(response.change, node.id);
     } catch (error) {
-      if (!controller.signal.aborted && boardRef.current.nodes.find((item) => item.id === node.id)?.text === node.text) setInterpretations((current) => ({ ...current, [node.id]: { text: node.text, status: "error", question: error instanceof Error && "code" in error && ["SYSTEM_AI_UNAVAILABLE", "SYSTEM_AI_NOT_CONFIGURED"].includes(String(error.code)) ? language === "pt" ? "A IA não respondeu agora. Sua ideia está salva; tente novamente." : "AI could not respond. Your idea is saved; try again." : error instanceof Error ? error.message : language === "pt" ? "Não foi possível interpretar a ideia. Tente novamente." : "Could not interpret the idea. Try again." } }));
+      if (!controller.signal.aborted && isCurrent()) setInterpretations((current) => ({ ...current, [node.id]: { ...current[node.id], text: key, status: "error", message: interpretationErrorMessage(error instanceof Error && "code" in error ? String(error.code) : "", language) } }));
     } finally { if (interpretationRequests.current.get(node.id) === controller) interpretationRequests.current.delete(node.id); }
   }
   function showImpact(node: LabNode) {
     const result = interpretations[node.id], model = project.engineeringSystem;
-    if (result?.text === node.text && ["resolved", "confirmation"].includes(result.status) && result.change && result.baselineId === model?.id && result.baselineRevision === (model?.revision || 0) && result.baselineGeneratedAt === model?.generatedAt) openImpact(result.change, node.id);
+    if (result?.text === discoveryInputKey(boardRef.current, node) && ["resolved", "confirmation"].includes(result.status) && result.change && result.baselineId === model?.id && result.baselineRevision === (model?.revision || 0) && result.baselineGeneratedAt === model?.generatedAt) openImpact(result.change, node.id);
     else void interpret(node, true);
   }
   useEffect(() => () => { interpretationRequests.current.forEach((controller) => controller.abort()); }, []);
@@ -164,10 +169,10 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
     }
     return { x: origin.x, y: Math.max(...nodes.map((node) => node.y)) + LAB_NODE_HEIGHT + 50 };
   }
-  function openComposer(point?: { x: number; y: number }, node?: LabNode) {
+  function openComposer(point?: { x: number; y: number }, node?: LabNode, clarify = false) {
     const rect = viewportRef.current?.getBoundingClientRect();
     const center = point ?? { x: (rect?.width ?? 800) / 2, y: (rect?.height ?? 500) / 2 };
-    setComposer(node ? { x: node.x, y: node.y, text: node.text, nodeId: node.id } : { x: (center.x - transform.x) / transform.scale, y: (center.y - transform.y) / transform.scale, text: "" });
+    setComposer(node ? { x: node.x, y: node.y, text: hypothesisText(node), nodeId: node.id, ...(clarify && node.pendingClarification ? { question: node.pendingClarification.question, answer: "" } : {}) } : { x: (center.x - transform.x) / transform.scale, y: (center.y - transform.y) / transform.scale, text: "" });
     setConnecting(null);
   }
   function applyCompletion(completion: { word: string; name: string }) {
@@ -176,14 +181,16 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
     const source = plain(composer.text);
     const found = source.match(match);
     const text = found?.index === undefined ? `${composer.text.trim()} ${completion.name}`.trim() : composer.text.slice(0, found.index) + completion.name + composer.text.slice(found.index + found[0].length);
-    setComposer({ ...composer, text: text.slice(0, 220) });
+    if (text.length <= HYPOTHESIS_MAX_LENGTH) setComposer({ ...composer, text });
     textareaRef.current?.focus();
   }
   function saveIdea() {
     if (!composer?.text.trim()) return;
-    const text = composer.text.trim().slice(0, 220);
+    if (composer.question && !composer.answer?.trim()) return;
+    const text = composer.question ? `${composer.text.trim()}\n${composer.answer!.trim()}` : composer.text.trim();
+    if (text.length > HYPOTHESIS_MAX_LENGTH) return;
     if (composer.nodeId) {
-      commit({ ...boardRef.current, nodes: boardRef.current.nodes.map((node) => node.id === composer.nodeId ? { ...node, text } : node) }); setComposer(null);
+      commit({ ...boardRef.current, nodes: boardRef.current.nodes.map((node) => node.id === composer.nodeId ? { ...node, ...hypothesisFields(text), pendingClarification: undefined, ...(composer.question ? { clarifications: [...(node.clarifications || []), { question: composer.question, answer: composer.answer!.trim() }].slice(-CLARIFICATION_MAX_TURNS) } : {}) } : node) }); setComposer(null);
       const edited = boardRef.current.nodes.find((node) => node.id === composer.nodeId); if (edited) void interpret(edited);
     } else {
       const position = freePosition(composer);
@@ -316,7 +323,7 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
       <button className="primary" type="button" onClick={() => openComposer()} disabled={!ready}><Plus />{copy.add}</button>
       {selected && <><span />
       <button type="button" disabled={!selected} onClick={() => setConnecting(connecting ? null : selected)} aria-pressed={Boolean(connecting)}><Link2 />{language === "pt" ? "Conectar" : "Connect"}</button>
-      <button type="button" disabled={!selected} onClick={() => { const original = boardRef.current.nodes.find((node) => node.id === selected); if (original) { const position = freePosition({ x: original.x + LAB_NODE_WIDTH + 40, y: original.y }); const node = createLabNode(original.text, position.x, position.y); commit({ ...boardRef.current, nodes: [...boardRef.current.nodes, node] }); setSelected(node.id); fit(); } }}><Copy />{language === "pt" ? "Duplicar" : "Duplicate"}</button>
+      <button type="button" disabled={!selected} onClick={() => { const original = boardRef.current.nodes.find((node) => node.id === selected); if (original) { const position = freePosition({ x: original.x + LAB_NODE_WIDTH + 40, y: original.y }); const node = { ...createLabNode(hypothesisText(original), position.x, position.y), clarifications: structuredClone(original.clarifications), pendingClarification: structuredClone(original.pendingClarification) }; commit({ ...boardRef.current, nodes: [...boardRef.current.nodes, node] }); setSelected(node.id); fit(); } }}><Copy />{language === "pt" ? "Duplicar" : "Duplicate"}</button>
       <button type="button" disabled={!selected} onClick={() => { if (selected) remove(selected); }}><Trash2 />{language === "pt" ? "Excluir" : "Delete"}</button></>}
     </div>}
     {scenario && project.engineeringSystem ? <EngineeringScenario language={language} model={project.engineeringSystem} analysis={scenario} onClear={() => setScenario(null)} saved={project.engineeringSystem.scenarios?.some((item) => item.id === scenario.id)} onSave={() => onProjectChange({ ...project, engineeringSystem: { ...project.engineeringSystem!, scenarios: [...(project.engineeringSystem?.scenarios ?? []).filter((item) => item.id !== scenario.id), scenario] } })} /> : <div ref={viewportRef} className={`lab-canvas${panning ? " panning" : ""}`} onPointerDown={(event) => { if (ready) pointerDown(event); }} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onWheel={(event) => {
@@ -338,13 +345,16 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
           });
         })()}</svg>
         {board.nodes.map((node) => {
-          const interpretation = interpretations[node.id]?.text === node.text ? interpretations[node.id] : undefined;
+          const interpretation: Interpretation | undefined = interpretations[node.id]?.text === discoveryInputKey(board, node) ? interpretations[node.id] : node.pendingClarification ? { text: discoveryInputKey(board, node), status: "clarification", ...node.pendingClarification } : undefined;
           return <article className={`lab-node${selected === node.id ? " selected" : ""}`} style={{ left: node.x, top: node.y, width: LAB_NODE_WIDTH, minHeight: LAB_NODE_HEIGHT }} key={node.id} data-node-id={node.id} onPointerDown={(event) => pointerDown(event, node)} onDoubleClick={() => openComposer(undefined, node)}>
             <div className="lab-node-head"><span>{copy.idea}</span><button type="button" title={copy.edit} aria-label={`${copy.edit}: ${node.text}`} onClick={() => openComposer(undefined, node)}><Pencil aria-hidden="true" /></button></div>
             <button className="discovery-node-text" type="button" onClick={() => selectNode(node)} onDoubleClick={() => openComposer(undefined, node)}>{node.text}</button>
-            {interpretation && <p className={`discovery-interpretation ${interpretation.status}`} aria-live="polite">{interpretation.status === "loading" ? <><LoaderCircle className="engineering-spin" />{language === "pt" ? "Interpretando a ideia…" : "Interpreting the idea…"}</> : interpretation.summary || interpretation.question}</p>}
-            {interpretation?.status === "confirmation" && interpretation.question && <p className="discovery-interpretation question">{interpretation.question}</p>}
-            {interpretation?.status === "clarification" ? <button className="discovery-impact-action" type="button" onClick={() => openComposer(undefined, node)}><Pencil />{language === "pt" ? "Completar ideia" : "Refine idea"}</button>
+            {interpretation && <p className={`discovery-interpretation ${interpretation.status}`} aria-live="polite">{interpretation.status === "loading" ? <><LoaderCircle className="engineering-spin" />{language === "pt" ? "Interpretando a ideia…" : "Interpreting the idea…"}</> : interpretation.summary || interpretation.message || interpretation.question}</p>}
+            {["confirmation", "clarification"].includes(interpretation?.status || "") && interpretation?.question && interpretation.summary && <p className="discovery-interpretation question">{interpretation.question}</p>}
+            {interpretation?.status === "unsupported" && interpretation.summary && interpretation.message && <p className="discovery-interpretation unsupported">{interpretation.message}</p>}
+            {interpretation?.understood?.updates?.length ? <p className="discovery-interpretation">{language === "pt" ? "Dados reconhecidos" : "Recognized details"}: {interpretation.understood.targetName} · {interpretation.understood.updates.map((item) => `${item.value} ${item.unit}`).join("; ")}</p> : null}
+            {node.description && <button className="discovery-impact-action" type="button" onClick={() => openComposer(undefined, node)}>{language === "pt" ? "Ler hipótese completa" : "Read full hypothesis"}</button>}
+            {["clarification", "unsupported"].includes(interpretation?.status || "") ? <button className="discovery-impact-action" type="button" onClick={() => openComposer(undefined, node, interpretation?.status === "clarification")}><Pencil />{interpretation?.status === "unsupported" ? copy.edit : language === "pt" ? "Completar ideia" : "Refine idea"}</button>
               : interpretation?.status === "confirmation" ? <div className="discovery-confirm">
                 <button className="discovery-impact-action primary" type="button" onClick={() => showImpact(node)}><Check />{copy.yes}</button>
                 <button className="discovery-impact-action" type="button" onClick={() => openComposer(undefined, node)}><Pencil />{copy.no}</button>
@@ -365,8 +375,9 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
             <button type="button" onClick={() => setProposal(null)}><X />{copy.dismiss}</button>
           </div>
         </>}
-        {composer && <form className="lab-composer" data-control style={{ left: composer.x, top: composer.y, width: LAB_NODE_WIDTH }} onSubmit={(event) => { event.preventDefault(); saveIdea(); }}><textarea ref={textareaRef} value={composer.text} maxLength={220} placeholder={copy.placeholder} aria-label={copy.placeholder} onChange={(event) => setComposer({ ...composer, text: event.target.value })} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); saveIdea(); } if (event.key === "Escape") setComposer(null); }} /><button type="submit" aria-label={copy.save}><Plus aria-hidden="true" /></button><button type="button" onClick={() => setComposer(null)} aria-label={copy.cancel}>×</button>
-          {completions.length > 0 && <div className="discovery-completions"><span>{copy.naming}</span>{completions.map((completion) => <button type="button" key={completion.id} onClick={() => applyCompletion(completion)} title={completion.detail}>{completion.name}{completion.detail && <em>{completion.detail}</em>}</button>)}</div>}
+        {composer && <form className="lab-composer" data-control style={{ left: composer.x, top: composer.y, width: LAB_NODE_WIDTH }} onSubmit={(event) => { event.preventDefault(); saveIdea(); }}>{composer.question && <div className="discovery-clarification-context"><p>{composer.text}</p><strong>{composer.question}</strong></div>}<textarea ref={textareaRef} value={composer.question ? composer.answer || "" : composer.text} maxLength={composer.question ? Math.max(0, Math.min(1500, HYPOTHESIS_MAX_LENGTH - composer.text.length - 1)) : HYPOTHESIS_MAX_LENGTH} placeholder={copy.placeholder} aria-label={copy.placeholder} onChange={(event) => setComposer({ ...composer, ...(composer.question ? { answer: event.target.value } : { text: event.target.value }) })} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); saveIdea(); } if (event.key === "Escape") setComposer(null); }} /><button type="submit" aria-label={copy.save}><Plus aria-hidden="true" /></button><button type="button" onClick={() => setComposer(null)} aria-label={copy.cancel}>×</button>
+          <small className="discovery-description-count">{composer.text.length + (composer.answer?.length || 0)} / {HYPOTHESIS_MAX_LENGTH}</small>
+          {!composer.question && completions.length > 0 && <div className="discovery-completions"><span>{copy.naming}</span>{completions.map((completion) => <button type="button" key={completion.id} onClick={() => applyCompletion(completion)} title={completion.detail}>{completion.name}{completion.detail && <em>{completion.detail}</em>}</button>)}</div>}
         </form>}
       </div>
       {feedback && <div className="discovery-notice" role="status">{feedback}</div>}

@@ -65,3 +65,8 @@
 .engineering-edit-hint { position: absolute; z-index: 12; left: 16px; top: 14px; margin: 0; padding: 7px 12px; border: 1px solid #3d7f6d; border-radius: 6px; background: #072a2bee; color: #9fe6cd; font-size: 11px; }
 .engineering-workspace .engineering-node.editable .engineering-node-main { cursor: grab; }
 .engineering-workspace .engineering-node:not(.editable) .engineering-node-main { cursor: pointer; }
+
+.quiet-discovery .lab-composer textarea { min-height: 120px; max-height: 300px; resize: vertical; }
+.discovery-clarification-context, .discovery-description-count { grid-column: 1 / -1; color: #abc3d7; font-size: 12px; }
+.discovery-clarification-context p { max-height: 150px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.discovery-interpretation.unsupported { color: #e4bc80; }

@@ -352,7 +352,6 @@ export async function buildApp(options = {}) {
   const store = options.store || await (options.storeFile || !databaseUrl
     ? new JsonDataStore(options.storeFile || resolve("var/mission-dev-data.json"))
     : new PostgresDataStore(databaseUrl)).init();
-  const ai = createBrainstormAiService(options.ai);
   const systemAiOptions = options.systemAi || options.ai || {};
   const initializingSystems = new Map();
   const logger = options.logger ?? {
@@ -360,7 +359,14 @@ export async function buildApp(options = {}) {
     redact: ["req.headers.cookie", "req.headers.authorization", "password", "body.password"]
   };
   const app = Fastify({ logger, bodyLimit: 512 * 1024, trustProxy: production });
-  const systemAi = createSystemAiService({ ...systemAiOptions, onAttempt: async (record, payload) => {
+  const ai = createBrainstormAiService({ ...options.ai, onAttempt: async (record, payload) => {
+    app.log.info({ event: "engineering.provider_attempt", ...record }, "Organization provider attempt completed");
+    await options.ai?.onAttempt?.(record, payload);
+  } });
+  const systemAi = createSystemAiService({ ...systemAiOptions, onRejection: async (record) => {
+    app.log.warn({ event: "discovery.interpretation_rejected", ...record }, "Discovery interpretation rejected");
+    await systemAiOptions.onRejection?.(record);
+  }, onAttempt: async (record, payload) => {
     app.log.info({ event: "engineering.provider_attempt", ...record }, "Engineering provider attempt completed");
     await systemAiOptions.onAttempt?.(record, payload);
   } });
@@ -1282,7 +1288,7 @@ export async function buildApp(options = {}) {
     if (!canAccessProject(data, request.auth.user, record) || request.auth.user.accessRole === "advisor") throw httpError(403, "FORBIDDEN", "You cannot change this project.");
     const baseline = record.document.engineeringSystem;
     if (!baseline) throw httpError(409, "SYSTEM_NOT_READY", "Initialize the project architecture first.");
-    const result = await systemAi.interpret(baseline, request.body.text, request.body.language);
+    const result = await systemAi.interpret(baseline, request.body.text, request.body.language, { ...request.body, project: record.document });
     const current = store.read(), latest = current.workspace.projects?.[request.body.projectId];
     if (!latest || !canAccessProject(current, request.auth.user, latest)) throw httpError(403, "FORBIDDEN", "Project access changed.");
     if (!isDeepStrictEqual(baseline, latest.document.engineeringSystem)) throw httpError(409, "SYSTEM_CHANGED", "The architecture changed. Interpret the idea again.");

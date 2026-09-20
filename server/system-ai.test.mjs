@@ -13,7 +13,7 @@ import { createEngineeringValidationModel, validationMemoryText } from "../examp
 const dataUrl = (text, mime = "text/plain") => `data:${mime};base64,${Buffer.from(text).toString("base64")}`;
 const project = { id: "project-test", name: "Validation", memoryRevision: 3, context: { teamId: "team-test", teamArtifactIds: ["team-file"], projectArtifactIds: ["validation-memory"] } };
 const artifact = { id: "validation-memory", label: "Validation memory", description: "", url: dataUrl(validationMemoryText), scope: "project", ownerId: project.id, fileName: "validation.txt", mimeType: "text/plain", size: Buffer.byteLength(validationMemoryText), kind: "document" };
-const geminiResponse = (result) => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(result) }] } }] }), { status: 200 });
+const geminiResponse = (result) => new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(result) }] } }] }), { status: 200 });
 
 test("provider schema avoids decoder constraint complexity while full response bounds remain enforced", () => {
   const provider = geminiResponseSchema(engineeringSystemSchema);
@@ -324,4 +324,36 @@ test("API rejects an interpretation if the current architecture changed during t
   const response = await app.inject({ method: "POST", url: "/api/system-ai/interpret-hypothesis", headers, payload: { projectId: project.id, text: "better radio" } });
   assert.equal(response.statusCode, 409, response.body);
   assert.equal(response.json().error, "SYSTEM_CHANGED");
+});
+
+test("Discovery HTTP boundary carries full text, connected context and prior clarifications with no baseline writes", async (t) => {
+  let captured;
+  const { app, store, headers } = await setupApi(t, async (_url, init) => {
+    const prompt = JSON.parse(init.body).contents[0].parts[0].text;
+    captured = JSON.parse(prompt.slice(prompt.indexOf("\n") + 1));
+    return geminiResponse({ kind: "parameter", targetId: "radio", summary: "Radio current becomes 1.2 A", question: "", confirmation: "", replacementName: "", updates: [{ propertyKey: "peak_current", operation: "set", value: 1.2, unit: "A", quote: "1.2 A" }] });
+  });
+  await store.update((data) => { data.workspace.projects[project.id].document.engineeringSystem = createEngineeringValidationModel(); });
+  const before = structuredClone(store.read().workspace.projects[project.id].document);
+  const text = `radio 1.2 A. ${"Experimental assumptions are preserved. ".repeat(100)}`;
+  const payload = { projectId: project.id, nodeId: "hypothesis", text, language: "pt", relatedCards: [{ id: "related", text: "Radio R1" }, { id: "disconnected", text: "DO_NOT_SEND" }], links: [{ from: "related", to: "hypothesis" }], clarifications: [{ question: "Qual rádio?", answer: "Radio R1" }] };
+  const response = await app.inject({ method: "POST", url: "/api/system-ai/interpret-hypothesis", headers, payload });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(captured.hypothesis, text);
+  assert.deepEqual(captured.clarifications, payload.clarifications);
+  assert.equal(captured.relatedCards.length, 1);
+  assert.ok(captured.relations.length > 0);
+  assert.equal(response.json().change.description, text);
+  assert.deepEqual(store.read().workspace.projects[project.id].document, before);
+  const tooLong = await app.inject({ method: "POST", url: "/api/system-ai/interpret-hypothesis", headers, payload: { ...payload, text: "x".repeat(6001) } });
+  assert.equal(tooLong.statusCode, 400);
+});
+
+test("Discovery HTTP interrupted JSON stays a technical error instead of a generic question", async (t) => {
+  const { app, store, headers } = await setupApi(t, async () => new Response(JSON.stringify({ candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: '{"kind":"clarification"}' }] } }], usageMetadata: { thoughtsTokenCount: 8000, candidatesTokenCount: 192, totalTokenCount: 9000 } })));
+  await store.update((data) => { data.workspace.projects[project.id].document.engineeringSystem = createEngineeringValidationModel(); });
+  const response = await app.inject({ method: "POST", url: "/api/system-ai/interpret-hypothesis", headers, payload: { projectId: project.id, text: "radio 1.2 A" } });
+  assert.equal(response.statusCode, 502);
+  assert.equal(response.json().error, "GEMINI_RESPONSE_INCOMPLETE");
+  assert.equal(response.json().question, undefined);
 });

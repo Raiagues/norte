@@ -1,6 +1,8 @@
 /** Direct REST transport. One observable record per physical request, including retries. */
 const retryStatuses = new Set([408, 429, 500, 502, 503, 504]);
 const headerNames = ["retry-after", "server-timing", "x-request-id", "x-goog-request-id", "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset"];
+const usageFields = ["promptTokenCount", "candidatesTokenCount", "thoughtsTokenCount", "totalTokenCount", "cachedContentTokenCount"];
+const finishReasons = new Set(["STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "LANGUAGE", "OTHER", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "MALFORMED_FUNCTION_CALL", "UNEXPECTED_TOOL_CALL", "FINISH_REASON_UNSPECIFIED"]);
 export const EXTRACTION_TRANSPORT_POLICY = Object.freeze({ timeoutMs: 90_000, maxAttempts: 2, totalDeadlineMs: 185_000, initialBackoffMs: 1000, maxBackoffMs: 10_000 });
 export function retryDelay(headers, attempt, random = Math.random, now = Date.now()) {
   const value = headers?.get("retry-after");
@@ -28,21 +30,30 @@ export async function geminiGenerate({ apiKey, model, body, fetchImpl = fetch, p
       record.responseBytes = Buffer.byteLength(raw);
       let data;
       try { data = JSON.parse(raw); } catch { throw Object.assign(new Error("Invalid provider envelope"), { category: response.ok ? "schema_rejection" : "provider_error" }); }
-      const candidates = (data.candidates || []).map((candidate) => ({ finishReason: candidate.finishReason ?? null, text: (candidate.content?.parts || []).filter((part) => !part.thought && typeof part.text === "string").map((part) => part.text).join("") }));
+      const candidates = (Array.isArray(data.candidates) ? data.candidates : []).map((candidate) => ({ finishReason: finishReasons.has(candidate.finishReason) ? candidate.finishReason : null, text: (Array.isArray(candidate.content?.parts) ? candidate.content.parts : []).filter((part) => !part.thought && typeof part.text === "string").map((part) => part.text).join("") }));
       // Whitelist response fields; never expose request headers, thoughts or raw error messages.
-      const publicMessage = typeof data.error?.message === "string" ? data.error.message.replaceAll(apiKey || "__no_key__", "[redacted]").replace(/AIza[\w-]+/gu, "[redacted]").slice(0, 1200) : null;
-      record.quotaUnavailable = response.status === 429 && /\blimit:\s*0\b/iu.test(publicMessage || "");
-      publicBody = { modelVersion: data.modelVersion ?? null, usageMetadata: data.usageMetadata ?? null, candidates, error: data.error ? { code: data.error.code, status: data.error.status, message: publicMessage } : null };
+      record.quotaUnavailable = response.status === 429 && /\blimit:\s*0\b/iu.test(data.error?.message || "");
+      const usage = Object.fromEntries(usageFields.filter((key) => Number.isSafeInteger(data.usageMetadata?.[key]) && data.usageMetadata[key] >= 0).map((key) => [key, data.usageMetadata[key]]));
+      publicBody = { modelVersion: typeof data.modelVersion === "string" && /^[\w.-]{1,100}$/u.test(data.modelVersion) ? data.modelVersion : null, usageMetadata: Object.keys(usage).length ? usage : null, candidates, error: data.error ? { code: response.status } : null };
       record.modelVersion = publicBody.modelVersion;
       record.usageMetadata = publicBody.usageMetadata;
       record.finishReason = candidates[0]?.finishReason ?? null;
       if (!response.ok) throw Object.assign(new Error("Provider rejected request"), { category: "provider_error" });
       record.status = "provider_completed";
+      record.usageAvailable = Boolean(publicBody.usageMetadata);
+      record.outputTokens = record.usageAvailable ? (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0) : null;
+      record.outputLimit = body.generationConfig?.maxOutputTokens ?? null;
+      if (data.promptFeedback?.blockReason) throw Object.assign(new Error("Blocked provider response"), { category: "provider_blocked" });
+      if (!candidates.length) throw Object.assign(new Error("Missing candidate"), { category: "schema_rejection" });
+      if (candidates.length !== 1 || candidates[0].finishReason !== "STOP") throw Object.assign(new Error("Incomplete provider response"), { category: candidates[0]?.finishReason === "MAX_TOKENS" || !candidates[0]?.finishReason ? "provider_incomplete" : "provider_blocked" });
+      if (usageFields.some((key) => data.usageMetadata?.[key] !== undefined && !Object.hasOwn(usage, key))) throw Object.assign(new Error("Invalid token metadata"), { category: "schema_rejection" });
+      if (record.outputLimit && record.outputTokens >= record.outputLimit) throw Object.assign(new Error("Output budget exhausted"), { category: "provider_incomplete" });
       try { output = JSON.parse(candidates[0]?.text); } catch { throw Object.assign(new Error("Invalid structured response"), { category: "schema_rejection" }); }
     } catch (error) {
       const timeout = error.name === "TimeoutError" || error.name === "AbortError";
       record.clientAborted = timeout;
-      failure = Object.assign(new Error(timeout ? "The engineering service exceeded the local deadline. Project memory is preserved." : error.category === "schema_rejection" ? "The engineering service returned invalid JSON." : "The engineering service is temporarily unavailable. Project memory is preserved."), { code: error.category === "schema_rejection" ? "SYSTEM_RESPONSE_INVALID" : "SYSTEM_AI_UNAVAILABLE", statusCode: response?.status === 429 ? 429 : 502, category: timeout ? "provider_timeout" : error.category || "provider_error" });
+      const code = ({ schema_rejection: "SYSTEM_RESPONSE_INVALID", provider_incomplete: "GEMINI_RESPONSE_INCOMPLETE", provider_blocked: "GEMINI_RESPONSE_BLOCKED" })[error.category] || "SYSTEM_AI_UNAVAILABLE";
+      failure = Object.assign(new Error(timeout ? "The engineering service exceeded the local deadline. Project memory is preserved." : error.category === "provider_incomplete" ? "The AI response was interrupted or exhausted its token budget. Your idea is preserved; retry the interpretation." : error.category === "schema_rejection" ? "The engineering service returned invalid structured data." : "The engineering service could not complete this request. Project memory is preserved."), { code, statusCode: response?.status === 429 ? 429 : 502, category: timeout ? "provider_timeout" : error.category || "provider_error" });
       record.status = failure.category === "schema_rejection" ? "provider_completed" : failure.category;
       record.failureCategory = failure.category;
     }

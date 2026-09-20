@@ -14,23 +14,24 @@ import { createEngineeringValidationModel, validationMemoryText } from "../examp
 const directory = await mkdtemp(join(tmpdir(), "norte-browser-"));
 const port = Number(process.env.NORTE_VISUAL_PORT || 5275);
 const baseUrl = `http://127.0.0.1:${port}/norte/`;
-let interpretations = 0, generations = 0, failGeneration = true, failContract = false, artifactId = "";
+let interpretations = 0, generations = 0, failGeneration = true, failContract = false, artifactId = "", lastDiscoveryContext;
 const app = await buildApp({ storeFile: join(directory, "state.json"), logger: false, systemAi: { retryWait: async () => {}, apiKey: "test-provider", fetch: async (_url, options) => {
   const prompt = JSON.parse(options.body).contents[0].parts[0].text;
   if (prompt.startsWith("Interpret the engineering hypothesis")) {
     interpretations++;
-    const text = JSON.parse(prompt.slice(prompt.indexOf("\n") + 1)).hypothesis;
+    lastDiscoveryContext = JSON.parse(prompt.slice(prompt.indexOf("\n") + 1));
+    const text = lastDiscoveryContext.hypothesis;
     const mass = (confirmation) => ({ kind: "parameter", targetId: "payload", summary: "A massa do payload passa a 280 g.", question: "", confirmation, replacementName: "", updates: [{ propertyKey: "mass", operation: "set", value: 280, unit: "g", quote: "280 g" }] });
     const result = text === "Payload 280 g" ? mass("") : text === "Payload mais leve, 280 g" ? mass("Você quer aplicar essa massa ao Payload?") : { kind: "clarification", targetId: "", summary: "", question: "O que mudaria nessa alternativa?", confirmation: "", replacementName: "", updates: [] };
-    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(result) }] } }] }), { status: 200 });
+    return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(result) }] } }] }), { status: 200 });
   }
-  if (JSON.parse(options.body).contents[0].parts[0].text.startsWith("Give concise")) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"inferences":[]}' }] } }] }), { status: 200 });
+  if (JSON.parse(options.body).contents[0].parts[0].text.startsWith("Give concise")) return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: '{"inferences":[]}' }] } }] }), { status: 200 });
   generations += 1;
   if (failGeneration) return new Response("{}", { status: 503 });
   const model = createEngineeringValidationModel();
   if (failContract) model.entities.find((entity) => entity.properties.some((property) => property.key === "formula")).properties.find((property) => property.key === "formula").value = "unsupported_rule";
   model.evidence = model.evidence.map((item) => ({ ...item, artifactId }));
-  return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(model) }] } }] }), { status: 200 });
+  return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(model) }] } }] }), { status: 200 });
 } } });
 const registration = await app.inject({ method: "POST", url: "/api/auth/register", payload: { name: "Validation Engineer", email: "validation@example.test", password: "Engineering validation passphrase 42" } });
 assert.equal(registration.statusCode, 201, registration.body);
@@ -348,10 +349,28 @@ try {
   assert.ok((await page.locator(".lab-node").last().innerText()).includes("O que mudaria"));
   await page.locator(".lab-node").last().getByRole("button", { name: "Completar ideia", exact: true }).click();
   await page.locator(".lab-composer textarea").waitFor();
+  assert.equal(await page.locator(".lab-composer textarea").inputValue(), "");
+  assert.ok((await page.locator(".discovery-clarification-context").innerText()).includes("Investigar uma alternativa"));
+  const clarificationAnswer = `Avaliar o rádio em outra condição. ${"Preservar as premissas e medições antes de alterar parâmetros. ".repeat(8)}`;
+  await page.locator(".lab-composer textarea").fill(clarificationAnswer);
+  await page.locator(".lab-composer textarea").press("Enter");
+  await page.locator(".lab-composer").waitFor({ state: "hidden" });
+  await page.locator(".lab-node").last().locator(".discovery-interpretation.clarification").waitFor();
+  assert.equal(lastDiscoveryContext.hypothesis, `Investigar uma alternativa\n${clarificationAnswer.trim()}`);
+  assert.equal(lastDiscoveryContext.clarifications[0].answer, clarificationAnswer.trim());
+  await waitSaved();
+  const savedHypothesis = (await request("GET", `/api/workspace/labs/${projectId}`)).board.nodes.at(-1);
+  assert.ok(savedHypothesis.text.length <= 220);
+  assert.equal(savedHypothesis.description, lastDiscoveryContext.hypothesis);
+  assert.equal(savedHypothesis.clarifications[0].answer, clarificationAnswer.trim());
+  await page.locator(".lab-node").last().getByRole("button", { name: "Ler hipótese completa", exact: true }).click();
+  assert.equal(await page.locator(".lab-composer textarea").inputValue(), savedHypothesis.description);
   await page.locator(".lab-composer textarea").press("Escape");
   await page.locator(".lab-node").last().locator(".discovery-node-text").click();
   await page.getByRole("button", { name: "Duplicar", exact: true }).click();
   assert.equal(await page.locator(".lab-node").count(), 3);
+  await waitSaved();
+  assert.equal((await request("GET", `/api/workspace/labs/${projectId}`)).board.nodes.at(-1).description, savedHypothesis.description);
   await page.getByRole("button", { name: "Desfazer", exact: true }).click();
   assert.equal(await page.locator(".lab-node").count(), 2);
   await page.locator(".lab-node").first().locator(".discovery-node-text").click();

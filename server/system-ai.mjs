@@ -1,5 +1,6 @@
 import { interpretationPrompt, interpretationSchema, resolveInterpretation } from "./discovery-interpretation.mjs";
 import { geminiGenerate } from "./gemini-transport.mjs";
+import { geminiConfig, geminiStatus } from "./gemini-config.mjs";
 import { extractionEnums, requirementEvidenceField, restoreRequirementSourceRefs, EXTRACTED_SOURCE_KINDS, EXTRACTED_EVIDENCE_KINDS } from "./extraction-contract.mjs";
 import { normalizeQuantity } from "../shared/impact-engine.mjs";
 import { describeEngineeringSystemViolation, engineeringSystemSchema } from "../shared/engineering-schema.mjs";
@@ -7,7 +8,6 @@ import { classifyArtifactSource, MAX_TOTAL_BYTES } from "./artifact-content.mjs"
 import { linkedProjectArtifacts, projectMemoryReadiness } from "../shared/project-memory.mjs";
 
 export { generationRequestSchema, validateEngineeringSystem } from "../shared/engineering-schema.mjs";
-const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 /** Violations of the extraction contract itself, which a retry can plausibly fix. */
 const CONTRACT_ERROR_CODES = new Set(["SYSTEM_RESPONSE_INVALID", "SYSTEM_EVIDENCE_INVALID", "SYSTEM_HIERARCHY_INVALID", "SYSTEM_FORMULA_INVALID"]);
 const KNOWN_PROPERTY_DIMENSIONS = new Map([
@@ -332,16 +332,16 @@ export function hydrateExtraction(value, project) {
 
 export function createSystemAiService(options = {}) {
   const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "";
-  const configured = options.model ?? process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
-  const model = /^[a-zA-Z0-9._-]+$/u.test(configured) ? configured : DEFAULT_MODEL;
   const fetchImpl = options.fetch ?? fetch;
   async function request(parts, schema, settings = {}) {
-    return geminiGenerate({ apiKey, model, fetchImpl, body: { contents: [{ role: "user", parts }], generationConfig: { temperature: 0.1, maxOutputTokens: settings.maxOutputTokens ?? 16_000, responseMimeType: "application/json", responseJsonSchema: geminiResponseSchema(schema) } }, ...(options.transportPolicy || settings.policy ? { policy: options.transportPolicy ?? settings.policy } : {}), onAttempt: options.onAttempt, ...(options.retryWait ? { wait: options.retryWait } : {}) });
+    const { model, ...generation } = geminiConfig(options, settings.feature || "extraction");
+    return geminiGenerate({ apiKey, model, fetchImpl, body: { contents: [{ role: "user", parts }], generationConfig: { temperature: 0.1, ...generation, responseMimeType: "application/json", responseJsonSchema: geminiResponseSchema(schema) } }, ...(options.transportPolicy || settings.policy ? { policy: options.transportPolicy ?? settings.policy } : {}), onAttempt: (record, payload) => options.onAttempt?.({ ...record, feature: settings.feature || "extraction" }, payload), ...(options.retryWait ? { wait: options.retryWait } : {}) });
   }
   return {
-    status: () => ({ configured: Boolean(apiKey), model }),
+    status: () => geminiStatus(apiKey, options, "extraction"),
     async generate(project, artifacts, language = "en") {
       if (project.engineeringSystem) return project.engineeringSystem;
+      const { model } = geminiConfig(options, "extraction");
       const parsed = prepareProjectArtifacts(project, artifacts);
       if (!parsed.some((item) => ["parsed", "pdf"].includes(item.source.status))) throw serviceError(422, "SYSTEM_MEMORY_INSUFFICIENT", "Connect a readable text or PDF artifact to project memory before starting conception.");
       if (!apiKey) throw serviceError(503, "SYSTEM_AI_NOT_CONFIGURED", "Engineering extraction is not configured. Project memory is saved; retry when the service is available.");
@@ -375,10 +375,12 @@ export function createSystemAiService(options = {}) {
       }
       throw lastFailure;
     },
-    async interpret(modelValue, text, language = "en") {
+    async interpret(modelValue, text, language = "en", context = {}) {
       if (!apiKey) throw serviceError(503, "SYSTEM_AI_NOT_CONFIGURED", "Hypothesis interpretation is not configured.");
-      const output = await request([{ text: interpretationPrompt(modelValue, text, language) }], interpretationSchema, { maxOutputTokens: 2048, policy: { timeoutMs: 30_000, maxAttempts: 1, totalDeadlineMs: 30_000 } });
-      return resolveInterpretation(modelValue, text, output, language);
+      const output = await request([{ text: interpretationPrompt(modelValue, text, language, context) }], interpretationSchema, { feature: "discovery", policy: { timeoutMs: 60_000, maxAttempts: 1, totalDeadlineMs: 60_000 } });
+      const result = resolveInterpretation(modelValue, text, output, language, context);
+      if (["error", "unsupported"].includes(result.status)) await options.onRejection?.({ feature: "discovery", status: result.status, code: result.code, reasons: result.reasons || [result.reason], acceptedUpdateCount: result.understood?.updates?.length || 0 });
+      return result;
     }
   };
 }

@@ -9,5 +9,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["vite.config.ts", "src/lib/brainstormAi.ts", "src/lib/brainstormLab.ts", "src/lib/types.ts"]
+  "include": ["vite.config.ts", "src/lib/brainstormAi.ts", "src/lib/brainstormLab.ts", "src/lib/discoveryHypothesis.ts", "src/lib/types.ts"]
 }

@@ -8,6 +8,7 @@ export type BrainstormAiIntent = "analyze" | "organize";
 export type BrainstormAiNode = {
   id: string;
   text: string;
+  description?: string;
   x: number;
   y: number;
   pinned: boolean;
@@ -222,6 +223,7 @@ export function createBrainstormAiRequest(
     nodes: board.nodes.slice(-40).map((node) => ({
       id: node.id,
       text: node.text.slice(0, 220),
+      ...(node.description ? { description: node.description } : {}),
       x: Math.round(node.x / 20) * 20,
       y: Math.round(node.y / 20) * 20,
       pinned: node.pinned,
@@ -277,6 +279,7 @@ export function parseBrainstormAiRequest(value: unknown): BrainstormAiRequest | 
     nodes.push({
       id,
       text: candidate.text.trim().slice(0, 220),
+      ...(typeof candidate.description === "string" ? { description: candidate.description.slice(0, 6000) } : {}),
       x: finiteNumber(candidate.x, 0),
       y: finiteNumber(candidate.y, 0),
       pinned: candidate.pinned === true,

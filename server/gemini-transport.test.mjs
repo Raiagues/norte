@@ -34,6 +34,42 @@ test("zero model quota is an external configuration block, not a transient retry
   await assert.rejects(geminiGenerate({ apiKey: "test", model: "test", body, policy, fetchImpl: async () => { count++; return new Response('{"error":{"code":429,"message":"Quota exceeded, limit: 0, model: example"}}', { status: 429 }); } }), (error) => error.category === "provider_error");
   assert.equal(count, 1);
 });
+
+test("valid JSON with interrupted, missing or blocked finish metadata is never accepted or retried", async () => {
+  for (const [finishReason, code] of [["MAX_TOKENS", "GEMINI_RESPONSE_INCOMPLETE"], [undefined, "GEMINI_RESPONSE_INCOMPLETE"], ["SAFETY", "GEMINI_RESPONSE_BLOCKED"], ["RECITATION", "GEMINI_RESPONSE_BLOCKED"]]) {
+    let calls = 0; const records = [];
+    await assert.rejects(geminiGenerate({ apiKey: "test", model: "test", body, policy, fetchImpl: async () => {
+      calls++;
+      return new Response(JSON.stringify({ candidates: [{ finishReason, content: { parts: [{ text: '{"valid":"json"}' }] } }] }));
+    }, onAttempt: (record) => records.push(record) }), { code });
+    assert.equal(calls, 1);
+    assert.equal(records[0].retryScheduled, false);
+    assert.equal(records[0].finishReason, finishReason ?? null);
+  }
+});
+
+test("token usage includes thoughts, detects exhausted output budgets, and excludes arbitrary metadata", async () => {
+  const attempts = [];
+  await assert.rejects(geminiGenerate({ apiKey: "SECRET", model: "test", body: { ...body, generationConfig: { maxOutputTokens: 1000 } }, policy,
+    fetchImpl: async () => new Response(JSON.stringify({ usageMetadata: { thoughtsTokenCount: 950, candidatesTokenCount: 50, totalTokenCount: 1200, privateField: "SECRET" }, candidates: [{ finishReason: "STOP", content: { parts: [{ text: "{}" }] } }] })),
+    onAttempt: (record) => attempts.push(record)
+  }), { code: "GEMINI_RESPONSE_INCOMPLETE" });
+  assert.equal(attempts[0].outputTokens, 1000);
+  assert.equal(attempts[0].usageMetadata.thoughtsTokenCount, 950);
+  assert.doesNotMatch(JSON.stringify(attempts), /SECRET|privateField/);
+  const records = [];
+  assert.deepEqual(await geminiGenerate({ apiKey: "test", model: "test", body, policy, fetchImpl: async () => new Response('{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"{}"}]}}]}'), onAttempt: (record) => records.push(record) }), {});
+  assert.equal(records[0].usageAvailable, false);
+});
+
+test("provider errors never log echoed project data or raw messages", async () => {
+  const attempts = [];
+  await assert.rejects(geminiGenerate({ apiKey: "secret-key", model: "test", body, policy,
+    fetchImpl: async () => new Response(JSON.stringify({ error: { message: "Private hypothesis customer@example.test secret-key", status: "PRIVATE" } }), { status: 400 }),
+    onAttempt: (record, payload) => attempts.push({ record, response: payload.response })
+  }));
+  assert.doesNotMatch(JSON.stringify(attempts), /Private hypothesis|customer@|secret-key|PRIVATE/);
+});
 test("provider extraction enums are subsets of the shared runtime schema at every matching path", () => {
   const provider = extractionEnums(engineeringSystemSchema);
   function check(node, runtime) {
