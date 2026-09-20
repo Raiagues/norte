@@ -6,8 +6,22 @@ export const PROJECT_TYPES = {
   product: { pt: 'Desenvolvimento de produto', en: 'Product development', sectors: [['Engenharia', 'Engineering'], ['Validação', 'Validation'], ['Gestão do projeto', 'Project management']] },
   custom: { pt: 'Personalizado', en: 'Custom', sectors: [] }
 };
-export function suggestedSectors(type, language = 'pt') {
-  return (PROJECT_TYPES[type]?.sectors || []).map((names, index) => ({ id: `sector-${type}-${index + 1}`, name: names[language === 'en' ? 1 : 0] }));
+// Editable responsibility templates, never a technical architecture or competition rule.
+const COMPETITION_SECTORS = {
+  general: [['Engenharia', 'Engineering'], ['Eletrônica', 'Electronics'], ['Software', 'Software'], ['Fabricação', 'Manufacturing'], ['Testes e integração', 'Testing and integration'], ['Gestão e patrocínios', 'Management and sponsorship']],
+  satellite: [['Estruturas', 'Structures'], ['Eletrônica e energia', 'Electronics and power'], ['Software embarcado', 'Embedded software'], ['Comunicação', 'Communications'], ['Carga útil', 'Payload'], ['Testes e integração', 'Testing and integration'], ['Gestão e patrocínios', 'Management and sponsorship']],
+  rocket: [['Aerodinâmica e estruturas', 'Aerodynamics and structures'], ['Propulsão', 'Propulsion'], ['Aviônica', 'Avionics'], ['Recuperação', 'Recovery'], ['Carga útil', 'Payload'], ['Operações e testes', 'Operations and testing'], ['Gestão e patrocínios', 'Management and sponsorship']],
+  aircraft: [['Aerodinâmica', 'Aerodynamics'], ['Estruturas', 'Structures'], ['Desempenho e estabilidade', 'Performance and stability'], ['Propulsão', 'Propulsion'], ['Elétrica e controle', 'Electrical and control'], ['Fabricação e testes', 'Manufacturing and testing'], ['Gestão e patrocínios', 'Management and sponsorship']],
+  formula: [['Chassi', 'Chassis'], ['Suspensão e direção', 'Suspension and steering'], ['Powertrain', 'Powertrain'], ['Elétrica e eletrônica', 'Electrical and electronics'], ['Aerodinâmica', 'Aerodynamics'], ['Freios e ergonomia', 'Brakes and ergonomics'], ['Gestão e patrocínios', 'Management and sponsorship']],
+  baja: [['Chassi e segurança', 'Chassis and safety'], ['Suspensão e direção', 'Suspension and steering'], ['Powertrain', 'Powertrain'], ['Freios', 'Brakes'], ['Elétrica e instrumentação', 'Electrical and instrumentation'], ['Fabricação e testes', 'Manufacturing and testing'], ['Gestão e patrocínios', 'Management and sponsorship']],
+  theoretical: [['Estudos', 'Studies'], ['Pesquisa', 'Research'], ['Gestão do projeto', 'Project management']]
+};
+export function suggestedSectors(type, language = 'pt', programId = '', modalityId = '') {
+  const family = programId === 'obsat' ? (modalityId === 'theoretical' ? 'theoretical' : 'satellite')
+    : programId === 'lasc' ? (modalityId === 'satellite' ? 'satellite' : modalityId === 'rocket' ? 'rocket' : 'general')
+    : ({ 'sae-aerodesign': 'aircraft', 'formula-sae': 'formula', 'baja-sae': 'baja' })[programId] || 'general';
+  const names = type === 'competition' ? COMPETITION_SECTORS[family] : PROJECT_TYPES[type]?.sectors || [];
+  return names.map((pair, index) => ({ id: `sector-${type}-${type === 'competition' ? family + '-' : ''}${index + 1}`, name: pair[language === 'en' ? 1 : 0] }));
 }
 export function isProjectAdmin(project, user, creatorId = project.creatorId) {
   return Boolean(user && (user.accessRole === 'owner_admin' || user.accessRole !== 'advisor' && (creatorId === user.id || project.context?.assignments?.some(a => a.memberId === user.memberId && a.roleId === 'captain'))));

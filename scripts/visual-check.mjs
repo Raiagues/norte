@@ -575,7 +575,7 @@ try {
   await page.locator(".home-action-card.accent-open").click();
   assert.ok(await page.locator(".home-project-dialog-empty button").isEnabled());
   await page.locator(".home-project-dialog-empty button").click();
-  await page.locator(".context-workspace").waitFor();
+  await page.locator(".project-create").waitFor();
   assert.equal(await page.locator(".pm-workspace").count(), 0);
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ passed: true, generations, checks: ["persistent phases and upcoming phases", "automatic initialization and recovery", "inline expansion without drilldown", "selection dims unrelated branches", "persistent node dragging", "hierarchy edge toggle", "removed System controls", "rename immediately opens and survives reload", "automatic AI interpretation and inline clarification", "contextual details and provenance", "project-specific progress and team switching", "Discovery mass conflict", "undo redo persistence", "two accessible conception tabs", "folder-based artifact library", "responsive"], viewports: results }, null, 2));

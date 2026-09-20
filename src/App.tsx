@@ -1,3 +1,5 @@
+import { AppHeader } from "./components/AppHeader";
+import { TeamDashboardPage } from "./pages/TeamDashboardPage";
 import { InvitationInbox } from "./components/TeamInvitations";
 import { ProjectSetupPage } from "./pages/ProjectSetupPage";
 import { UserActivity } from "./components/UserActivity";
@@ -22,7 +24,7 @@ import type { ProjectSummary, TeamRecord } from "./lib/team";
 import type { Language } from "./lib/types";
 import "./mission-sidebar.css";
 
-type Route = "invitations" | "newProject" | "admin" | "home" | "setup" | "teams" | "projectTeam" | "brainstorm" | "requirements" | "software" | "verification";
+type Route = "dashboard" | "invitations" | "newProject" | "admin" | "home" | "setup" | "teams" | "projectTeam" | "brainstorm" | "requirements" | "software" | "verification";
 /** Areas are reached freely, in any order, and never gate one another. */
 export const PROJECT_AREAS = { requirements: "#/requirements", software: "#/software", verification: "#/verification" } as const;
 
@@ -33,6 +35,7 @@ function storedPreference(key: string): string {
 }
 
 function getRoute(): Route {
+  if (window.location.hash === "#/dashboard") return "dashboard";
   if (window.location.hash.startsWith("#/invitations")) return "invitations";
   if (window.location.hash === "#/new-project") return "newProject";
   if (window.location.hash === "#/admin/users") return "admin";
@@ -460,6 +463,7 @@ export function App() {
   };
 
   let page = <HomePage language={language} t={t} onLanguageChange={changeLanguage} projects={projects} loadingProjects={loadingProjects} onOpenProject={(id) => void openProject(id)} onDeleteProject={deleteProject} onOpenTeams={openTeams} onCreateProject={() => { flushProject(); window.location.hash = "#/new-project"; }} onAdmin={auth.user?.accessRole === "owner_admin" && !auth.isDemo ? () => { window.location.hash = "#/admin/users"; } : undefined} />;
+  if (route === "dashboard") page = <TeamDashboardPage language={language} teams={teams} />;
   if (route === "newProject") page = <ProjectSetupPage language={language} teams={teams} onCreate={createProject} onHome={openHome} onTeams={openTeams} />;
   if (route === "admin") page = <main className="admin-page"><button type="button" onClick={openHome}>{language === "pt" ? "Voltar" : "Back"}</button>{auth.user?.accessRole === "owner_admin" ? <UserActivity language={language} /> : <p>Acesso restrito.</p>}</main>;
   if (route === "setup") page = <StudySetupPage language={language} project={project} isDraft={isDraft} t={t} onLanguageChange={changeLanguage} onProjectChange={changeProject} onContinue={openBrainstorm} onHome={openHome} onTeams={openTeams} onManageTeam={openProjectTeam} onPersistProject={commitProject} />;
@@ -471,13 +475,13 @@ export function App() {
   if (route === "verification") page = <VerificationPage language={language} project={project} navigation={railNavigation} />;
   if (route === "brainstorm") page = <BrainstormPage key={`${project.id}:${route}`} language={language} project={project} t={t} onLanguageChange={changeLanguage} onProjectChange={changeProject} onHome={openHome} onBackSetup={openMemory} navigation={railNavigation} />;
 
-  const discoveryAvailable = Boolean(activeProjectId) && !["invitations", "home", "teams", "setup", "newProject", "admin"].includes(route);
-  const areaLabel = { invitations: language === "pt" ? "Convites" : "Invitations", setup: language === "pt" ? "Memória do projeto" : "Project memory", projectTeam: language === "pt" ? "Equipe do projeto" : "Project team", brainstorm: language === "pt" ? "Concepção" : "Conception", requirements: language === "pt" ? "Requisitos" : "Requirements", software: "Software", verification: language === "pt" ? "Verificação" : "Verification", home: "", teams: "", newProject: "", admin: "" }[route];
+  const discoveryAvailable = Boolean(activeProjectId) && !["dashboard", "invitations", "home", "teams", "setup", "newProject", "admin"].includes(route);
+  const areaLabel = { dashboard: language === "pt" ? "Painel da equipe" : "Team dashboard", invitations: language === "pt" ? "Convites" : "Invitations", setup: language === "pt" ? "Memória do projeto" : "Project memory", projectTeam: language === "pt" ? "Equipe do projeto" : "Project team", brainstorm: language === "pt" ? "Concepção" : "Conception", requirements: language === "pt" ? "Requisitos" : "Requirements", software: "Software", verification: language === "pt" ? "Verificação" : "Verification", home: "", teams: "", newProject: "", admin: "" }[route];
 
   return (
     <div className={`${sidebarExpanded ? "app-shell sidebar-expanded" : "app-shell"} route-${route}${discovery.open && discoveryAvailable ? " discovery-open" : ""}`} style={discovery.open && discoveryAvailable ? { ["--discovery-width" as string]: `${discovery.width}px` } : undefined}>
       <MissionSidebar language={language} currentStep={currentStep} expanded={sidebarExpanded} connectedLabel={t("common.connected")} homeLabel={t("home.start")} teamLabel={language === "pt" ? "Equipes" : "Teams"} homeActive={route === "home"} teamActive={route === "teams"} projects={projects} projectTeamName={teams.find((team) => team.id === project.context.teamId)?.name || project.context.teamName} highestUnlockedStep={activeProjectId ? project.phaseProgress.highestUnlockedStep : -1} activeProjectId={activeProjectId} onToggle={() => setSidebarExpanded((current) => !current)} onHome={openHome} onTeam={openTeams} onProjectSelect={(id) => void openProject(id)} onStepSelect={openPipelineStep} activeArea={route in PROJECT_AREAS ? route : null} onAreaSelect={openArea} />
-      <div className="app-page">{auth.user?.testEnvironment && <div className="test-environment-banner">{language === "pt" ? "Ambiente de teste · cópia local dos dados" : "Test environment · local data copy"}</div>}{saveError && <div className="save-error" role="alert">{language === "pt" ? "Alterações não salvas: " : "Unsaved changes: "}{saveError}<button type="button" onClick={flushProject}>{language === "pt" ? "Tentar novamente" : "Retry"}</button></div>}{page}</div>
+      <div className="app-page"><AppHeader language={language} title={areaLabel || ({ home: language === "pt" ? "Início" : "Home", teams: language === "pt" ? "Equipes" : "Teams", newProject: language === "pt" ? "Novo projeto" : "New project", admin: language === "pt" ? "Administração" : "Administration" } as Record<string, string>)[route] || ""} onHome={route !== "home" ? openHome : undefined} onLanguageChange={changeLanguage} canManageTeams={teams.some(team => team.canManage)} />{auth.user?.testEnvironment && <div className="test-environment-banner">{language === "pt" ? "Ambiente de teste · cópia local dos dados" : "Test environment · local data copy"}</div>}{saveError && <div className="save-error" role="alert">{language === "pt" ? "Alterações não salvas: " : "Unsaved changes: "}{saveError}<button type="button" onClick={flushProject}>{language === "pt" ? "Tentar novamente" : "Retry"}</button></div>}<div className="app-content">{page}</div></div>
       {discoveryAvailable && discovery.open && <DiscoveryPanel language={language} project={project} width={discovery.width} contextLabel={areaLabel} onClose={discovery.close} onResize={discovery.resize} onProjectChange={changeProject} />}
       {initializing && <div className="conception-initialization" role="status" aria-live="polite"><div><span className="initialization-orbit" aria-hidden="true" /><small>NORTE</small><h2>{language === "pt" ? "Lendo a memória do projeto" : "Reading project memory"}</h2><p>{language === "pt" ? "Identificando o sistema, suas dependências e requisitos." : "Identifying the system, its dependencies and requirements."}</p><strong>{project.name}</strong></div></div>}
       {initializationError && route !== "setup" && <div className="conception-error" role="alert"><p>{initializationError}</p><button type="button" onClick={() => { setInitializationError(""); openMemory(); }}>{language === "pt" ? "Voltar à memória do projeto" : "Back to project memory"}</button><button type="button" onClick={() => setInitializationError("")}>{language === "pt" ? "Fechar" : "Close"}</button></div>}

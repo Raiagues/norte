@@ -1,5 +1,4 @@
 import { Brand } from "./Brand";
-import { UserBadge } from "./UserBadge";
 import { FolderKanban, Home, UsersRound } from "lucide-react";
 import { PROJECT_RAIL, railLabel } from "../lib/projectRail";
 import type { ProjectSummary } from "../lib/team";
@@ -31,7 +30,7 @@ function LockIcon() {
   return <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.2" y="5.1" width="7.6" height="5.1" rx="1" /><path d="M3.8 5.1V3.7a2.2 2.2 0 0 1 4.4 0v1.4" /></svg>;
 }
 
-export function MissionSidebar({ language, currentStep, expanded, connectedLabel, homeLabel, teamLabel, homeActive, teamActive, projects, projectTeamName, highestUnlockedStep, activeProjectId, onToggle, onHome, onTeam, onProjectSelect, onStepSelect, activeArea, onAreaSelect }: Props) {
+export function MissionSidebar({ language, currentStep, expanded, homeLabel, teamLabel, homeActive, teamActive, projects, projectTeamName, highestUnlockedStep, activeProjectId, onToggle, onHome, onTeam, onProjectSelect, onStepSelect, activeArea, onAreaSelect }: Props) {
   const stateWords = language === "pt" ? { complete: "Concluída", current: "Fase atual", available: "Disponível", locked: "Ainda não disponível" } : { complete: "Complete", current: "Current phase", available: "Available", locked: "Not available yet" };
   const contextWords = language === "pt" ? { project: "Projeto ativo", team: "Equipe", noneProject: "Nenhum projeto", noneTeam: "Nenhuma equipe", switcher: "Trocar projeto" } : { project: "Active project", team: "Team", noneProject: "No project", noneTeam: "No team", switcher: "Switch project" };
 
@@ -92,7 +91,6 @@ export function MissionSidebar({ language, currentStep, expanded, connectedLabel
           })}
         </nav>
 
-        <div className="mission-sidebar-user"><UserBadge connectedLabel={connectedLabel} compact={!expanded} /></div>
       </aside>
       <button className={expanded ? "mission-sidebar-overlay visible" : "mission-sidebar-overlay"} type="button" aria-label={language === "pt" ? "Recolher barra lateral" : "Collapse sidebar"} onClick={onToggle} />
     </>

@@ -1,4 +1,4 @@
-/* global window */
+/* global window, document */
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -37,8 +37,49 @@ try {
   await page.evaluate(() => { window.location.hash = '#/'; });
   await page.getByRole('button', { name: /Novo projeto Escolha/ }).click();
   await page.getByLabel('Nome do projeto', { exact: true }).fill('Projeto Pesquisa Norte');
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.getByLabel('Competição', { exact: true }).selectOption('sae-aerodesign');
+  await page.getByLabel('Classe / categoria', { exact: true }).selectOption('micro');
+  assert.equal(await page.locator('.sector-row').count(), 7);
+  await page.getByRole('button', { name: 'Editar Aerodinâmica', exact: true }).click();
+  await page.getByLabel('Nome do setor', { exact: true }).fill('Aerodinâmica e simulação');
+  await page.getByRole('button', { name: 'Aplicar', exact: true }).click();
+  await page.getByLabel('Competição', { exact: true }).selectOption('obsat');
+  await page.getByLabel('Modalidade', { exact: true }).selectOption('theoretical');
+  assert.equal(await page.locator('.sector-row').count(), 3);
+  await page.getByLabel('Competição', { exact: true }).selectOption('sae-aerodesign');
+  await page.getByRole('button', { name: 'Editar Aerodinâmica e simulação', exact: true }).waitFor();
+  await page.getByLabel('Classe / categoria', { exact: true }).selectOption('micro');
+  await page.screenshot({ path: '/tmp/norte-ui-create-desktop.png' });
+  await page.getByRole('button', { name: 'Sobre os setores', exact: true }).focus();
+  await page.getByRole('tooltip').waitFor();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.getByRole('tooltip').count(), 0);
+  await page.getByRole('button', { name: 'Organograma', exact: true }).click();
+  await page.screenshot({ path: '/tmp/norte-ui-create-chart.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: '/tmp/norte-ui-create-mobile.png', fullPage: true });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.getByRole('button', { name: 'Lista', exact: true }).click();
+  await page.getByLabel('Equipe', { exact: true }).selectOption({ label: 'Equipe de Engenharia' });
+  await page.getByLabel('Nome do projeto', { exact: true }).fill('Aero Micro');
+  await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
+  await page.getByRole('heading', { name: 'MEMÓRIA DO PROJETO', exact: true }).waitFor();
+  const competition = Object.values(app.missionStore.read().workspace.projects).find(p => p.document.name === 'Aero Micro').document;
+  assert.equal(competition.context.programId, 'sae-aerodesign');
+  assert.equal(competition.context.categoryId, 'micro');
+  assert.ok(competition.context.sectors.some(s => s.name === 'Aerodinâmica e simulação'));
+  assert.equal(competition.setup.statement, '');
+  for (const route of ['#/', '#/teams', '#/invitations', '#/study-setup', '#/project-team', '#/requirements', '#/software', '#/verification', '#/new-project']) {
+    await page.evaluate(hash => { window.location.hash = hash; }, route);
+    await page.locator('.app-header .account-badge-trigger').waitFor();
+    assert.equal(await page.locator('.account-badge-trigger').count(), 1, route);
+    assert.equal(await page.locator('.mission-sidebar').count(), 1, route);
+  }
+  await page.getByLabel('Nome do projeto', { exact: true }).fill('Projeto Pesquisa Norte');
   await page.getByLabel('Tipo de projeto', { exact: true }).selectOption('research');
-  await page.getByLabel('Objetivo inicial (opcional)').fill('Organizar documentação técnica e resultados.');
+  assert.equal(await page.getByLabel('Objetivo inicial (opcional)').count(), 0);
   await page.getByLabel('Equipe', { exact: true }).selectOption({ label: 'Equipe de Engenharia' });
   await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
   await page.getByRole('heading', { name: 'MEMÓRIA DO PROJETO', exact: true }).waitFor();
@@ -78,6 +119,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: '/tmp/norte-organization-desktop.png', fullPage: true });
   await page.evaluate(() => { window.location.hash = '#/'; });
+  await page.locator('.app-header .account-badge-trigger').click();
   await page.getByRole('button', { name: 'Administrar usuários', exact: true }).click();
   await page.getByRole('heading', { name: 'Usuários da plataforma' }).waitFor();
   await page.getByRole('cell', { name: 'Engineering Captain', exact: true }).waitFor();

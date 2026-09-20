@@ -1,10 +1,8 @@
 import { MemoryWorkspace, ArtifactPermission } from "../components/MemoryWorkspace";
 import { MemoryFolders } from "../components/MemoryFolders";
-import { UserActivity } from "../components/UserActivity";
 import { canEditSector, folderPath, folderSector, isProjectAdmin } from "../../shared/project-organization.mjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft,
   ArrowRight,
   BookOpenCheck,
   CalendarDays,
@@ -26,9 +24,7 @@ import {
   UsersRound,
   X
 } from "lucide-react";
-import { LanguageToggle } from "../components/LanguageToggle";
 import { ArtifactSourceFields } from "../components/ArtifactSourceFields";
-import { UserBadge } from "../components/UserBadge";
 import { ProjectTeamConfigurator } from "../components/ProjectTeamConfigurator";
 import { API_ORIGIN, ApiError, useAuth } from "../lib/auth";
 import { artifactHref, artifactIsStoredFile, artifactStatusLabel, formatArtifactSize } from "../lib/artifacts";
@@ -100,7 +96,7 @@ function MemoryDialog({ title, eyebrow, children, onClose, className = "" }: { t
   </div>;
 }
 
-export function StudySetupPage({ language, project, isDraft = false, t, onLanguageChange, onProjectChange, onContinue, onHome, onTeams, onPersistProject }: Props) {
+export function StudySetupPage({ language, project, isDraft = false, onProjectChange, onContinue, onTeams, onPersistProject }: Props) {
   const auth = useAuth();
   const [expandedMemory, setExpandedMemory] = useState(false);
   const [selectedArtifact, setSelectedArtifact] = useState<string | null>(null);
@@ -138,8 +134,8 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     category: "Categoria",
     officialDocs: "Documentos oficiais",
     officialSource: "Fonte oficial OBSAT · somente leitura",
-    importingProgram: "Importando regras, categoria e próximo marco da OBSAT...",
-    importedProgram: "Contexto oficial da OBSAT sincronizado.",
+    importingProgram: "Atualizando competição e categoria...",
+    importedProgram: "Seleção da competição atualizada.",
     milestone: "Próximo marco",
     deadline: "Prazo oficial",
     team: "EQUIPE DO PROJETO",
@@ -231,8 +227,8 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
     category: "Category",
     officialDocs: "Official documents",
     officialSource: "Official OBSAT source · read only",
-    importingProgram: "Importing OBSAT rules, category, and next milestone...",
-    importedProgram: "Official OBSAT context synchronized.",
+    importingProgram: "Updating competition and category...",
+    importedProgram: "Competition selection updated.",
     milestone: "Next milestone",
     deadline: "Official deadline",
     team: "PROJECT TEAM",
@@ -532,10 +528,7 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
 
   return <div className="pm-shell">
     <main className="pm-main" inert={expandedMemory || Boolean(dialog)} aria-hidden={expandedMemory || Boolean(dialog)}>
-      <header className="pm-topbar">
-        <button type="button" onClick={onHome}><ArrowLeft aria-hidden="true" />{c.back}</button>
-        <div className="top-actions"><LanguageToggle language={language} onChange={onLanguageChange} /><UserBadge connectedLabel={t("common.connected")} /></div>
-      </header>
+
 
       <div className="pm-workspace">
         {memoryLoadError && <div className="pm-memory-error" role="alert">
@@ -604,7 +597,6 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
 
         {admin && <label className="project-public-setting"><input type="checkbox" checked={project.context.publicSummary === true} onChange={event => updateProject({}, { publicSummary: event.target.checked })} />{language === "pt" ? "Mostrar o nome e o tipo deste projeto no perfil público da equipe" : "Show this project's name and type on the team's public profile"}</label>}
         <p className="activity-notice">{language === "pt" ? "Atividade registrada: último acesso, dias e sessões nos projetos e contagens de alterações em artefatos e na organização. Resumos de 30 dias são visíveis aos responsáveis autorizados. Documentos lidos e movimentos não são registrados." : "Recorded activity: last access, project days and sessions, and counts of artifact and organization changes. Authorized leaders can see 30-day summaries. Read documents and movements are not recorded."}</p>
-        {admin && !auth.isDemo && <UserActivity language={language} projectId={project.id} />}
         <footer className="pm-footer">
           <div className={missing.length || memoryLoadError ? "pm-readiness missing" : "pm-readiness"} aria-live="polite">{loading ? <strong>{c.loading}</strong> : memoryLoadError ? <strong>{c.memoryUnavailable}</strong> : missing.length ? <><span>{c.missing}</span><strong>{missing.join(" · ")}</strong></> : null}</div>
 
@@ -631,8 +623,8 @@ export function StudySetupPage({ language, project, isDraft = false, t, onLangua
       </div>
       {program && <div className="pm-program-detail">
         <div className="pm-program-detail-heading"><div className="pm-program-logo">{program.logoSrc ? <img src={program.logoSrc} alt={program.shortName} /> : <BookOpenCheck aria-hidden="true" />}</div><div><strong>{program.name[language]}</strong><p>{program.description[language]}</p></div></div>
-        <div className="pm-program-controls"><label><span>{c.modality}</span><select value={project.context.modalityId || ""} onChange={(event) => selectModality(event.target.value)}>{program.modalities.map((item) => <option value={item.id} key={item.id}>{item.label[language]}</option>)}</select></label><label><span>{c.category}</span><select value={project.context.categoryId || ""} disabled={!modality} onChange={(event) => updateProject({}, { configured: false, categoryId: event.target.value })}>{modality?.categories.map((item) => <option value={item.id} key={item.id}>{item.label[language]}</option>)}</select></label></div>
-        {modality && <div className="pm-official-library"><h3>{c.officialDocs}<span>{c.officialSource}</span></h3><div>{modality.officialDocuments.map((document) => <a href={document.url} target="_blank" rel="noreferrer" key={document.id}><BookOpenCheck aria-hidden="true" /><span><small>{document.format.toUpperCase()}</small><strong>{document.label[language]}</strong></span><ExternalLink aria-hidden="true" /></a>)}<a href={modality.milestone.url} target="_blank" rel="noreferrer"><CalendarDays aria-hidden="true" /><span><small>{c.milestone}</small><strong>{modality.milestone.date} · {modality.milestone.label[language]}</strong></span><ExternalLink aria-hidden="true" /></a></div></div>}
+        <div className="pm-program-controls"><label><span>{c.modality}</span><select value={project.context.modalityId || ""} onChange={(event) => selectModality(event.target.value)}>{program.modalities.map((item) => <option value={item.id} key={item.id}>{item.label[language]}</option>)}</select></label>{Boolean(modality?.categories.length) && <label><span>{c.category}</span><select value={project.context.categoryId || ""} onChange={(event) => updateProject({}, { configured: false, categoryId: event.target.value || null })}><option value="">{language === 'pt' ? 'Decidir depois' : 'Decide later'}</option>{modality?.categories.map((item) => <option value={item.id} key={item.id}>{item.label[language]}</option>)}</select></label>}</div>
+        {modality && <div className="pm-official-library"><h3>{c.officialDocs}<span>{c.officialSource}</span></h3><div>{modality.officialDocuments.map((document) => <a href={document.url} target="_blank" rel="noreferrer" key={document.id}><BookOpenCheck aria-hidden="true" /><span><small>{document.format.toUpperCase()}</small><strong>{document.label[language]}</strong></span><ExternalLink aria-hidden="true" /></a>)}{modality.milestone.date && <a href={modality.milestone.url} target="_blank" rel="noreferrer"><CalendarDays aria-hidden="true" /><span><small>{c.milestone}</small><strong>{modality.milestone.date} · {modality.milestone.label[language]}</strong></span><ExternalLink aria-hidden="true" /></a>}</div></div>}
       </div>}
       <footer><button className="primary" type="button" onClick={finishProgramSetup}><Check aria-hidden="true" />{c.save}</button></footer>
     </MemoryDialog>}

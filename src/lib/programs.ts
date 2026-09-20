@@ -78,6 +78,11 @@ const theoreticalDocuments: OfficialProgramDocument[] = [
   }
 ];
 
+// Selection metadata only. No inferred requirements, dates or technical parameters.
+function competitionModality(id: string, pt: string, en: string, url: string, categories: [string, string, string][] = []): ProgramModality {
+  return { id, label: { pt, en }, description: { pt: '', en: '' }, categories: categories.map(([id, pt, en]) => ({ id, label: { pt, en }, description: { pt: '', en: '' } })), officialDocuments: [{ id: `${id}-official`, label: { pt: 'Informações oficiais', en: 'Official information' }, url, format: 'web' }], requirements: [], phases: [], milestone: { label: { pt: '', en: '' }, date: '', url } };
+}
+
 export const REFERENCE_PROGRAMS: ReferenceProgram[] = [
   {
     id: "obsat",
@@ -158,32 +163,32 @@ export const REFERENCE_PROGRAMS: ReferenceProgram[] = [
     shortName: "LASC",
     name: { pt: "Latin American Space Challenge", en: "Latin American Space Challenge" },
     description: { pt: "Desafios universitários de foguetes e sistemas espaciais.", en: "University challenges for rockets and space systems." },
-    available: false,
-    modalities: []
+    available: true,
+    modalities: [competitionModality('rocket', 'Rocket Challenge', 'Rocket Challenge', 'https://www.lasc.space/2026-lasc/documentation'), competitionModality('satellite', 'Satellite Challenge', 'Satellite Challenge', 'https://www.lasc.space/2026-lasc/documentation'), competitionModality('lander', 'Lander Challenge', 'Lander Challenge', 'https://www.lasc.space/2026-lasc/documentation')]
   },
   {
     id: "sae-aerodesign",
     shortName: "SAE AeroDesign",
     name: { pt: "SAE Brasil AeroDesign", en: "SAE Brasil AeroDesign" },
     description: { pt: "Projeto e competição de aeronaves radiocontroladas.", en: "Radio-controlled aircraft design competition." },
-    available: false,
-    modalities: []
+    available: true,
+    modalities: [competitionModality('aircraft', 'Aeronaves', 'Aircraft', 'https://legado.saebrasil.org.br/programas-estudantis/aero-design-sae-brasil/', [['regular', 'Regular', 'Regular'], ['advanced', 'Advanced', 'Advanced'], ['micro', 'Micro', 'Micro']])]
   },
   {
     id: "formula-sae",
     shortName: "Formula SAE",
     name: { pt: "Fórmula SAE Brasil", en: "Formula SAE Brazil" },
     description: { pt: "Desenvolvimento universitário de veículo monoposto.", en: "University single-seat vehicle development." },
-    available: false,
-    modalities: []
+    available: true,
+    modalities: [competitionModality('vehicle', 'Veículos', 'Vehicles', 'https://legado.saebrasil.org.br/programas-estudantis/formula-sae-brasil/informacoes/', [['combustion', 'Combustão', 'Combustion'], ['electric', 'Elétrica', 'Electric']])]
   },
   {
     id: "baja-sae",
     shortName: "Baja SAE",
     name: { pt: "Baja SAE Brasil", en: "Baja SAE Brazil" },
     description: { pt: "Projeto universitário de veículo fora de estrada.", en: "University off-road vehicle design." },
-    available: false,
-    modalities: []
+    available: true,
+    modalities: [competitionModality('offroad', 'Fora de estrada', 'Off-road', 'https://saebrasil.org.br/programas-estudantis/baja-sae-brasil/')]
   }
 ];
 

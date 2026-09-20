@@ -183,7 +183,7 @@ test('typed hierarchy and user-defined folder context constrain Gemini without c
   project.context.projectArtifactIds = ['source'];
   const service = createSystemAiService({ apiKey: 'test', retryWait: async () => {}, fetch: async () => new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify({ entities: invalid, relations: [], evidence: [], requirements: [] }) }] } }] })) });
   await assert.rejects(service.generate(project, [artifact]), error => error.code === 'SYSTEM_HIERARCHY_INVALID');
-  assert.equal(suggestedSectors('competition').length, 3);
+  assert.equal(suggestedSectors('competition').length, 6);
   assert.notDeepEqual(suggestedSectors('research'), suggestedSectors('competition'));
 });
 

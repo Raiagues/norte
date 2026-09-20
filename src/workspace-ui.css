@@ -1,0 +1,200 @@
+/* Shared authenticated chrome: the account controls stay in one place on every route. */
+.app-shell > .app-page { display: flex; flex-direction: column; height: 100dvh; min-height: 0; overflow: hidden; }
+.app-header { position: relative; z-index: 1050; display: flex; align-items: center; justify-content: space-between; gap: 20px; height: 66px; flex: 0 0 66px; padding: 0 28px; border-bottom: 1px solid #20384e; background: #061523; color: #c8d8e8; }
+.app-header nav, .app-header-account { display: flex; align-items: center; gap: 18px; min-width: 0; }
+.app-header nav > button { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #294259; border-radius: 7px; color: #b5cde4; background: transparent; cursor: pointer; }
+.app-header-brand { font-size: 12px; font-weight: 650; letter-spacing: .19em; }
+.app-header-title { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-header .user-badge { margin: 0; padding: 0; border: 0; }
+.app-header .avatar { width: 34px; height: 34px; }
+.app-header .user-name { font-size: 12px; }
+.app-header .user-state { font-size: 10px; }
+.app-header .account-menu { top: calc(100% + 16px); }
+.app-content { flex: 1; min-height: 0; overflow: auto; }
+#root > .app-shell > .app-page .app-content :is(.home-shell, .brain-shell) { height: 100%; min-height: 100% !important; }
+#root .app-content :is(.home-main, .brain-main) { height: 100%; min-height: 0; }
+#root .app-content .brain-main { grid-template-rows: minmax(0, 1fr); }
+#root .app-content .brain-workspace { height: 100%; }
+#root .app-content .home-landing { height: 100%; min-height: 0; }
+#root .app-content .pm-shell { height: 100%; }
+#root .app-content .pm-main { grid-template-rows: minmax(0, 1fr); }
+#root .app-content :is(.teams-hub-shell, .admin-page, .project-area-shell) { min-height: 100%; height: auto; }
+.app-content .test-environment-banner, .save-error { flex: 0 0 auto; }
+
+/* Common controls for setup, organization and management. */
+.project-create, .team-dashboard { color: #e3edf7; max-width: 1280px; margin: 0 auto; padding: 30px 40px 20px; }
+.workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.workspace-eyebrow { font-size: 10px; letter-spacing: .14em; color: #86a5bf; }
+.workspace-heading h1 { display: flex; align-items: center; gap: 12px; font-size: clamp(23px, 2.4vw, 31px); font-weight: 550; letter-spacing: -.025em; margin: 7px 0 0; }
+.project-create-grid { display: grid; grid-template-columns: minmax(300px, .9fr) minmax(410px, 1.2fr); gap: 22px; }
+.workspace-card { min-width: 0; background: #0a1d30; border: 1px solid #263e53; border-radius: 14px; padding: 24px; }
+.workspace-card > header { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+.workspace-card h2 { display: flex; gap: 10px; align-items: center; font-size: 17px; font-weight: 550; margin: 0; }
+.workspace-card-icon { display: grid; place-items: center; width: 38px; height: 38px; background: #122e49; border: 1px solid #2a506e; border-radius: 10px; color: #8fcaff; }
+.workspace-card-icon.teal { background: #102f33; border-color: #275150; color: #82d7c2; }
+.count-badge { font-size: 11px; border: 1px solid #32485a; border-radius: 6px; padding: 2px 6px; color: #92acbf; }
+.workspace-field { display: flex; flex-direction: column; gap: 9px; min-width: 0; font-size: 12px; color: #afc4d7; }
+.workspace-field > span { display: flex; align-items: center; gap: 8px; }
+.workspace-field input, .workspace-field select, .member-sector-options select, .custom-role-field input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 42px; border: 1px solid #34516a; border-radius: 7px; background: #081929; color: #edf4fc; padding: 10px 12px; font: inherit; font-size: 13px; }
+.workspace-field input::placeholder, .member-search input::placeholder { color: #7c96ad; }
+.workspace-field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.project-basics > .workspace-field, .project-basics > .workspace-field-pair { margin-bottom: 22px; }
+.competition-fields { border-top: 1px solid #243c51; padding-top: 22px; display: grid; gap: 18px; }
+.workspace-text-button { display: inline-flex; align-items: center; gap: 8px; color: #91bee4; background: transparent; border: 0; padding: 0; font: inherit; font-size: 12px; cursor: pointer; }
+.project-basics > .workspace-text-button { margin-top: 24px; }
+:is(.project-create, .team-configurator, .editor-popup, .org-chart-shell) button { font-family: inherit; cursor: pointer; }
+:is(.project-create, .team-configurator, .editor-popup, .org-chart-shell) button:disabled { opacity: .4; cursor: default; }
+:is(.project-create, .team-configurator, .editor-popup, .app-header) :focus-visible { outline: 2px solid #91c6ff; outline-offset: 3px; }
+.sectors-view-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -8px 0 12px; }
+.sectors-view-bar > span { font-size: 11px; color: #8aa5bd; }
+.view-toggle { display: inline-flex; padding: 3px; gap: 3px; background: #061625; border: 1px solid #263e53; border-radius: 8px; }
+.view-toggle > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 5px 9px; border: 0; border-radius: 5px; color: #8fa9bf; background: transparent; font: inherit; font-size: 11px; }
+.view-toggle > button[aria-pressed='true'] { background: #1b3b56; color: #e2f0ff; box-shadow: 0 1px 4px #0003; }
+.sectors-editor { display: flex; flex-direction: column; min-height: 0; gap: 10px; }
+.sector-rows { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow-y: auto; }
+.sector-row { display: flex; align-items: center; gap: 10px; padding: 7px 9px; min-height: 43px; border: 1px solid #263e53; border-radius: 8px; background: #0d2236; }
+.sector-symbol { display: grid; place-items: center; color: #779ebd; flex-shrink: 0; }
+.sector-row-name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.4; }
+.sector-row-actions { display: flex; gap: 2px; }
+.sector-row-actions > button, .member-options, .undo-button { display: grid; place-items: center; flex-shrink: 0; width: 29px; height: 29px; min-height: 0 !important; padding: 0; border: 1px solid transparent; background: transparent; border-radius: 5px; color: #95afc7; }
+.sector-row-actions > button:hover:not(:disabled), .member-options:hover:not(:disabled) { background: #1a354c; border-color: #31526c; color: #d9eaff; }
+button.danger { color: #e4a2a5; }
+.add-sector { display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px dashed #39556d; border-radius: 8px; min-height: 35px; background: transparent; color: #a9c8e2; font-size: 12px; flex-shrink: 0; }
+.add-sector:hover:not(:disabled) { background: #132d44; }
+.project-create-footer, .team-config-footer, .editor-popup > footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #243c51; }
+:is(.project-create-footer, .team-config-footer, .editor-popup > footer) > button, .custom-role-field > button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 8px 14px; background: transparent; color: #b0c4d6; border: 1px solid #304a60; border-radius: 7px; font-size: 12px; }
+:is(.project-create-footer, .team-config-footer, .editor-popup > footer) > button.primary { background: #a5d3f4; border-color: #a5d3f4; color: #092338; font-weight: 650; }
+.project-create-footer > p { margin: 0 auto 0 0; font-size: 12px; color: #f1acb1; }
+.workspace-error { color: #f1acb1; font-size: 12px; margin: 6px 0; }
+.workspace-empty { padding: 16px 0; color: #a0b5c7; font-size: 13px; }
+.info-tip { display: inline-flex; }
+.info-tip > button { display: inline-flex; align-items: center; justify-content: center; border: 0 !important; min-height: 24px !important; width: 24px; padding: 0 !important; background: transparent !important; color: #8fa9bf; cursor: help; }
+.info-tip-content { position: fixed; z-index: 4000; box-sizing: border-box; width: 272px; border: 1px solid #54728d; background: #18364f; color: #edf4fc; border-radius: 8px; padding: 12px 14px; font: 12px/1.6 system-ui, sans-serif; box-shadow: 0 10px 30px #0005; pointer-events: none; }
+
+/* The team editor has a single bounded canvas, with persistent actions. */
+.pm-dialog.pm-team-config-dialog { width: min(1120px, calc(100vw - 44px)); height: min(760px, calc(100dvh - 40px)); display: flex; flex-direction: column; border-radius: 14px; background: #0a1d30; }
+.pm-team-config-dialog > header { flex-shrink: 0; min-height: 66px; padding: 12px 24px; }
+.pm-team-config-dialog > header h2 { font-size: 22px; }
+.pm-team-config-dialog > header > div > span { display: none; }
+.pm-team-config-dialog .pm-team-config { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 16px 24px 0; overflow: hidden; }
+.pm-team-config-dialog .pm-team-config > .pm-dialog-field { display: flex; flex-direction: row; align-items: center; gap: 14px; margin: 0 0 14px; flex-shrink: 0; }
+.pm-team-config-dialog .pm-team-config > .pm-dialog-field > span { white-space: nowrap; color: #8fa9bf; font-size: 11px; }
+.pm-team-config-dialog .pm-team-config > .pm-dialog-field select { max-width: 340px; height: 36px; padding: 7px 12px; }
+.team-configurator { display: flex; flex-direction: column; flex: 1; min-height: 0; color: #e3edf7; }
+.team-config-toolbar { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-bottom: 14px; }
+.team-config-tabs { display: flex; gap: 4px; }
+.team-config-tabs button { display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 8px 10px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: #93acc1; background: transparent; font-size: 12px; }
+.team-config-tabs button[aria-selected='true'] { border-bottom-color: #7ed1b8; color: #def3ef; }
+.team-config-tabs span { border-radius: 4px; padding: 2px 5px; background: #163247; font-size: 10px; color: #a4c2d6; }
+.team-config-view { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.team-config-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.team-config-content > .sectors-editor { flex: 1; }
+.team-config-content .sector-rows { flex: 1; }
+.team-config-content .sector-row { flex: 0 0 auto; min-height: 43px; padding: 7px 14px; }
+.team-config-content .sector-row-name { font-size: 13px; }
+.team-config-content .sector-row-actions { gap: 6px; }
+.team-config-footer { margin-top: 14px; margin-bottom: 16px; flex-shrink: 0; }
+.team-config-footer > span { margin-right: auto; font-size: 11px; color: #8aa5bd; }
+.member-editor { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.member-search { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid #2d485f; border-radius: 8px; color: #7697b2; margin-bottom: 12px; }
+.member-search input { flex: 1; min-width: 0; background: transparent; border: 0; color: #edf4fc; font: inherit; font-size: 12px; }
+.member-rows { min-height: 0; overflow: auto; }
+.member-row { display: flex; align-items: center; gap: 14px; padding: 12px 8px; border-bottom: 1px solid #223d53; }
+.member-row .participant-select { display: flex; flex: 1; min-width: 0; align-items: center; gap: 12px; cursor: pointer; }
+.member-row .participant-select > span:last-child { display: grid; gap: 5px; min-width: 0; }
+.member-row strong { font-size: 13px; font-weight: 550; overflow-wrap: anywhere; }
+.member-row small { color: #809eb7; font-size: 11px; }
+.member-row input[type='checkbox'] { accent-color: #88c7e9; width: 15px; height: 15px; flex-shrink: 0; }
+.member-avatar { display: grid; place-items: center; flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; border: 1px solid #3c5a70; background: #193449; color: #b4d4eb; font-size: 11px; }
+.member-role { color: #8fafc5; font-size: 11px; border: 1px solid #304b61; border-radius: 5px; padding: 5px 8px; }
+.member-pagination { display: flex; justify-content: center; align-items: center; gap: 12px; font-size: 12px; margin-top: auto; padding-top: 8px; }
+.member-pagination button { display: grid; place-items: center; padding: 3px; min-height: 28px; }
+.editor-popup { width: min(460px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100dvh - 40px); margin: auto; padding: 0; border: 1px solid #41627e; border-radius: 14px; color: #e3edf7; background: #10263a; box-shadow: 0 24px 90px #0009; overflow: auto; }
+.editor-popup::backdrop { background: #020b1677; backdrop-filter: blur(3px); }
+.editor-popup > header { display: flex; align-items: center; justify-content: space-between; padding: 17px 20px; gap: 12px; border-bottom: 1px solid #30495e; }
+.editor-popup h3 { font-size: 16px; font-weight: 550; margin: 0; }
+.editor-popup header > button { display: grid; place-items: center; border: 0; background: transparent; color: #a9c4dc; padding: 4px; }
+.editor-popup-body { padding: 20px; }
+.editor-popup-body h4 { font-size: 11px; font-weight: 500; letter-spacing: .03em; color: #97b4cb; margin: 22px 0 12px; }
+.editor-popup-body > .workspace-text-button { margin-top: 12px; }
+.editor-popup > footer { margin: 0; padding: 14px 20px; background: #0c2033; position: sticky; bottom: 0; }
+.member-sector-options { display: flex; flex-direction: column; gap: 9px; }
+.member-sector-options label { display: grid; grid-template-columns: 1fr 175px; align-items: center; gap: 10px; font-size: 12px; }
+.member-sector-options select { min-height: 34px; padding: 7px; font-size: 11px; }
+.custom-role-field { display: flex; gap: 8px; margin-top: 12px; }
+
+/* Block diagram. The fitted view needs no horizontal or page scrolling. */
+.org-chart-shell { display: flex; flex-direction: column; height: 440px; min-height: 180px; flex: 1; border: 1px solid #2a455b; border-radius: 10px; overflow: hidden; background: radial-gradient(circle, #37506570 1px, transparent 1px) 0 0 / 18px 18px, #081a2c; }
+.org-chart-controls { display: flex; justify-content: flex-end; gap: 3px; padding: 8px; flex-shrink: 0; }
+.org-chart-controls button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 4px 7px; min-height: 26px; background: #132d43; border: 1px solid #35536c; color: #b0cde3; border-radius: 5px; font-size: 10px; }
+.org-chart-viewport { flex: 1; min-height: 0; overflow: auto; }
+.org-chart-space { position: relative; }
+.org-chart-canvas { position: absolute; top: 0; transform-origin: 0 0; }
+.org-chart-lines { position: absolute; inset: 0; pointer-events: none; }
+.org-chart-lines path { stroke: #45647e; stroke-width: 1.3; fill: none; }
+.org-card { position: absolute; box-sizing: border-box; padding: 13px 14px; border: 1px solid #42637f; border-radius: 10px; background: #122b40; color: #edf4fc; box-shadow: 0 4px 8px #0002; }
+.org-card.org-project, .org-card.org-team { background: #17364b; border-color: #71a6be; }
+.org-card.org-sector { border-top: 3px solid #6db5a9; }
+.org-card > strong, .org-card .org-card-name { display: block; font-family: inherit; font-size: 14px; line-height: 19px; font-weight: 550; width: 100%; overflow-wrap: anywhere; color: #edf4fc; margin: 0 0 8px; padding: 0; border: 0; text-align: left; background: transparent; min-height: 0; }
+.org-card > span, .org-card .org-card-person { display: block; font-family: inherit; font-size: 12px; line-height: 16px; min-height: 0; color: #9cbbd3; margin-top: 6px; padding: 0; background: transparent; border: 0; text-align: left; overflow-wrap: anywhere; }
+.org-card .org-card-name:hover, .org-card .org-card-person:hover { color: #a5dbff; }
+.org-card-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+.org-card-actions button { border: 0; background: transparent; color: #8abfe5; font-size: 11px; padding: 0; min-height: 16px; }
+.project-sectors .org-chart-shell { height: 350px; flex: auto; }
+.team-dashboard .organization-panel { margin-top: 0; }
+@media (min-width: 1000px) and (min-height: 760px) { .project-create { padding-top: 44px; } }
+@media (max-width: 1050px) { .project-create, .team-dashboard { padding: 24px; } .project-create-grid { grid-template-columns: minmax(260px, .9fr) minmax(350px, 1.1fr); gap: 16px; } .workspace-card { padding: 20px; } .workspace-field-pair { grid-template-columns: 1fr; gap: 14px; } }
+@media (max-width: 760px) {
+  .app-header { height: 60px; flex-basis: 60px; padding: 0 14px; gap: 8px; }
+  .app-header nav, .app-header-account { gap: 8px; }
+  .app-header-brand, .app-header nav > svg { display: none; }
+  .app-header .user-copy { display: none; }
+  .app-header-title { max-width: 130px; font-size: 11px; }
+  .project-create, .team-dashboard { padding: 24px 16px; }
+  .project-create-grid { grid-template-columns: 1fr; }
+  .workspace-card { padding: 18px; }
+  .workspace-card > header { margin-bottom: 20px; }
+  .workspace-heading { flex-wrap: wrap; }
+  .sector-row { padding: 8px; gap: 7px; }
+  .sector-row-actions { gap: 0; }
+  .sector-row-actions > button { width: 26px; height: 32px; }
+  .sector-row-name { font-size: 11px; }
+  .pm-dialog.pm-team-config-dialog { width: calc(100vw - 16px); height: calc(100dvh - 24px); }
+  .pm-team-config-dialog > header { padding: 12px 16px; }
+  .pm-team-config-dialog .pm-team-config { padding: 12px 12px 0; }
+  .team-config-toolbar { flex-wrap: wrap; gap: 6px; }
+  .team-config-view { width: 100%; justify-content: space-between; margin: 0; }
+  .team-config-footer { gap: 8px; margin-bottom: 12px; }
+  .team-config-footer > span { display: none; }
+  .team-config-footer > button { flex: 1; padding: 8px; }
+  .team-config-content .sector-row { padding: 8px; }
+  .team-config-content .sector-row-actions { gap: 0; }
+  .member-row { gap: 8px; flex-wrap: wrap; position: relative; padding-right: 32px; }
+  .member-row .participant-select { width: 100%; gap: 8px; }
+  .member-options { position: absolute; right: 0; top: 18px; }
+  .member-role { margin-left: 64px; padding: 3px 6px; font-size: 10px; }
+  .member-row strong { font-size: 12px; }
+  .member-sector-options label { grid-template-columns: minmax(0, 1fr) 150px; font-size: 11px; }
+  .org-chart-shell { height: 380px; }
+  .project-create-footer { position: sticky; bottom: 0; padding: 12px 0; background: #031426; flex-wrap: wrap; }
+}
+
+.pm-dialog .team-config-footer > button.primary { background: #a5d3f4; border-color: #a5d3f4; color: #092338; }
+/* Override the legacy global .primary rule, which declares these two properties important. */
+.project-create .project-create-footer > button.primary, .pm-dialog .team-config-footer > button.primary, .editor-popup > footer > button.primary { background: #a5d3f4 !important; border-color: #a5d3f4 !important; color: #092338; }
+@media (min-width: 761px) and (max-height: 850px) { .project-create { padding-top: 22px; } .workspace-heading { margin-bottom: 18px; } .workspace-card { padding: 18px; } .workspace-card > header { margin-bottom: 20px; } .sector-row { min-height: 39px; padding-top: 5px; padding-bottom: 5px; } .project-create-footer { margin-top: 14px; padding-top: 12px; } }
+.team-dashboard .team-insights { padding: 26px; background: #0a1d30; border-color: #263e53; }
+.insights-heading, .insights-chart-label { display: flex; align-items: center; gap: 10px; }
+.insights-heading h3 { margin: 0; font-size: 17px; font-weight: 550; }
+.team-dashboard .insight-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 24px 0; }
+.team-dashboard .insight-totals > span { border: 1px solid #2d485c; border-radius: 10px; background: #0d2438; padding: 20px; color: #9fb8cd; }
+.team-dashboard .insight-totals strong { color: #c8e5fa; font-weight: 550; font-size: 30px; }
+.insights-chart-label { color: #a9c5da; font-size: 12px; }
+.team-dashboard .visits-chart { margin-top: 12px; }
+.team-dashboard .activity-scroll { margin-top: 14px; }
+.team-dashboard .activity-scroll table { font-size: 12px; }
+.team-dashboard .activity-scroll th { color: #9cb4c9; font-size: 11px; font-weight: 500; white-space: normal; }
+.team-dashboard .activity-scroll th, .team-dashboard .activity-scroll td { padding: 13px 10px; }
+.team-dashboard .team-insights h4 { font-weight: 550; font-size: 14px; margin-top: 26px; }
+.team-dashboard .team-insights details { margin-top: 16px; color: #91b7d6; font-size: 12px; }
+@media (max-width: 760px) { .team-dashboard .team-insights { padding: 16px; } .team-dashboard .insight-totals { gap: 10px; } .team-dashboard .insight-totals > span { padding: 14px; font-size: 11px; } }

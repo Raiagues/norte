@@ -40,7 +40,7 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Abrir projeto', exact: true }).count(), 3);
   assert.equal(await page.getByText('Documentos da equipe', { exact: true }).count(), 0);
   await page.getByRole('button', { name: 'Organograma', exact: true }).click();
-  await page.locator('.org-project').filter({ hasText: projects[1].name }).getByText('Luna · TESTE', { exact: true }).first().waitFor();
+  assert.match(await page.locator('.org-card.org-project').filter({ hasText: projects[1].name }).innerText(), /Luna · TESTE/);
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Exportar organograma', exact: true }).first().click();
   assert.equal(await (await downloadPromise).failure(), null);
@@ -61,10 +61,41 @@ try {
   await page.getByRole('button', { name: 'Equipe do projeto', exact: true }).click();
   await page.getByRole('tab', { name: 'Setores', exact: true }).waitFor();
   assert.equal(await page.getByRole('tab', { name: 'Setores', exact: true }).getAttribute('aria-selected'), 'true');
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.screenshot({ path: '/tmp/norte-ui-sectors-desktop.png' });
+  await page.getByRole('button', { name: 'Organograma', exact: true }).click();
+  await page.locator('.org-card.org-sector').first().waitFor();
+  await page.waitForFunction(() => { const viewport = document.querySelector('.org-chart-viewport').getBoundingClientRect(); return [...document.querySelectorAll('.org-card')].every(card => { const r = card.getBoundingClientRect(); return r.top >= viewport.top - 1 && r.left >= viewport.left - 1 && r.bottom <= viewport.bottom + 1 && r.right <= viewport.right + 1; }); });
+  await page.screenshot({ path: '/tmp/norte-ui-chart-desktop.png' });
+  const chartBounds = await page.locator('.org-chart-viewport').evaluate(el => ({ h: el.clientHeight, scroll: el.scrollHeight, width: el.clientWidth, scrollWidth: el.scrollWidth }));
+  assert.ok(chartBounds.scroll <= chartBounds.h + 2 && chartBounds.scrollWidth <= chartBounds.width + 2, JSON.stringify(chartBounds));
+  const footer = await page.getByRole('button', { name: 'Salvar configuração', exact: true }).boundingBox();
+  assert.ok(footer.y + footer.height <= 768);
+  await page.getByRole('button', { name: 'Aviônica', exact: true }).click();
+  await page.getByLabel('Nome do setor', { exact: true }).fill('Aviônica e sistemas');
+  await page.getByRole('button', { name: 'Aplicar', exact: true }).click();
+  await page.getByRole('button', { name: 'Aviônica e sistemas', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Desfazer', exact: true }).click();
+  await page.getByRole('button', { name: 'Aviônica', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Lista', exact: true }).click();
   await page.getByRole('tab', { name: 'Cargos e membros', exact: true }).click();
+  await page.screenshot({ path: '/tmp/norte-ui-members-desktop.png' });
+
+  await page.getByRole('searchbox', { name: 'Pesquisar membros' }).fill('Pessoa Convidada');
   await page.locator('.participant-select').filter({ hasText: 'Pessoa Convidada' }).getByRole('checkbox').check();
+  await page.getByRole('button', { name: 'Opções de Pessoa Convidada', exact: true }).click();
   await page.getByLabel('Pessoa Convidada · Aviônica', { exact: true }).selectOption('member');
   await page.getByLabel('Pessoa Convidada · Propulsão', { exact: true }).selectOption('viewer');
+  await page.screenshot({ path: '/tmp/norte-ui-member-options.png' });
+
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.editor-popup').count(), 0);
+  assert.equal(await page.locator('.pm-team-config-dialog').count(), 1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: '/tmp/norte-ui-members-mobile.png' });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+  await page.setViewportSize({ width: 1366, height: 768 });
+
   await page.getByRole('button', { name: 'Salvar configuração', exact: true }).click();
   await page.locator('.pm-team-config-dialog').waitFor({ state: 'hidden' });
   const saved = app.missionStore.read().workspace.projects[first.id].document;
@@ -98,7 +129,8 @@ try {
   await page.getByRole('button', { name: 'Recolher navegação', exact: true }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.evaluate(() => { window.location.hash = '#/teams'; });
-  await page.getByText('Estatísticas da equipe', { exact: true }).click();
+  await page.locator('.app-header .account-badge-trigger').click();
+  await page.getByRole('button', { name: 'Painel da equipe', exact: true }).click();
   await page.getByRole('heading', { name: 'Visitas e participação' }).waitFor();
   await page.screenshot({ path: '/tmp/norte-team-projects-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });

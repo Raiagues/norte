@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, Copy, Camera, Check, LoaderCircle, LogOut, Settings2, ShieldCheck, UsersRound, X } from "lucide-react";
+import { BarChart3, Bell, Copy, Camera, Check, LoaderCircle, LogOut, Settings2, ShieldCheck, UsersRound, X } from "lucide-react";
 import { ApiError, useAuth } from "../lib/auth";
 import { accessRoleLabel } from "../lib/team";
+import type { Language } from "../lib/types";
 import type { TeamMember, TeamRecord } from "../lib/team";
 
 type Props = {
   connectedLabel: string;
   compact?: boolean;
+  language?: Language;
+  canManageTeams?: boolean;
 };
 
 function avatarData(file: File): Promise<string> {
@@ -36,7 +39,7 @@ function avatarData(file: File): Promise<string> {
   });
 }
 
-export function UserBadge({ connectedLabel, compact = false }: Props) {
+export function UserBadge({ connectedLabel, compact = false, canManageTeams = false, language: preferredLanguage }: Props) {
   const auth = useAuth();
   const { user, logout, isDemo } = auth;
   const [invitationCount, setInvitationCount] = useState(0);
@@ -48,7 +51,7 @@ export function UserBadge({ connectedLabel, compact = false }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
-  const language = document.documentElement.lang.startsWith("en") ? "en" : "pt";
+  const language = preferredLanguage || (document.documentElement.lang.startsWith("en") ? "en" : "pt");
 
   useEffect(() => {
     function close(event: PointerEvent) {
@@ -128,7 +131,7 @@ export function UserBadge({ connectedLabel, compact = false }: Props) {
 
   return (
     <>
-      <div className={compact ? "user-badge compact account-badge" : "user-badge account-badge"} ref={rootRef}>
+      <div className={compact ? "user-badge compact account-badge" : "user-badge account-badge"} ref={rootRef} onKeyDown={e => { if (e.key === "Escape") { setOpen(false); e.stopPropagation(); } }}>
         <button className="invitation-bell" type="button" aria-label={`${language === "pt" ? "Convites" : "Invitations"} (${invitationCount})`} onClick={() => { window.location.hash = "#/invitations"; }}><Bell size={18} />{invitationCount > 0 && <span>{invitationCount}</span>}</button>
         <button className="account-badge-trigger" type="button" onClick={() => setOpen((current) => !current)} aria-expanded={open} aria-label={user.name}>
           <div className={avatar ? "avatar has-photo" : "avatar"}>{avatar ? <img src={avatar} alt="" /> : user.initials}</div>
@@ -142,6 +145,8 @@ export function UserBadge({ connectedLabel, compact = false }: Props) {
             <div className="account-menu-role">{isDemo ? (language === "pt" ? "Administradora · modo demonstração" : "Administrator · demo mode") : accessRoleLabel(user.accessRole, language)}</div>
             <button type="button" onClick={() => void openProfile()}><Settings2 aria-hidden="true" />{language === "pt" ? "Ver e editar perfil" : "View and edit profile"}</button>
             <button type="button" onClick={() => { setOpen(false); window.location.hash = "#/teams"; }}><UsersRound aria-hidden="true" />{language === "pt" ? "Minhas equipes" : "My teams"}</button>
+            {canManageTeams && <button type="button" onClick={() => { setOpen(false); window.location.hash = '#/dashboard'; }}><BarChart3 />{language === 'pt' ? 'Painel da equipe' : 'Team dashboard'}</button>}
+            {user.accessRole === 'owner_admin' && !isDemo && <button type="button" onClick={() => { setOpen(false); window.location.hash = '#/admin/users'; }}><ShieldCheck />{language === 'pt' ? 'Administrar usuários' : 'Manage users'}</button>}
             {!isDemo && <button type="button" onClick={() => void logout()}><LogOut aria-hidden="true" />{language === "pt" ? "Sair" : "Sign out"}</button>}
           </div>
         )}

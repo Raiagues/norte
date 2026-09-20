@@ -14,6 +14,7 @@ import "./brainstorm-lab.css";
 import "./conception-workspace.css";
 import "./project-areas.css";
 import "./auth.css";
+import "./workspace-ui.css";
 
 function Root() {
   const auth = useAuth();

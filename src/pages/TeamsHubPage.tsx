@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, Globe2, List, LoaderCircle, Network, Pencil, Plus, ShieldCheck, Trash2, UsersRound, X } from 'lucide-react';
-import { LanguageToggle } from '../components/LanguageToggle';
-import { UserBadge } from '../components/UserBadge';
+import { ArrowRight, Check, Globe2, List, LoaderCircle, Network, Pencil, Plus, ShieldCheck, Trash2, UsersRound, X } from 'lucide-react';
 import { OrganizationTree } from '../components/OrganizationTree';
 import { TeamInvitations } from '../components/TeamInvitations';
-import { TeamInsights } from '../components/TeamInsights';
 import { teamOrganization } from '../../shared/organization-tree.mjs';
 import { useAuth } from '../lib/auth';
 import { memberInitials } from '../lib/team';
@@ -12,11 +9,11 @@ import type { TeamMember, TeamProjectSummary, TeamRecord } from '../lib/team';
 import type { Language } from '../lib/types';
 import '../teams-hub.css';
 type Props = { language: Language; t: (path: string) => string; onLanguageChange: (language: Language) => void; onBack: () => void; initialTeamId?: string; onTeamsChanged?: () => void; onOpenProject: (id: string) => void };
-export function TeamsHubPage({ language, t, onLanguageChange, onBack, initialTeamId = '', onTeamsChanged, onOpenProject }: Props) {
+export function TeamsHubPage({ language, initialTeamId = '', onTeamsChanged, onOpenProject }: Props) {
   const { api } = useAuth(), pt = language === 'pt';
   const [teams, setTeams] = useState<TeamRecord[]>([]), [members, setMembers] = useState<TeamMember[]>([]), [projects, setProjects] = useState<TeamProjectSummary[]>([]);
   const [selectedId, setSelectedId] = useState(initialTeamId), [view, setView] = useState<'mine' | 'community'>('mine'), [projectView, setProjectView] = useState<'list' | 'hierarchy'>('list');
-  const [dialog, setDialog] = useState<'create-team' | 'edit-team' | null>(null), [busy, setBusy] = useState(false), [loading, setLoading] = useState(true), [feedback, setFeedback] = useState(''), [insightsOpen, setInsightsOpen] = useState(false);
+  const [dialog, setDialog] = useState<'create-team' | 'edit-team' | null>(null), [busy, setBusy] = useState(false), [loading, setLoading] = useState(true), [feedback, setFeedback] = useState('');
   const load = useCallback(async () => {
     try { const [ts, ms] = await Promise.all([api<{ teams: TeamRecord[] }>('/teams'), api<{ members: TeamMember[] }>('/team/members')]); setTeams(ts.teams); setMembers(ms.members); }
     catch (e) { setFeedback(e instanceof Error ? e.message : 'Falha ao carregar.'); } finally { setLoading(false); }
@@ -28,7 +25,7 @@ export function TeamsHubPage({ language, t, onLanguageChange, onBack, initialTea
   const selectedMembers = members.filter(m => selected?.memberIds.includes(m.id));
   useEffect(() => {
     if (!selectedTeamId) { setProjects([]); return; }
-    let active = true; setProjects([]); setInsightsOpen(false);
+    let active = true; setProjects([]);
     void api<{ projects: TeamProjectSummary[] }>(`/teams/${selectedTeamId}/projects`).then(r => { if (active) setProjects(r.projects); }).catch(e => { if (active) setFeedback(e.message); });
     if (!internal) void api(`/teams/${selectedTeamId}/visit`, { method: 'POST' }).catch(() => undefined);
     return () => { active = false; };
@@ -45,7 +42,7 @@ export function TeamsHubPage({ language, t, onLanguageChange, onBack, initialTea
     if (!selected || !window.confirm(pt ? 'Excluir esta equipe? Equipes com projetos ou documentos preservados não podem ser excluídas.' : 'Delete this team? Teams with projects or archived files cannot be deleted.')) return;
     setBusy(true); try { await api(`/teams/${selected.id}`, { method: 'DELETE' }); await load(); onTeamsChanged?.(); } catch (e) { setFeedback(e instanceof Error ? e.message : 'Falha ao excluir.'); } finally { setBusy(false); }
   }
-  return <div className="teams-hub-shell"><header className="teams-hub-topbar"><button type="button" onClick={onBack}><ArrowLeft />{pt ? 'Voltar ao início' : 'Back to home'}</button><div><LanguageToggle language={language} onChange={onLanguageChange} /><UserBadge connectedLabel={t('common.connected')} /></div></header>
+  return <div className="teams-hub-shell">
     <main className="teams-hub-main"><header className="teams-hub-heading"><div><span>{pt ? 'COLABORAÇÃO' : 'COLLABORATION'}</span><h1>{pt ? 'Equipes' : 'Teams'}</h1><p>{pt ? 'Uma equipe, diferentes projetos e responsabilidades.' : 'One team, different projects and responsibilities.'}</p></div><button type="button" onClick={() => setDialog('create-team')}><Plus />{pt ? 'Criar equipe' : 'Create team'}</button></header>
       <nav className="teams-hub-tabs"><button type="button" className={view === 'mine' ? 'active mine' : 'mine'} onClick={() => setView('mine')}><ShieldCheck />{pt ? 'Minhas equipes' : 'My teams'}</button><button type="button" className={view === 'community' ? 'active community' : 'community'} onClick={() => setView('community')}><Globe2 />{pt ? 'Comunidade' : 'Community'}</button></nav>
       {feedback && <p className="teams-hub-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback('')} aria-label={pt ? 'Fechar' : 'Close'}><X /></button></p>}
@@ -58,7 +55,7 @@ export function TeamsHubPage({ language, t, onLanguageChange, onBack, initialTea
             </section>
             <section><h3>{pt ? 'MEMBROS DA EQUIPE' : 'TEAM MEMBERS'}</h3><div className="teams-member-list">{selectedMembers.map(m => <article key={m.id}><div className="teams-avatar">{memberInitials(m.displayName)}</div><div><strong>{m.displayName}</strong><span>{m.nickname ? `@${m.nickname}` : (pt ? 'Perfil preservado' : 'Preserved profile')}{m.id === selected.captainMemberId ? (pt ? ' · Capitão da equipe' : ' · Team captain') : ''}</span></div>{selected.canManage && m.id !== selected.captainMemberId && <button type="button" title={pt ? 'Remover da equipe' : 'Remove from team'} onClick={async () => { if (!window.confirm(`${pt ? 'Remover' : 'Remove'} ${m.displayName}?`)) return; try { await api(`/teams/${selected.id}/members/${m.id}`, { method: 'DELETE' }); await load(); setProjects((await api<{ projects: TeamProjectSummary[] }>(`/teams/${selected.id}/projects`)).projects); } catch (e) { setFeedback(e instanceof Error ? e.message : 'Falha ao remover.'); } }}><Trash2 size={16} /></button>}</article>)}</div></section>
             <p className="activity-notice">{pt ? 'Responsáveis autorizados veem último acesso e resumos de participação nos projetos por 30 dias: dias ativos, acessos, criação e edição de artefatos e mudanças na organização. Não são registrados movimentos, cliques, documentos abertos nem horas de produtividade.' : 'Authorized leaders see last access and 30-day project participation summaries: active days, visits, artifact creation and edits, and organization changes. Mouse movement, clicks, opened documents and productivity hours are not recorded.'}</p>
-            {selected.canManage && <><TeamInvitations key={selected.id} teamId={selected.id} language={language} /><details open={insightsOpen} onToggle={e => setInsightsOpen(e.currentTarget.open)}><summary>{pt ? 'Estatísticas da equipe' : 'Team insights'}</summary>{insightsOpen && <TeamInsights teamId={selected.id} language={language} />}</details></>}
+            {selected.canManage && <><TeamInvitations key={selected.id} teamId={selected.id} language={language} /></>}
           </> : <><p>{pt ? 'A participação acontece por convite. Compartilhe seu nickname com a equipe para que ela possa encontrar seu perfil.' : 'Membership is by invitation. Share your nickname so the team can find your profile.'}</p><h3>{pt ? 'Projetos públicos' : 'Public projects'}</h3>{projects.map(p => <article className="public-project-summary" key={p.id}><Network size={18} /><strong>{p.name}</strong></article>)}{!projects.length && <p>{pt ? 'Esta equipe ainda não publicou resumos de projetos.' : 'This team has not published project summaries yet.'}</p>}<p>{pt ? 'Pessoas, documentos e estatísticas internas têm acesso restrito.' : 'People, files and internal insights have restricted access.'}</p></>}
         </>}</section>
       </div>

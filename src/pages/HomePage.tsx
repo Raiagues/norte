@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, FolderOpen, LoaderCircle, Plus, Trash2, UsersRound, X } from "lucide-react";
-import { LanguageToggle } from "../components/LanguageToggle";
-import { UserBadge } from "../components/UserBadge";
 import { referenceProgram } from "../lib/programs";
 import type { ProjectSummary } from "../lib/team";
 import type { Language } from "../lib/types";
@@ -22,13 +20,11 @@ type Props = {
 
 export function HomePage({
   language,
-  t,
-  onLanguageChange,
   projects = [],
   loadingProjects = false,
   onOpenProject,
   onDeleteProject,
-  onOpenTeams, onCreateProject, onAdmin
+  onOpenTeams, onCreateProject
 }: Props) {
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [deletingId, setDeletingId] = useState("");
@@ -97,13 +93,7 @@ export function HomePage({
   return (
     <div className="home-shell home-landing-shell">
       <main className="home-main">
-        <header className="home-topbar home-landing-topbar">
-          <div className="top-actions">
-            {onAdmin && <button type="button" onClick={onAdmin}>{language === "pt" ? "Administrar usuários" : "Manage users"}</button>}
-            <LanguageToggle language={language} onChange={onLanguageChange} />
-            <UserBadge connectedLabel={t("common.connected")} />
-          </div>
-        </header>
+
 
         <section className="home-landing" aria-labelledby="norte-home-title">
           <span className="tech-corner tl" /><span className="tech-corner tr" /><span className="tech-corner bl" /><span className="tech-corner br" />
