@@ -1,6 +1,8 @@
 import { graphlib, layout } from "@dagrejs/dagre";
 import type { Language } from "./types";
 import { hypothesisFields } from "./discoveryHypothesis";
+import type { EngineeringChange } from "./engineeringSystem";
+import { changeSchema, matchesSchema } from "../../shared/engineering-schema.mjs";
 import { CLARIFICATION_MAX_TURNS } from "../../shared/discovery-limits.mjs";
 
 export type LabMaturity = "draft" | "forming" | "decided";
@@ -36,6 +38,9 @@ export type LabNode = {
   description?: string;
   clarifications?: Array<{ question: string; answer: string }>;
   pendingClarification?: { question: string; summary?: string };
+  /** A structured change already confirmed for this card. Discovery evaluates
+   * it directly instead of interpreting the text again; editing the text drops it. */
+  interpretedChange?: EngineeringChange;
   x: number;
   y: number;
   pinned: boolean;
@@ -911,6 +916,7 @@ function normalizeLabNode(node: LabNode): LabNode {
     description: typeof node.description === "string" ? node.description : undefined,
     clarifications: Array.isArray(node.clarifications) ? node.clarifications.filter((turn) => typeof turn?.question === "string" && turn.question.length <= 300 && typeof turn.answer === "string" && turn.answer.length <= 1500).slice(-CLARIFICATION_MAX_TURNS) : undefined,
     pendingClarification: typeof node.pendingClarification?.question === "string" && node.pendingClarification.question.length <= 300 ? { question: node.pendingClarification.question, ...(typeof node.pendingClarification.summary === "string" ? { summary: node.pendingClarification.summary } : {}) } : undefined,
+    interpretedChange: matchesSchema(node.interpretedChange, changeSchema) ? node.interpretedChange : undefined,
     pinned: node.pinned === true,
     maturity: node.maturity === "forming" || node.maturity === "decided" ? node.maturity : "draft",
     createdAt: typeof node.createdAt === "string" ? node.createdAt : new Date(0).toISOString(),

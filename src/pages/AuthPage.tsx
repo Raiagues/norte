@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { KeyRound, LockKeyhole, RadioTower, RefreshCw, ShieldCheck } from "lucide-react";
+import { Compass, KeyRound, LockKeyhole, RadioTower, RefreshCw, ShieldCheck } from "lucide-react";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { ApiError, useAuth } from "../lib/auth";
 import { getStoredLanguage, setStoredLanguage } from "../lib/i18n";
@@ -12,6 +12,7 @@ export function AuthPage() {
   const [language, setLanguage] = useState<Language>(getStoredLanguage);
   const [mode, setMode] = useState<Mode>("login");
   const [busy, setBusy] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -21,7 +22,6 @@ export function AuthPage() {
   const joinParameters = new URLSearchParams(window.location.hash.split("?")[1] || "");
 
   const c = language === "pt" ? {
-    brandLine: "ENGENHARIA DE SISTEMAS ASSISTIDA POR IA",
     loginTitle: "Entrar no Norte",
     registerTitle: "Criar sua conta",
     firstAccount: "A primeira conta deste ambiente recebe a administração inicial.",
@@ -33,12 +33,15 @@ export function AuthPage() {
     create: "Criar conta",
     noAccount: "Criar conta",
     hasAccount: "Já tenho conta",
+    demoDivider: "ou",
+    demoEnter: "Explorar com conta de teste",
+    demoHint: "Abre uma equipe com projetos prontos, sem cadastro. Os dados são fictícios e apagados em 24 horas.",
+    demoError: "Não foi possível abrir a conta de teste agora.",
     offlineTitle: "Serviço temporariamente indisponível",
     offlineText: "Tente novamente em alguns instantes.",
     retry: "Tentar novamente",
     loading: "Abrindo sessão segura"
   } : {
-    brandLine: "AI-ASSISTED SYSTEMS ENGINEERING",
     loginTitle: "Sign in to Norte",
     registerTitle: "Create your account",
     firstAccount: "The first account in this environment receives initial administration.",
@@ -50,6 +53,10 @@ export function AuthPage() {
     create: "Create account",
     noAccount: "Create account",
     hasAccount: "I already have an account",
+    demoDivider: "or",
+    demoEnter: "Explore with a test account",
+    demoHint: "Opens a team with ready-made projects, no sign-up. Data is fictitious and deleted after 24 hours.",
+    demoError: "The test account could not be opened right now.",
     offlineTitle: "Service temporarily unavailable",
     offlineText: "Try again in a few moments.",
     retry: "Try again",
@@ -85,6 +92,18 @@ export function AuthPage() {
     }
   }
 
+  async function openDemo() {
+    setDemoBusy(true);
+    setError("");
+    try {
+      await auth.loginDemo();
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : c.demoError);
+    } finally {
+      setDemoBusy(false);
+    }
+  }
+
   if (auth.status === "loading") {
     return <div className="auth-status-screen"><RadioTower aria-hidden="true" /><span>{c.loading}</span></div>;
   }
@@ -109,9 +128,7 @@ export function AuthPage() {
 
       <section className="auth-layout">
         <div className="auth-context">
-          <span>{c.brandLine}</span>
           <h1>NORTE</h1>
-          <div className="auth-security-mark"><ShieldCheck aria-hidden="true" /><span>{language === "pt" ? "Sessão protegida" : "Protected session"}</span></div>
         </div>
 
         <form className="auth-form" onSubmit={submit}>
@@ -133,6 +150,13 @@ export function AuthPage() {
           {error && <div className="auth-error" role="alert">{error}</div>}
           <button className="auth-submit" type="submit" disabled={busy}>{busy ? <RefreshCw className="auth-spinner" aria-hidden="true" /> : mode === "login" ? <KeyRound aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />}{mode === "login" ? c.enter : c.create}</button>
           <button className="auth-mode-switch" type="button" onClick={() => { setMode((current) => current === "login" ? "register" : "login"); setError(""); }}>{mode === "login" ? c.noAccount : c.hasAccount}</button>
+          {auth.demoAvailable && (
+            <div className="auth-demo">
+              <div className="auth-demo-divider"><span>{c.demoDivider}</span></div>
+              <button className="auth-demo-enter" type="button" onClick={() => void openDemo()} disabled={busy || demoBusy}>{demoBusy ? <RefreshCw className="auth-spinner" aria-hidden="true" /> : <Compass aria-hidden="true" />}{c.demoEnter}</button>
+              <small>{c.demoHint}</small>
+            </div>
+          )}
         </form>
       </section>
     </main>

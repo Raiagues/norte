@@ -194,7 +194,7 @@ export function analyzeImpact(model, change, language = "en") {
         result = tidy(energies[0].value / powers[0].value * 60);
         resultKey = "estimated_autonomy";
         unit = "min";
-        expression = `${inputs[0].value} Wh / ${inputs[1].value} W × 60 = ${result} min`;
+        expression = `${displayNumber(inputs[0].value)} Wh / ${displayNumber(inputs[1].value)} W × 60 = ${displayNumber(result)} min`;
       } else if (formula === "energy_balance") {
         if (sources.length !== 2) continue;
         const generation = sources.map((source) => input(source, ["generated_power", "available_power"], "power")).filter(Boolean);
@@ -318,7 +318,7 @@ export function analyzeImpact(model, change, language = "en") {
           // also reaches this object. No depletion time or reset is predicted.
           route.path = deficitPath;
           route.edges = deficitEdges;
-          outcome = { status: "review", reasonCode: "energy_deficit_dependency", shortExplanation: pt ? `Saldo negativo (${calculation.result} ${calculation.unit}) alcança esta dependência. Revisar energia armazenada e operação; tempo de falha desconhecido.` : `Negative balance (${calculation.result} ${calculation.unit}) reaches this dependency. Review stored energy and operation; failure timing is unknown.`, calculation };
+          outcome = { status: "review", reasonCode: "energy_deficit_dependency", shortExplanation: pt ? `Saldo negativo (${displayNumber(calculation.result)} ${calculation.unit}) alcança esta dependência. Revisar energia armazenada e operação; tempo de falha desconhecido.` : `Negative balance (${displayNumber(calculation.result)} ${calculation.unit}) reaches this dependency. Review stored energy and operation; failure timing is unknown.`, calculation };
           break;
         }
       }

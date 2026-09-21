@@ -131,15 +131,7 @@ button.danger { color: #e4a2a5; }
 .org-chart-space { position: relative; }
 .org-chart-canvas { position: absolute; top: 0; transform-origin: 0 0; }
 .org-chart-lines { position: absolute; inset: 0; pointer-events: none; }
-.org-chart-lines path { stroke: #45647e; stroke-width: 1.3; fill: none; }
-.org-card { position: absolute; box-sizing: border-box; padding: 13px 14px; border: 1px solid #42637f; border-radius: 10px; background: #122b40; color: #edf4fc; box-shadow: 0 4px 8px #0002; }
-.org-card.org-project, .org-card.org-team { background: #17364b; border-color: #71a6be; }
-.org-card.org-sector { border-top: 3px solid #6db5a9; }
-.org-card > strong, .org-card .org-card-name { display: block; font-family: inherit; font-size: 14px; line-height: 19px; font-weight: 550; width: 100%; overflow-wrap: anywhere; color: #edf4fc; margin: 0 0 8px; padding: 0; border: 0; text-align: left; background: transparent; min-height: 0; }
-.org-card > span, .org-card .org-card-person { display: block; font-family: inherit; font-size: 12px; line-height: 16px; min-height: 0; color: #9cbbd3; margin-top: 6px; padding: 0; background: transparent; border: 0; text-align: left; overflow-wrap: anywhere; }
-.org-card .org-card-name:hover, .org-card .org-card-person:hover { color: #a5dbff; }
-.org-card-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 10px; }
-.org-card-actions button { border: 0; background: transparent; color: #8abfe5; font-size: 11px; padding: 0; min-height: 16px; }
+.org-card { position: absolute; box-sizing: border-box; }
 .project-sectors .org-chart-shell { height: 350px; flex: auto; }
 .team-dashboard .organization-panel { margin-top: 0; }
 @media (min-width: 1000px) and (min-height: 760px) { .project-create { padding-top: 44px; } }

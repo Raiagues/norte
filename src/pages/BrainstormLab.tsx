@@ -135,6 +135,7 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
   }
   function showImpact(node: LabNode) {
     const result = interpretations[node.id], model = project.engineeringSystem;
+    if (node.interpretedChange) return openImpact(node.interpretedChange, node.id);
     if (result?.text === discoveryInputKey(boardRef.current, node) && ["resolved", "confirmation"].includes(result.status) && result.change && result.baselineId === model?.id && result.baselineRevision === (model?.revision || 0) && result.baselineGeneratedAt === model?.generatedAt) openImpact(result.change, node.id);
     else void interpret(node, true);
   }
@@ -190,7 +191,7 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
     const text = composer.question ? `${composer.text.trim()}\n${composer.answer!.trim()}` : composer.text.trim();
     if (text.length > HYPOTHESIS_MAX_LENGTH) return;
     if (composer.nodeId) {
-      commit({ ...boardRef.current, nodes: boardRef.current.nodes.map((node) => node.id === composer.nodeId ? { ...node, ...hypothesisFields(text), pendingClarification: undefined, ...(composer.question ? { clarifications: [...(node.clarifications || []), { question: composer.question, answer: composer.answer!.trim() }].slice(-CLARIFICATION_MAX_TURNS) } : {}) } : node) }); setComposer(null);
+      commit({ ...boardRef.current, nodes: boardRef.current.nodes.map((node) => node.id === composer.nodeId ? { ...node, ...hypothesisFields(text), pendingClarification: undefined, interpretedChange: undefined, ...(composer.question ? { clarifications: [...(node.clarifications || []), { question: composer.question, answer: composer.answer!.trim() }].slice(-CLARIFICATION_MAX_TURNS) } : {}) } : node) }); setComposer(null);
       const edited = boardRef.current.nodes.find((node) => node.id === composer.nodeId); if (edited) void interpret(edited);
     } else {
       const position = freePosition(composer);
@@ -345,7 +346,9 @@ export function BrainstormLab({ language, project, onProjectChange }: Props) {
           });
         })()}</svg>
         {board.nodes.map((node) => {
-          const interpretation: Interpretation | undefined = interpretations[node.id]?.text === discoveryInputKey(board, node) ? interpretations[node.id] : node.pendingClarification ? { text: discoveryInputKey(board, node), status: "clarification", ...node.pendingClarification } : undefined;
+          const interpretation: Interpretation | undefined = interpretations[node.id]?.text === discoveryInputKey(board, node) ? interpretations[node.id]
+            : node.interpretedChange ? { text: discoveryInputKey(board, node), status: "resolved", summary: node.interpretedChange.description, change: node.interpretedChange, understood: { targetName: project.engineeringSystem?.entities.find((item) => item.id === node.interpretedChange?.targetEntityId)?.name, updates: node.interpretedChange.newValues.map((item) => ({ propertyKey: item.key, value: item.value, unit: item.unit || "", quote: "" })) } }
+            : node.pendingClarification ? { text: discoveryInputKey(board, node), status: "clarification", ...node.pendingClarification } : undefined;
           return <article className={`lab-node${selected === node.id ? " selected" : ""}`} style={{ left: node.x, top: node.y, width: LAB_NODE_WIDTH, minHeight: LAB_NODE_HEIGHT }} key={node.id} data-node-id={node.id} onPointerDown={(event) => pointerDown(event, node)} onDoubleClick={() => openComposer(undefined, node)}>
             <div className="lab-node-head"><span>{copy.idea}</span><button type="button" title={copy.edit} aria-label={`${copy.edit}: ${node.text}`} onClick={() => openComposer(undefined, node)}><Pencil aria-hidden="true" /></button></div>
             <button className="discovery-node-text" type="button" onClick={() => selectNode(node)} onDoubleClick={() => openComposer(undefined, node)}>{node.text}</button>

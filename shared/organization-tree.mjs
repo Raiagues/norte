@@ -18,5 +18,6 @@ export function projectOrganization(project, members = []) {
   return { id: project.id, kind: 'project', name: project.name, children: [{ id: `${project.id}:lead`, kind: 'responsibility', name: leaders.length ? leaders.map(a => members.find(m => m.id === a.memberId)?.displayName || 'Perfil indisponível').join(', ') : 'Responsável não definido', role: 'Responsável pelo projeto', memberIds: leaders.map(a => a.memberId), children: branches }] };
 }
 export function teamOrganization(team, members, projects) {
-  return { id: team.id, kind: 'team', name: team.name, children: [{ id: `${team.id}:captain`, kind: 'responsibility', name: members.find(m => m.id === team.captainMemberId)?.displayName || 'Capitão não definido', role: 'Capitão da equipe', children: projects.map(p => p.organization || { id: p.id, kind: 'project', name: p.name, children: [] }) }] };
+  const captain = members.find(m => m.id === team.captainMemberId);
+  return { id: team.id, kind: 'team', name: team.name, children: [{ id: `${team.id}:captain`, kind: 'responsibility', name: captain?.displayName || 'Capitão não definido', role: 'Capitão da equipe', memberIds: captain ? [captain.id] : [], children: projects.map(p => p.organization || { id: p.id, kind: 'project', name: p.name, children: [] }) }] };
 }

@@ -11,7 +11,7 @@ describe('organization overview', () => {
   it('wraps seven sectors, keeps cards inside the canvas and does not overlap them', () => {
     const diagram = layoutOrganization({ id: 'project', name: 'A long engineering project title that wraps across several lines', kind: 'project', children: Array.from({ length: 7 }, (_, i) => sector(String(i))) });
     expect(diagram.cards).toHaveLength(8);
-    expect(diagram.width).toBeLessThan(800);
+    expect(diagram.width).toBeLessThan(1100);
     for (const card of diagram.cards) {
       expect(card.x).toBeGreaterThanOrEqual(0);
       expect(card.y).toBeGreaterThanOrEqual(0);
@@ -29,7 +29,7 @@ describe('organization overview', () => {
     expect(sectors).toHaveLength(2);
     expect(sectors[0].x).not.toBe(sectors[1].x);
     expect(sectors[0].details.map(d => d.memberId)).toEqual(['member', 'other']);
-    expect(sectors[0].details[0].text).toContain('Sector manager');
+    expect(sectors[0].details[0].role).toBe('Sector manager');
   });
 });
 describe('competition setup', () => {

@@ -7,6 +7,7 @@ export type ArtifactScope = "team" | "project";
 
 export type SessionUser = {
   testEnvironment?: boolean;
+  demoAccount?: boolean;
   id: string;
   memberId: string;
   nickname?: string;
@@ -107,6 +108,7 @@ export type DirectoryMember = {
 export type ProjectSummary = {
   id: string;
   name: string;
+  projectType?: string | null;
   programId: string | null;
   teamId: string | null;
   updatedAt: string;
@@ -125,6 +127,8 @@ export type TeamProjectParticipant = {
 
 export type TeamProjectSummary = ProjectSummary & {
   participants: TeamProjectParticipant[];
+  sectorCount?: number;
+  hasSystem?: boolean;
   organization?: import("../../shared/organization-tree.mjs").OrganizationNode;
   public?: boolean;
 };
@@ -142,4 +146,18 @@ export function accessRoleLabel(role: AccessRole, language: Language): string {
     advisor: { pt: "Orientador", en: "Advisor" }
   };
   return labels[role][language];
+}
+
+/** A stable accent per person, so avatars keep their colour across every view. */
+export const MEMBER_PALETTE = ["#62aaff", "#33d4a0", "#a59cff", "#ef866d", "#e5b95f", "#5ad4e6"] as const;
+export function memberColor(seed: string): string {
+  let hash = 0;
+  for (const char of seed) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return MEMBER_PALETTE[hash % MEMBER_PALETTE.length];
+}
+
+/** Project types share one accent across cards, chart and chips. */
+export function projectTypeLabel(type: string | undefined, language: Language): string {
+  const labels: Record<string, [string, string]> = { competition: ["Competição", "Competition"], research: ["Pesquisa", "Research"], product: ["Produto", "Product"], custom: ["Personalizado", "Custom"] };
+  return (labels[type || ""] || ["Projeto", "Project"])[language === "pt" ? 0 : 1];
 }

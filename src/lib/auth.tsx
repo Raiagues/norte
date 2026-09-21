@@ -21,7 +21,10 @@ type AuthContextValue = {
   user: SessionUser | null;
   hasOwner: boolean;
   isDemo: boolean;
+  /** The server offers disposable demonstration sandboxes on the login page. */
+  demoAvailable: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginDemo: () => Promise<void>;
   register: (input: RegisterAccountInput) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -31,6 +34,7 @@ type AuthContextValue = {
 type SessionResponse = {
   authenticated?: boolean;
   hasOwner?: boolean;
+  demoAvailable?: boolean;
   user?: SessionUser;
   csrfToken?: string;
 };
@@ -41,6 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<SessionUser | null>(null);
   const [hasOwner, setHasOwner] = useState(false);
+  const [demoAvailable, setDemoAvailable] = useState(false);
   const csrfRef = useRef("");
 
   const api = useCallback(async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
@@ -62,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response = await api<SessionResponse>("/auth/session");
       setHasOwner(Boolean(response.hasOwner));
+      setDemoAvailable(Boolean(response.demoAvailable));
       if (response.authenticated && response.user && response.csrfToken) {
         csrfRef.current = response.csrfToken;
         setUser(response.user);
@@ -124,6 +130,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStatus("authenticated");
   }, [api]);
 
+  const loginDemo = useCallback(async () => {
+    if (STATIC_DEMO) {
+      setUser({ ...DEMO_USER });
+      setHasOwner(true);
+      setStatus("authenticated");
+      return;
+    }
+    const response = await api<{ user: SessionUser; csrfToken: string }>("/auth/demo", { method: "POST" });
+    csrfRef.current = response.csrfToken;
+    setUser(response.user);
+    setStatus("authenticated");
+  }, [api]);
+
   const register = useCallback(async (input: RegisterAccountInput) => {
     if (STATIC_DEMO) {
       setUser({ ...DEMO_USER });
@@ -152,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [api]);
 
-  const value = useMemo<AuthContextValue>(() => ({ status, user, hasOwner, isDemo: STATIC_DEMO, login, register, logout, refresh, api }), [status, user, hasOwner, login, register, logout, refresh, api]);
+  const value = useMemo<AuthContextValue>(() => ({ status, user, hasOwner, isDemo: STATIC_DEMO, demoAvailable, login, loginDemo, register, logout, refresh, api }), [status, user, hasOwner, demoAvailable, login, loginDemo, register, logout, refresh, api]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

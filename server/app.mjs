@@ -21,6 +21,7 @@ import { PostgresDataStore } from "./postgres-store.mjs";
 import { brainstormRequestSchema, createBrainstormAiService } from "./brainstorm-ai.mjs";
 import { createSystemAiService, generationRequestSchema, projectArtifacts, validateEngineeringSystem } from "./system-ai.mjs";
 import { artifactReadabilityRecord } from "./artifact-content.mjs";
+import { createDemoSandbox, demoAccountEnabled, pruneDemoSandboxes, sameDemoScope } from "./demo-account.mjs";
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const PASSWORD_MIN_LENGTH = 15;
@@ -230,7 +231,8 @@ function publicUser(user, environment) {
     institution: user.institution,
     primaryArea: user.primaryArea,
     avatarUrl: user.avatarUrl || "",
-    profileComplete: Boolean(user.institution && user.course && user.academicStage)
+    profileComplete: Boolean(user.institution && user.course && user.academicStage),
+    demoAccount: Boolean(user.isDemoAccount)
   };
 }
 
@@ -355,6 +357,7 @@ function validLabBoard(value) {
 export async function buildApp(options = {}) {
   const production = process.env.NODE_ENV === "production";
   const cookieName = options.cookieName || (production ? "__Host-norte_session" : "norte_session");
+  const demoAccount = options.demoAccount ?? demoAccountEnabled(process.env, production);
   const databaseUrl = options.databaseUrl ?? process.env.DATABASE_URL;
   if (process.env.RENDER && !databaseUrl && !options.store && !options.storeFile) throw new Error("DATABASE_URL is required on Render so user documents are not stored on ephemeral disk.");
   const store = options.store || await (options.storeFile || !databaseUrl
@@ -469,6 +472,12 @@ export async function buildApp(options = {}) {
     const auth = getSessionUser(request);
     if (!auth) throw httpError(401, "AUTH_REQUIRED", "Authentication is required.");
     request.auth = auth;
+    if (auth.user.isDemoAccount) {
+      // A sandbox never reaches real teams, and it cannot send mail on the operator's behalf.
+      const teamId = request.url.match(/^\/api\/teams\/([^/?]+)/u)?.[1];
+      if (teamId && !teamId.startsWith(`${auth.user.demoSandboxId}-`)) throw httpError(404, "TEAM_NOT_FOUND", "Team was not found.");
+      if (request.method !== "GET" && /^\/api\/(teams\/[^/]+\/invitations|auth\/email-verification|admin)(?:\/|$)/u.test(request.url)) throw httpError(403, "DEMO_RESTRICTED", "Esta ação não está disponível na conta de demonstração.");
+    }
     if (auth.user.pendingLegacyMemberId && !auth.user.emailVerifiedAt && !/^\/api\/(auth(?:\/|$)|invitations(?:\/|$)|profile$)/.test(request.url)) throw httpError(403, "EMAIL_NOT_VERIFIED", "Verifique seu email em Convites para recuperar seu perfil existente.");
   }
 
@@ -507,6 +516,7 @@ export async function buildApp(options = {}) {
   }
 
   function canAccessProject(data, user, record) {
+    if (!sameDemoScope(user, record)) return false;
     if (user.accessRole === "owner_admin") return true;
     const teamId = record?.document?.context?.teamId;
     if (teamId) return Boolean(data.teams.find(t => t.id === teamId)?.memberIds.includes(user.memberId));
@@ -515,13 +525,13 @@ export async function buildApp(options = {}) {
 
   /** One visibility rule for both the artifact list and its file downloads. */
   function visibleArtifacts(data, user) {
-    if (user.accessRole === "owner_admin") return data.artifacts;
+    if (user.accessRole === "owner_admin") return data.artifacts.filter((artifact) => sameDemoScope(user, artifact));
     const teamIds = new Set(data.teams.filter((team) => team.memberIds.includes(user.memberId)).map((team) => team.id));
     const projectIds = new Set(Object.entries(data.workspace.projects || {}).filter(([, record]) => canAccessProject(data, user, record)).map(([projectId]) => projectId));
-    return data.artifacts.filter((artifact) => artifact.official
+    return data.artifacts.filter((artifact) => sameDemoScope(user, artifact) && (artifact.official
       || (!artifact.ownerId && artifact.createdBy === user.id)
       || (artifact.scope === "team" && teamIds.has(artifact.ownerId))
-      || (artifact.scope === "project" && projectIds.has(artifact.ownerId)));
+      || (artifact.scope === "project" && projectIds.has(artifact.ownerId))));
   }
 
   function artifactForUser(data, user, artifact) {
@@ -570,6 +580,7 @@ export async function buildApp(options = {}) {
     return {
       id: project.id,
       name: project.name || "Projeto sem título",
+      projectType: project.projectType ?? null,
       programId: project.context?.programId ?? null,
       teamId: project.context?.teamId ?? null,
       updatedAt: record.updatedAt || project.updatedAt,
@@ -609,8 +620,22 @@ export async function buildApp(options = {}) {
   }, async (request) => {
     const auth = getSessionUser(request);
     const hasOwner = store.read().users.some((user) => user.accessRole === "owner_admin" && user.active);
-    if (!auth) return { authenticated: false, hasOwner };
-    return { authenticated: true, hasOwner, user: publicUser(auth.user, store.read().environment), csrfToken: auth.session.csrfToken };
+    if (!auth) return { authenticated: false, hasOwner, demoAvailable: demoAccount };
+    return { authenticated: true, hasOwner, demoAvailable: demoAccount, user: publicUser(auth.user, store.read().environment), csrfToken: auth.session.csrfToken };
+  });
+
+  app.post("/api/auth/demo", {
+    config: { rateLimit: { max: 12, timeWindow: "15 minutes" } },
+    schema: { tags: ["Authentication"], summary: "Open a disposable demonstration sandbox" }
+  }, async (request, reply) => {
+    if (!demoAccount) throw httpError(404, "DEMO_UNAVAILABLE", "A conta de demonstração não está habilitada neste ambiente.");
+    const user = await store.update((data) => {
+      pruneDemoSandboxes(data);
+      return createDemoSandbox(data);
+    });
+    const session = await setSession(reply, user.id);
+    reply.code(201);
+    return { user: publicUser(user, store.read().environment), csrfToken: session.csrfToken };
   });
 
   app.post("/api/auth/register", {
@@ -787,7 +812,7 @@ export async function buildApp(options = {}) {
   }, async (request) => {
     const data = store.read();
     return {
-      teams: data.teams.map((team) => {
+      teams: data.teams.filter((team) => sameDemoScope(request.auth.user, team)).map((team) => {
         const membership = team.memberIds.includes(request.auth.user.memberId) ? "member" : "available";
         const canManage = canManageNamedTeam(data, request.auth.user, team);
         const canSeePrivateData = membership === "member" || canManage;
@@ -830,6 +855,8 @@ export async function buildApp(options = {}) {
         const sectors = new Map((context.sectors || []).map((item) => [item.id, item.name]));
         return {
           ...projectSummary(record),
+          sectorCount: (context.sectors || []).length,
+          hasSystem: Boolean(record.document.engineeringSystem),
           organization: projectOrganization(record.document, data.members),
           participants: (context.assignments || []).map((assignment) => {
             const member = data.members.find((item) => item.id === assignment.memberId);
