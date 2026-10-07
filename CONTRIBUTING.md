@@ -4,12 +4,12 @@ Norte uses a mandatory quality gate for every change.
 
 ## Development
 
-Use Node.js 24.20 or newer.
-
 ```bash
-npm install
-npm run dev
+./setup   # Node.js 24.20, npm packages, .env and the local database
+./start   # runs in the background; ./stop ends it
 ```
+
+See [Run locally](README.md#run-locally) for details, or [manual setup](README.md#manual-setup) to use `npm run dev` directly.
 
 Before opening a pull request, run
 

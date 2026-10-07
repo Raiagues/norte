@@ -6,6 +6,42 @@ Norte is an AI-assisted engineering workspace for understanding dependencies ins
 [![Security](https://github.com/Raiagues/norte/actions/workflows/security.yml/badge.svg)](https://github.com/Raiagues/norte/actions/workflows/security.yml)
 [![Frontend demo deployment](https://github.com/Raiagues/norte/actions/workflows/pages.yml/badge.svg)](https://github.com/Raiagues/norte/actions/workflows/pages.yml)
 
+## Run locally
+
+You need Linux or macOS with `git` and `curl`. [Docker](https://docs.docker.com/engine/install/) is recommended so the database runs in PostgreSQL, as in production. The scripts install everything else.
+
+```bash
+git clone https://github.com/Raiagues/norte.git
+cd norte
+./setup   # once: Node.js, npm packages, .env, PostgreSQL and the Quetzal-1 documents
+./start   # database, API and web client in the background; prints the addresses
+./stop    # stops everything; data is kept for the next ./start
+```
+
+After cloning, `./start` alone is enough: it runs `./setup` first when needed.
+
+| Command | What it does |
+| --- | --- |
+| `./setup` | Installs Node.js 24.20 with [nvm](https://github.com/nvm-sh/nvm) when Node.js is missing or older, runs `npm ci`, creates `.env` from `.env.example` and asks for `GEMINI_API_KEY` (Enter skips). Creates the PostgreSQL 17 container `norte-postgres` on `127.0.0.1:55432` (or the next free port) and writes its `DATABASE_URL` to `.env`. Creates the schema and imports the [official Quetzal-1 documents](#validation) while the validation project is empty. Running it again skips what is already in place; `./setup --skip-seed` skips the document download. |
+| `./start` | Starts the database, API and web client, waits until they answer and prints their addresses. The browser opens on the web client. |
+| `./stop` | Stops the API, the web client and the PostgreSQL container. Data stays in the Docker volume `norte-postgres-data`. |
+
+| Service | Default URL |
+| --- | --- |
+| Web | `http://127.0.0.1:5173/norte/` |
+| API | `http://127.0.0.1:8787/api` |
+| Swagger | `http://127.0.0.1:8787/docs` |
+| Health | `http://127.0.0.1:8787/api/health` |
+
+The first account registered on the login page becomes the owner/admin; *Explore with a test account* opens a disposable sandbox without registering. Logs are in `var/log/norte.log`.
+
+- **AI features:** without `GEMINI_API_KEY` the app runs, but document extraction and Discovery interpretation stay off. Add the key to `.env` and run `./stop && ./start`.
+- **Without Docker:** `./setup` stores data in `var/mission-dev-data.json` instead. Install Docker and run `./setup` again to switch to PostgreSQL.
+- **Your own database:** when `DATABASE_URL` in `.env` already points to another PostgreSQL (Neon, for example), the scripts use it and leave Docker alone.
+- **Start over with an empty database:** `./stop && docker rm norte-postgres && docker volume rm norte-postgres-data && ./setup`.
+
+To run the npm commands yourself instead, see [manual setup](#manual-setup).
+
 ## Official app
 
 **[Official app](https://norte-missao.onrender.com/)** — the full application on Render with Neon PostgreSQL. The application page and [`/api/health`](https://norte-missao.onrender.com/api/health) were verified; the health endpoint reports PostgreSQL storage.
@@ -55,31 +91,21 @@ Norte is not a general physics simulator. An inferred dependency is a hypothesis
 
 See [architecture](docs/architecture.md), [product research and UX decisions](docs/PRODUCT_RESEARCH_ENGINEERING_REASONING.md) and [deployment](docs/deployment.md).
 
-## Running locally
+## Manual setup
 
-Use **Node.js 24.20.0 or newer**, as declared in `.node-version` and `package.json`. Older
-runtimes crash on the `argon2` native binding before the API can start, so `nvm use` first:
+[`./setup`, `./start` and `./stop`](#run-locally) wrap these steps. To run them yourself, use **Node.js 24.20.0 or newer**, as declared in `.node-version` and `package.json`. Older runtimes crash on the `argon2` native binding before the API can start:
 
 ```bash
-git clone https://github.com/Raiagues/norte.git
-cd norte
-nvm install   # reads .node-version
+nvm install "$(cat .node-version)"
 npm ci
 cp .env.example .env
 # Set GEMINI_API_KEY in .env to enable server-side extraction.
 npm run dev
 ```
 
-Every entry point loads `.env` and `.env.local`, so `npm start` and `npm run dev:api` see the same configuration as `npm run dev`; hosted environments keep the variables their platform injects. The launcher starts the client and API and prints their addresses. It chooses the next available port when a preferred port is occupied.
+Every entry point loads `.env` and `.env.local`, so `npm start` and `npm run dev:api` see the same configuration as `npm run dev`; hosted environments keep the variables their platform injects. The launcher starts the client and API in the foreground and prints their addresses. It chooses the next available port when a preferred port is occupied.
 
-| Service | Default URL |
-| --- | --- |
-| Web | `http://127.0.0.1:5173/norte/` |
-| API | `http://127.0.0.1:8787/api` |
-| Swagger | `http://127.0.0.1:8787/docs` |
-| Health | `http://127.0.0.1:8787/api/health` |
-
-Without `DATABASE_URL`, the API uses `var/mission-dev-data.json`. The first registered account becomes the owner/admin. Keep the local data file and backups private.
+Without `DATABASE_URL`, the API uses `var/mission-dev-data.json`. The API creates its PostgreSQL table or JSON file on first start; `node scripts/setup-database.mjs` does the same without starting the server and imports the Quetzal-1 documents into an empty validation project. Keep the local data file and backups private.
 
 ## Environment variables
 
@@ -141,7 +167,7 @@ Render builds `dist/` and serves it alongside `/api` from one HTTPS origin. Conf
 
 The validation project is **Quetzal-1**, owned by **Norte Validation Team**, built from **real engineering documents** published by the Quetzal-1 CubeSat Team (UVG) and by the manufacturers of parts the mission flew. Its engineering model is generated by extracting those documents in the ordinary product flow; this repository describes none of that architecture. The project is an independent engineering project with no reference program: Quetzal-1 has no OBSAT association.
 
-A fresh database contains the team and the project with an **empty memory** — the application invents no documents at startup. The real sources are imported by an explicit, guarded command:
+A fresh database contains the team and the project with an **empty memory** — the application invents no documents at startup. The real sources are imported by an explicit, guarded command. `./setup` runs it once while the project's memory is still empty and never re-imports over existing documents:
 
 ```bash
 NORTE_ALLOW_QUETZAL_SEED=1 \
